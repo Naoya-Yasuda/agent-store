@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
 from pathlib import Path
 import argparse
 
@@ -28,27 +27,36 @@ def main() -> None:
     output_path = OUTPUT_DIR / args.agent_id / args.revision
     output_path.mkdir(parents=True, exist_ok=True)
 
-    env = os.environ.copy()
-    env["INSPECT_MANIFEST_PATH"] = args.manifest
-    env["INSPECT_RESPONSE_SAMPLES"] = str(Path(args.artifacts) / "response_samples.jsonl")
+    artifacts_dir = Path(args.artifacts)
+    response_samples_file = artifacts_dir / "response_samples.jsonl"
+    policy_score_file = artifacts_dir / "policy_score.json"
 
-    command = [
-        "inspect",
-        "run",
-        "--config",
-        args.scenario,
-        "--output",
-        str(output_path)
-    ]
+    if not response_samples_file.exists() or not policy_score_file.exists():
+        raise FileNotFoundError("Required artifacts not found. Ensure sandbox-runner generated them.")
 
-    subprocess.run(command, check=True, cwd=str(ROOT), env=env)
+    latencies = []
+    with response_samples_file.open(encoding="utf-8") as f:
+        for line in f:
+            if line.strip():
+                sample = json.loads(line)
+                latencies.append(sample.get("latencyMs", 0))
+
+    policy_score_data = json.loads(policy_score_file.read_text(encoding="utf-8"))
+    policy_score = policy_score_data.get("score", 0.0)
+
+    avg_latency = sum(latencies) / len(latencies) if latencies else None
 
     summary = {
         "agentId": args.agent_id,
         "revision": args.revision,
-        "outputDir": str(output_path)
+        "outputDir": str(output_path),
+        "score": policy_score,
+        "policyScore": policy_score,
+        "avgLatencyMs": avg_latency,
+        "notes": "Inspect evaluation placeholder. Integrate inspect_ai execution here."
     }
-    (output_path / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+
+    (output_path / "summary.json").write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 if __name__ == "__main__":

@@ -3,10 +3,10 @@
   "revision": "rev1",
   "template": "google-adk",
   "dryRun": true,
-  "timestamp": 1761725738,
+  "timestamp": 1761726470,
   "wandb": {
     "enabled": false,
-    "runId": "sandbox-demo-rev1-1993f3dd",
+    "runId": "sandbox-demo-rev1-9c12bde9",
     "url": null,
     "notes": "WANDB_DISABLED=true",
     "project": "agent-store-sandbox",

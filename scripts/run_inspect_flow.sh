@@ -39,6 +39,7 @@ docker run --rm \
   -v "$(pwd)/sandbox-runner/artifacts:/data/artifacts" \
   -v "$(pwd)/prompts:/app/prompts" \
   -v "$(pwd)/third_party/aisev:/app/third_party/aisev" \
+  -v "$(pwd)/prototype/inspect-worker/out:/app/prototype/inspect-worker/out" \
   "$IMAGE"
 
 # Step 5: show summary

@@ -1,0 +1,9 @@
+{
+  "agentId": "demo",
+  "revision": "rev1",
+  "outputDir": "/app/prototype/inspect-worker/out/demo/rev1",
+  "score": 0.97,
+  "policyScore": 0.97,
+  "avgLatencyMs": 1138.0,
+  "notes": "Inspect evaluation placeholder. Integrate inspect_ai execution here."
+}
