@@ -30,6 +30,17 @@ for var in "${FORWARD_ENV_VARS[@]}"; do
   fi
 done
 
+# guard arrays for set -u
+ENV_PASSTHROUGH_ARGS=()
+if [ "${#ENV_PASSTHROUGH[@]}" -ne 0 ]; then
+  ENV_PASSTHROUGH_ARGS=("${ENV_PASSTHROUGH[@]}")
+fi
+
+ENV_FILE_ARGS=()
+if [ "${#ENV_ARGS[@]}" -ne 0 ]; then
+  ENV_FILE_ARGS=("${ENV_ARGS[@]}")
+fi
+
 # Step 1: ensure aisev is available
 if [ ! -d "third_party/aisev" ]; then
   echo "third_party/aisev not found. Run scripts/setup_aisev.sh first." >&2
@@ -37,7 +48,11 @@ if [ ! -d "third_party/aisev" ]; then
 fi
 
 # Step 2: build docker image
-docker build -t "$IMAGE" -f docker/inspect-worker/Dockerfile .
+if [ "${INSPECT_SKIP_DOCKER_BUILD:-0}" = "1" ]; then
+  echo "INSPECT_SKIP_DOCKER_BUILD=1: Docker build/run をスキップしてローカル実行します。"
+else
+  docker build -t "$IMAGE" -f docker/inspect-worker/Dockerfile .
+fi
 
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 if [ -x ".venv/bin/python" ]; then
@@ -57,19 +72,44 @@ fi
 
 mkdir -p prototype/inspect-worker/out
 
-# Step 4: run inspect worker container
-docker run --rm \
-  -e AGENT_ID=demo \
-  -e REVISION=rev1 \
-  -e ARTIFACTS_DIR=/data/artifacts \
-  -e MANIFEST_PATH=/app/prompts/aisi/manifest.tier3.json \
-  "${ENV_PASSTHROUGH[@]}" \
-  "${ENV_ARGS[@]}" \
-  -v "$(pwd)/sandbox-runner/artifacts:/data/artifacts" \
-  -v "$(pwd)/prompts:/app/prompts" \
-  -v "$(pwd)/third_party/aisev:/app/third_party/aisev" \
-  -v "$(pwd)/prototype/inspect-worker/out:/app/prototype/inspect-worker/out" \
-  "$IMAGE"
+if [ "${INSPECT_SKIP_DOCKER_BUILD:-0}" = "1" ]; then
+  if [ -f "$ENV_FILE" ]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "$ENV_FILE"
+    set +a
+  fi
+  INSPECT_RUN_ARGS=(
+    --agent-id demo
+    --revision rev1
+    --artifacts sandbox-runner/artifacts
+    --manifest prompts/aisi/manifest.tier3.json
+  )
+  "${PYTHON_BIN}" prototype/inspect-worker/scripts/run_eval.py "${INSPECT_RUN_ARGS[@]}"
+else
+  # Step 4: run inspect worker container
+  DOCKER_ARGS=(
+    -e AGENT_ID=demo
+    -e REVISION=rev1
+    -e ARTIFACTS_DIR=/data/artifacts
+    -e MANIFEST_PATH=/app/prompts/aisi/manifest.tier3.json
+    -v "$(pwd)/sandbox-runner/artifacts:/data/artifacts"
+    -v "$(pwd)/prompts:/app/prompts"
+    -v "$(pwd)/third_party/aisev:/app/third_party/aisev"
+    -v "$(pwd)/prototype/inspect-worker/out:/app/prototype/inspect-worker/out"
+  )
+
+  if [ "${#ENV_PASSTHROUGH_ARGS[@]}" -ne 0 ]; then
+    DOCKER_ARGS+=("${ENV_PASSTHROUGH_ARGS[@]}")
+  fi
+  if [ "${#ENV_FILE_ARGS[@]}" -ne 0 ]; then
+    DOCKER_ARGS+=("${ENV_FILE_ARGS[@]}")
+  fi
+
+  docker run --rm \
+    "${DOCKER_ARGS[@]}" \
+    "$IMAGE"
+fi
 
 # Step 5: show summary
 SUMMARY=prototype/inspect-worker/out/demo/rev1/summary.json

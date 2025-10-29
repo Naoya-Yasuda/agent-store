@@ -42,7 +42,12 @@ scripts/run_inspect_flow.sh
 - `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_ORG`, `ANTHROPIC_API_KEY`: モデル判定に必要な資格情報。
 
 `prototype/inspect-worker/.env.inspect.example` をコピーして `.env.inspect` を作成し、上記の環境変数を設定すると `scripts/run_inspect_flow.sh` が自動で `--env-file` に投入します。シェルから直接 `export INSPECT_GRADER_MODEL=...` した場合は、その値が `.env.inspect` より優先されます。
+Docker がディスク容量不足で失敗する場合は、`INSPECT_SKIP_DOCKER_BUILD=1` を付けて実行するとホスト環境の `.venv` を使ってローカル実行にフォールバックします。
 
-## 6. 今後のTODO
+## 6. 依存関係
+- ワーカー用の最小依存は `prototype/inspect-worker/requirements.txt` にまとめています（`inspect-ai`, `inspect-evals`, `openai` が中心）。Docker コンテナでも同ファイルを利用します。
+- 大きな依存を一括インストールするため、ローカルディスク容量が逼迫している場合はホスト環境で `pip install -r prototype/inspect-worker/requirements.txt` を済ませてから `INSPECT_SKIP_DOCKER_BUILD=1 scripts/run_inspect_flow.sh` のようにローカル実行へ切り替える運用も検討してください。
+
+## 7. 今後のTODO
 - Temporalアクティビティから直接呼び出すラッパを実装。
 - Kubernetesジョブ化やサンドボックス環境分離。

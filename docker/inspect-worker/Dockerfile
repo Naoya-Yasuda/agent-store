@@ -10,8 +10,9 @@ COPY . /app
 # Clone aisev repository (optional: assume scripts/setup_aisev.sh already executed)
 # RUN git clone https://github.com/Japan-AISI/aisev third_party/aisev
 
+ENV TMPDIR=/tmp
 RUN pip install --upgrade pip \
-    && pip install -r third_party/aisev/backend/requirements.txt
+    && pip install --no-cache-dir -r prototype/inspect-worker/requirements.txt
 ENV AISEV_HOME=/app/third_party/aisev
 
 ENTRYPOINT ["bash", "prototype/inspect-worker/scripts/entrypoint.sh"]
