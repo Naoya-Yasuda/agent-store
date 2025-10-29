@@ -44,7 +44,7 @@
 | --- | --- | --- |
 | Agent | `id (UUID)`, `slug`, `display_name`, `owner_id`, `status`, `default_endpoint_id`, `created_at`, `updated_at` | エージェント本体。公開状態(`draft`,`in_review`,`published`,`suspended`)を管理。 |
 | AgentRevision | `id`, `agent_id`, `version`, `change_summary`, `changelog`, `submitted_by`, `submitted_at`, `risk_tier` | バージョン履歴とリスクTierを保持し、必要な審査レベルを決定。 |
-| AgentCard | `id`, `agent_id`, `locale`, `summary`, `capabilities`, `use_cases`, `cover_image_url`, `policy_disclosures` | カタログ表示用メタ情報と政策上の開示事項。 |
+| AgentCard | `id`, `agent_id`, `default_locale`, `status`, `pricing`, `compliance_notes`, `translations[]` | カタログ表示用メタ情報と政策上の開示事項。詳細は `docs/design/agent-card-spec.md`, `schemas/agent-card.schema.json` を参照。 |
 | AgentEndpoint | `id`, `agent_id`, `type`, `url`, `auth_scheme`, `expected_latency_ms`, `health_status`, `sla_tier` | 実行エンドポイントとSLA情報。 |
 | Submission | `id`, `agent_revision_id`, `submitter_id`, `state`, `risk_tier`, `auto_checks`, `aisi_score`, `fairness_score_snapshot`, `review_notes` | 多段審査の状態と自動判定結果、統計を格納。 |
 | AuditLog | `id`, `actor_id`, `action`, `target_type`, `target_id`, `payload`, `created_at`, `hash_chain_id` | ハッシュ連結した監査ログ。透明性レポート作成の基礎。 |

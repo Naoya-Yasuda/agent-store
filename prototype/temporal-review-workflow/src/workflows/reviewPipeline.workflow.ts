@@ -6,7 +6,7 @@ type Activities = {
   fetchAgentDraft: (agentRevisionId: string) => Promise<{ agentId: string; riskTier: string }>;
   runSandbox: (agentRevisionId: string) => Promise<{ latencyMs: number; policyScore: number; wandbRunId: string }>;
   runAutoChecks: (agentRevisionId: string) => Promise<{ passed: boolean; checks: Record<string, boolean> }>;
-  invokeAISI: (args: { agentRevisionId: string; promptVersion: string }) => Promise<{ score: number; riskLabel: string }>;
+  invokeAISI: (args: { agentRevisionId: string; agentId: string; promptVersion: string }) => Promise<{ score: number; riskLabel: string }>;
   triggerHumanReview: (agentRevisionId: string, context: { aisiScore: number; riskLabel: string }) => Promise<'approved' | 'rejected' | 'escalated'>;
   publishAgent: (agentRevisionId: string) => Promise<void>;
 };
@@ -44,7 +44,7 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
 
   const { agentRevisionId, promptVersion } = input;
 
-  await activities.fetchAgentDraft(agentRevisionId);
+  const draftInfo = await activities.fetchAgentDraft(agentRevisionId);
   currentState = 'sandbox';
 
   const sandboxResult = await activities.runSandbox(agentRevisionId);
@@ -57,7 +57,7 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
   }
 
   currentState = 'aisi';
-  const aisiResult = await activities.invokeAISI({ agentRevisionId, promptVersion });
+  const aisiResult = await activities.invokeAISI({ agentRevisionId, agentId: draftInfo.agentId, promptVersion });
 
   if (aisiResult.riskLabel === 'high') {
     currentState = 'escalated';

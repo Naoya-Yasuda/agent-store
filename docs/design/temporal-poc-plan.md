@@ -17,7 +17,7 @@
   - TypeScript SDK + Node 20 プロジェクトを `prototype/temporal-review-workflow/` に作成（既存PoCを拡張）
 - **ワークフロー実装**
   - 状態遷移をTemporalのSignals/Queriesで外部更新可能にする
-  - `runSandbox` はHTTPスタブをコール、`invokeAISI` もモック
+  - `runSandbox` でSandbox成果物を生成し、`invokeAISI` から `prototype/inspect-worker/scripts/run_eval.py` を呼び出して Inspect 評価を実行
   - エラー/タイムアウト時のRetryPolicyを設定
 - **権限/セキュリティ**
   - Temporal CloudのNamespace RBACを検証(レビュアー/運用者のアクセスコントロール)

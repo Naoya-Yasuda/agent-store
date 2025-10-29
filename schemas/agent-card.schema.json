@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/schemas/agent-card.schema.json",
+  "title": "AgentCard",
+  "type": "object",
+  "required": [
+    "id",
+    "agentId",
+    "locale",
+    "displayName",
+    "shortDescription",
+    "capabilities",
+    "status"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "agentId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "locale": {
+      "type": "string",
+      "pattern": "^[a-z]{2}(?:-[A-Z]{2})?$"
+    },
+    "displayName": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 80
+    },
+    "shortDescription": {
+      "type": "string",
+      "maxLength": 200
+    },
+    "longDescription": {
+      "type": "string"
+    },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 40
+      },
+      "maxItems": 10
+    },
+    "useCases": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 60
+      },
+      "maxItems": 10
+    },
+    "iconUrl": {
+      "type": "string",
+      "format": "uri"
+    },
+    "bannerUrl": {
+      "type": "string",
+      "format": "uri"
+    },
+    "pricing": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "free",
+            "subscription",
+            "usage"
+          ]
+        },
+        "details": {
+          "type": "string",
+          "maxLength": 200
+        }
+      },
+      "required": ["type"],
+      "additionalProperties": false
+    },
+    "complianceNotes": {
+      "type": "string"
+    },
+    "lastReviewedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "published",
+        "suspended"
+      ]
+    }
+  },
+  "additionalProperties": false
+}
