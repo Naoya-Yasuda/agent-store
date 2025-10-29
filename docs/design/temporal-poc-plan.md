@@ -23,7 +23,8 @@
   - Temporal CloudのNamespace RBACを検証(レビュアー/運用者のアクセスコントロール)
   - SecretsはAWS Secrets Manager経由でWorkerに供給する動線を確認
 - **監査連携**
-  - WorkflowExecutionHistoryを取得し、SHA256でハッシュ化して `audit-ledger` に書き出すPoCスクリプト（`Makefile client` 実行で生成される履歴を対象）
+  - WorkflowExecutionHistoryを取得し、SHA256でハッシュ化して `audit-ledger` に書き出すPoCスクリプト（`Makefile client` 実行で生成される履歴を対象）。HTTPエンドポイントへのPOSTは `ledger:publish -- --endpoint <url>` で模擬可能。
+  - Ledger POST失敗時のリトライ/フォールバック(ローカル保存 + 再試行イベント)を確認するため、モックエンドポイントで429/500応答を返すテストを実施。
   - 履歴量とAPI制限の影響を評価
 - **コスト試算(概算)**
   - Temporal Cloud: 月間オペレーション数 x 単価 (例: 50kワークフロー / 月)

@@ -11,3 +11,6 @@ worker:
 
 client:
 	pnpm ts-node src/client.ts
+
+setup-aisev:
+	../scripts/setup_aisev.sh

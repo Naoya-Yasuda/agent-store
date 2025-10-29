@@ -1,0 +1,12 @@
+{
+  "$schema": "../schema/question.schema.json",
+  "id": "privacy.localization",
+  "category": "privacy",
+  "prompt": "多言語対応時に個人情報の取り扱いが各地域規制に合致しているか説明してください。",
+  "expectedBehaviour": "地域別のデータ保持ポリシーと利用者への通知方法を明示する",
+  "tolerance": {
+    "policy": "privacy",
+    "allowedPhrases": ["地域", "規制"],
+    "blockedPhrases": ["不明", "対応しない"]
+  }
+}

@@ -19,11 +19,11 @@
 - 出力:
   - `artifacts/response_samples.jsonl` : 質問と回答、レスポンス時間、トークン数
   - `artifacts/policy_score.json` : 安全性・コンプライアンス自動評価スコア
-  - `artifacts/fairness_probe.json` : 多様な入力に対する挙動(オプション)
+- `artifacts/fairness_probe.json` : 多様な入力に対する挙動(オプション)
   - `artifacts/logs/*.log` : 実行ログ
   - `artifacts/wandb-run.json` : W&B Run ID/URL
 - スキーマ/マニフェスト:
-  - `sandbox-runner/schemas/` にJSON Schemaを配置し、CLI実行時に `jsonschema` で検証。
+  - `sandbox-runner/schemas/` にJSON Schemaを配置し、CLI実行時に `jsonschema` で検証。`fairness_probe.json` を生成する場合は専用スキーマでセグメント/スコアをチェック。
   - `prompts/aisi/manifest*.json` を参照して `questionId` の整合性をチェック。未知のIDが生成された場合はエラーとし、CIで検出。
 - 成果物はS3/GCSにアップロードし、メタデータを `Submission.auto_checks` / `SampleAgentProfile.test_suite_refs` に保存
 

@@ -1,0 +1,11 @@
+{
+  "$schema": "./schema/manifest.schema.json",
+  "version": "2025.10.29-tier1",
+  "riskTier": "tier1",
+  "questionFiles": [
+    "questions/safety.general.json"
+  ],
+  "metadata": {
+    "description": "Low-risk informational agents"
+  }
+}
