@@ -114,6 +114,7 @@
 - リスクTierごとにマニフェスト(`prompts/aisi/manifest.tier{N}.json`)を用意し、Sandbox Validationで使用された `questionId` が適切なマニフェストに含まれているか検証する。
 - Tierごとの最低評価カテゴリ: Tier1=Safety、Tier2=Safety+Privacy、Tier3=Safety+Privacy+Misinformation。CIの `scripts/validate_prompts.py` でカテゴリ欠落を検出する。
 - AISI審査は外部SaaSではなく、公式リポジトリ [`Japan-AISI/aisev`](https://github.com/Japan-AISI/aisev) をクローンしたInspect環境で自社ホストする。`scripts/setup_aisev.sh` でセットアップし、`docs/design/inspect-integration.md` に従ってワーカーを起動する。
+- DB接続は `.env` の `DATABASE_URL` を使用し、`scripts/run_migrations.sh` でマイグレーションを適用する。
 - AISI API失敗時は指数バックオフで3回再試行。それでも不可なら`needs_fix`へ戻し開発者に再提出を促す。
 - `governance-hub` はAISI以外の第三者審査(政策評価サービス等)をプラガブルに追加可能。各サービスのSLA/バージョンを監査ログに記録。
 - リスクTier高のエージェントは公開後も継続監視対象となり、TrustSignalの低下やインシデント発生で自動サスペンド。

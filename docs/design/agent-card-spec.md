@@ -3,6 +3,7 @@
 ## 1. 目的
 - エージェントカタログ表示や開発者ポータルで参照するメタ情報を、統一した `AgentCard` エンティティとして管理する。
 - 多言語対応、タグ、アイコン、利用シナリオなどを含め、利用者がエージェントを比較しやすくする。
+- 初期リリースは `ja-JP` をデフォルトとし、将来的に他言語を追加する。
 
 ## 2. データモデル
 | フィールド | 型 | 説明 |
@@ -83,9 +84,11 @@ AgentCardTags(
 
 ## 8. TODO
 - APIモデル/DTOの実装 (TypeScript/Go?)
-- DBマイグレーション作成
+- DBマイグレーション適用(`scripts/run_migrations.sh`)とCI連携
 - Portal UIのデザインモック作成
 - バリデーションライブラリの選定
 - `api/routes/agentCards.ts` でExpressルートを実装 (認証/認可含む)
 - CIで `schemas/agent-card.schema.json` を利用したJSON検証を追加
 - Jest/pytest等でバリデーションのユニットテストを実装
+- 永続化層(ORM/SQL)実装と in-memory からの置き換え
+- カタログレスポンスのlocaleフィルタリングとfallback処理
