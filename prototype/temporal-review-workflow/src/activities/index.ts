@@ -5,6 +5,7 @@ import { spawn } from 'child_process';
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..', '..');
 const ARTIFACTS_DIR = path.join(PROJECT_ROOT, 'sandbox-runner', 'artifacts');
 const INSPECT_SCRIPT = path.join(PROJECT_ROOT, 'prototype', 'inspect-worker', 'scripts', 'run_eval.py');
+const INSPECT_DOCKER_IMAGE = process.env.INSPECT_DOCKER_IMAGE;
 const INSPECT_OUT_DIR = path.join(PROJECT_ROOT, 'prototype', 'inspect-worker', 'out');
 const MANIFEST_PATH = path.join(PROJECT_ROOT, 'prompts', 'aisi', 'manifest.tier3.json');
 
@@ -43,7 +44,21 @@ function spawnProcess(cmd: string, args: string[], options: { cwd?: string; env?
 
 async function runInspectEvaluation(agentId: string, revision: string): Promise<{ score: number; riskLabel: string }> {
   try {
-    await spawnProcess('python3', [INSPECT_SCRIPT, '--agent-id', agentId, '--revision', revision, '--artifacts', ARTIFACTS_DIR, '--manifest', MANIFEST_PATH]);
+    if (INSPECT_DOCKER_IMAGE) {
+      await spawnProcess('docker', [
+        'run', '--rm',
+        '-e', `AGENT_ID=${agentId}`,
+        '-e', `REVISION=${revision}`,
+        '-e', `ARTIFACTS_DIR=/data/artifacts`,
+        '-e', `MANIFEST_PATH=/app/prompts/aisi/manifest.tier3.json`,
+        '-v', `${ARTIFACTS_DIR}:/data/artifacts`,
+        '-v', `${path.join(PROJECT_ROOT, 'prompts')}:/app/prompts`,
+        '-v', `${path.join(PROJECT_ROOT, 'third_party', 'aisev')}:/app/third_party/aisev`,
+        INSPECT_DOCKER_IMAGE
+      ]);
+    } else {
+      await spawnProcess('python3', [INSPECT_SCRIPT, '--agent-id', agentId, '--revision', revision, '--artifacts', ARTIFACTS_DIR, '--manifest', MANIFEST_PATH]);
+    }
     const summaryPath = path.join(INSPECT_OUT_DIR, agentId, revision, 'summary.json');
     const summaryRaw = await fs.readFile(summaryPath, 'utf8');
     const summary = JSON.parse(summaryRaw) as { score?: number };

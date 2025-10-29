@@ -38,6 +38,7 @@
 2. `.venv` を有効化してInspect/依存ライブラリをインストール。
 3. Inspectワーカーコンテナ(または仮想環境)で評価スクリプトを実行。
 4. サンドボックス成果物がある場合、`prototype/inspect-worker/scripts/run_eval.py` で `aisev` の `inspect run` をラップして評価を実行。
+5. コンテナ実行の場合: `docker/inspect-worker/Dockerfile` でイメージをビルドし、Temporalアクティビティ側で `INSPECT_DOCKER_IMAGE` 環境変数を設定する。`AGENT_ID/REVISION/ARTIFACTS_DIR/MANIFEST_PATH` をエントリーポイントに渡す。
 
 ## 技術スタック案
 - Python 3.11 + `inspect-ai`

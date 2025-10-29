@@ -17,9 +17,9 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run Inspect evaluation using aisev scenario")
     parser.add_argument("--agent-id", required=True)
     parser.add_argument("--revision", required=True)
-    parser.add_argument("--scenario", default=str(PROJECT_SCENARIO))
-    parser.add_argument("--artifacts", required=True, help="Path to sandbox artifacts directory")
-    parser.add_argument("--manifest", default=str(ROOT / "prompts/aisi/manifest.tier3.json"))
+    parser.add_argument("--scenario", default=os.environ.get("INSPECT_SCENARIO", str(PROJECT_SCENARIO)))
+    parser.add_argument("--artifacts", default=os.environ.get("ARTIFACTS_DIR"), help="Path to sandbox artifacts directory")
+    parser.add_argument("--manifest", default=os.environ.get("MANIFEST_PATH", str(ROOT / "prompts/aisi/manifest.tier3.json")))
     return parser.parse_args()
 
 
