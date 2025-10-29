@@ -6,9 +6,10 @@
 - `scripts/setup_aisev.sh` を実行し、`third_party/aisev` をクローンしておく。
 - Python 3.11 + Poetry or virtualenv。
 
-## 2. シナリオテンプレート
-- `scenarios/generic_eval.yaml`: `prompts/aisi/` マニフェストを読み込み、質問IDごとにInspectのEvaluationConfigを生成。
-- Sandbox成果物(`response_samples.jsonl`, `policy_score.json`)を入力として評価。
+## 2. 評価フロー
+- `scripts/run_eval.py` が Sandbox Runner のレスポンスを `inspect_ai` の `Task` と `Sample` に変換し、リプレイ用ソルバーで回答を流し込む。
+- デフォルトの判定モデルは `mockllm/model`（外部API不要）。`INSPECT_GRADER_MODEL` を設定するとOpenAI等のモデルで `model_graded_qa` 判定を行う。
+- 評価用データは `inspect_dataset.jsonl` に書き出され、`inspect_logs/` 配下に JSON ログが保存される。
 
 ## 3. 実行例
 ```
@@ -27,9 +28,17 @@ scripts/run_inspect_flow.sh
 上記スクリプトは、Sandbox成果物の生成→Inspectワーカーイメージのビルド→コンテナ実行→サマリ表示までを一括で実行します。
 
 ## 4. 出力
-- `out/<agent-id>/<revision>/inspect_results.json`: スコア、ログ、判定を含む。
-- `out/.../inspect_stdout.log`: Inspect CLI の標準出力。
+- `out/<agent-id>/<revision>/summary.json`: 合格率、ポリシースコア、判定件数、利用した判定モデル等。
+- `out/<agent-id>/<revision>/details.json`: 質問IDごとの判定（Judgeのグレード/説明含む）。
+- `out/<agent-id>/<revision>/inspect_dataset.jsonl`: 評価に供した入力・期待値・出力のスナップショット。
+- `out/<agent-id>/<revision>/inspect_log_index.json`: Inspectログのパスと集計メトリクス。
+- `out/<agent-id>/<revision>/inspect_logs/*.json`: `inspect_ai` が生成する元ログ(JSON形式)。
 
-## 5. 今後のTODO
+## 5. 主な環境変数
+- `INSPECT_GRADER_MODEL`: 判定に使うモデルID。例: `openai/gpt-4o-mini`。
+- `INSPECT_REPLAY_MODEL`: ログに埋め込むリプレイ用モデル名 (既定値: `replay`)。
+- `INSPECT_USE_PLACEHOLDER`: `"true"` の場合、既存のヒューリスティック判定にフォールバック。
+
+## 6. 今後のTODO
 - Temporalアクティビティから直接呼び出すラッパを実装。
 - Kubernetesジョブ化やサンドボックス環境分離。
