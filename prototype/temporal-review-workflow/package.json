@@ -6,7 +6,8 @@
     "build": "tsc --project tsconfig.json",
     "start:dev": "ts-node src/worker.ts",
     "lint": "eslint src --ext .ts",
-    "export:history": "ts-node src/exportHistory.ts"
+    "export:history": "ts-node src/exportHistory.ts",
+    "ledger:publish": "ts-node src/scripts/publishLedgerEntry.ts"
   },
   "dependencies": {
     "temporalio": "^1.9.3"

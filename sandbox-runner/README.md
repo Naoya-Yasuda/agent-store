@@ -7,7 +7,7 @@
 ```
 python -m sandbox_runner.cli --agent-id demo-agent --revision rev1 --template google-adk
 ```
-`--dry-run` オプションで外部依存を呼ばずに成果物を生成します。`WANDB_DISABLED=true` がデフォルトで、`--wandb-base-url`/`--wandb-entity`/`--wandb-project` でRun URLの生成を制御できます。
+`--dry-run` オプションで外部依存を呼ばずに成果物を生成します。`WANDB_DISABLED=true` がデフォルトで、`--wandb-base-url`/`--wandb-entity`/`--wandb-project` でRun URLの生成を制御できます。`--prompt-manifest` を指定すると `response_samples.jsonl` に含まれる `questionId` が AISI プロンプト一覧と整合しているか検証されます。`--generate-fairness` を付けると `fairness_probe.json` を出力し、スキーマ検証が行われます。
 
 ## テスト
 ```

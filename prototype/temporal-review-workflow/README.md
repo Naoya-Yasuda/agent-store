@@ -16,5 +16,6 @@
 3. `pnpm start:dev` でワーカー起動
 4. 別ターミナルで `pnpm ts-node src/client.ts` を実行してワークフローを起動
 5. 完了後に `pnpm ts-node src/exportHistory.ts --workflow-id <ID> --ledger ledger-entry.json` で履歴JSONとSHA256、および監査用エントリを取得可能
+   - 生成された `ledger-entry.json` は `pnpm ledger:publish -- --ledger-entry ledger-entry.json` でローカルの `audit-ledger/` ディレクトリに保存される（本番ではLedger APIに置き換え）
 
 実行時には `TODO` となっているAPIコール部分を適宜モックしてください。

@@ -6,7 +6,7 @@ import sys
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Set
 
 from jsonschema import Draft202012Validator, ValidationError
 
@@ -23,7 +23,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--wandb-project", default="agent-store-sandbox")
     parser.add_argument("--wandb-entity", default="local")
     parser.add_argument("--wandb-base-url", default="https://wandb.fake")
-    parser.add_argument("--schema-dir", default=str(Path(__file__).resolve().parent.parent / "schemas"), help="Directory containing JSON schemas")
+    default_schema_dir = Path(__file__).resolve().parents[1] / "schemas"
+    default_manifest = Path(__file__).resolve().parents[3] / "prompts/aisi/manifest.sample.json"
+    parser.add_argument("--schema-dir", default=str(default_schema_dir), help="Directory containing JSON schemas")
+    parser.add_argument("--prompt-manifest", default=str(default_manifest), help="AISI prompt manifest used for question ID validation")
+    parser.add_argument("--generate-fairness", action="store_true", help="Emit fairness_probe.json artifact")
     return parser.parse_args(argv)
 
 
@@ -51,7 +55,23 @@ def load_schema(schema_dir: Path, filename: str) -> Dict[str, Any]:
         return json.load(f)
 
 
-def validate_artifacts(samples: List[Dict[str, Any]], policy_score: Dict[str, Any], schema_dir: Path) -> None:
+def load_prompt_question_ids(manifest_path: Path) -> Set[str]:
+    with manifest_path.open(encoding="utf-8") as f:
+        manifest = json.load(f)
+    base_dir = manifest_path.parent
+    question_ids: Set[str] = set()
+    for rel_path in manifest.get("questionFiles", []):
+        question_path = base_dir / rel_path
+        with question_path.open(encoding="utf-8") as qf:
+            question = json.load(qf)
+        question_id = question.get("id")
+        if not isinstance(question_id, str):
+            raise ValidationError(f"question file {rel_path} missing string 'id'")
+        question_ids.add(question_id)
+    return question_ids
+
+
+def validate_artifacts(samples: List[Dict[str, Any]], policy_score: Dict[str, Any], fairness_probe: List[Dict[str, Any]] | None, schema_dir: Path, manifest_path: Path) -> None:
     response_schema = load_schema(schema_dir, "response_sample.schema.json")
     policy_schema = load_schema(schema_dir, "policy_score.schema.json")
     sample_validator = Draft202012Validator(response_schema)
@@ -59,6 +79,17 @@ def validate_artifacts(samples: List[Dict[str, Any]], policy_score: Dict[str, An
     for sample in samples:
         sample_validator.validate(sample)
     policy_validator.validate(policy_score)
+
+    if fairness_probe is not None:
+        fairness_schema = load_schema(schema_dir, "fairness_probe.schema.json")
+        fairness_validator = Draft202012Validator(fairness_schema)
+        for segment in fairness_probe:
+            fairness_validator.validate(segment)
+
+    question_ids = load_prompt_question_ids(manifest_path)
+    invalid_ids = {sample["questionId"] for sample in samples if sample["questionId"] not in question_ids}
+    if invalid_ids:
+        raise ValidationError(f"question IDs not present in manifest: {sorted(invalid_ids)}")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -90,10 +121,23 @@ def main(argv: list[str] | None = None) -> int:
         "evaluatorVersion": "placeholder-1"
     }
 
+    fairness_probe: List[Dict[str, Any]] | None = None
+    if args.generate_fairness:
+        fairness_probe = [
+            {
+                "segment": "ja-JP",
+                "score": round(random.uniform(0.8, 0.98), 3),
+                "details": {
+                    "cases": random.randint(10, 25)
+                }
+            }
+        ]
+
     schema_dir = Path(args.schema_dir)
+    manifest_path = Path(args.prompt_manifest)
 
     try:
-        validate_artifacts(response_samples, policy_score, schema_dir)
+        validate_artifacts(response_samples, policy_score, fairness_probe, schema_dir, manifest_path)
     except ValidationError as exc:
         print(f"[sandbox-runner] validation error: {exc.message}", file=sys.stderr)
         return 2
@@ -111,6 +155,8 @@ def main(argv: list[str] | None = None) -> int:
         "\n".join(json.dumps(item, ensure_ascii=False) for item in response_samples)
     )
     (output_dir / "policy_score.json").write_text(json.dumps(policy_score, ensure_ascii=False, indent=2))
+    if fairness_probe is not None:
+        (output_dir / "fairness_probe.json").write_text(json.dumps(fairness_probe, ensure_ascii=False, indent=2))
 
     metadata = {
         "agentId": args.agent_id,
