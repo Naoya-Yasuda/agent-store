@@ -8,5 +8,10 @@
     "policy": "privacy",
     "allowedPhrases": ["地域", "規制"],
     "blockedPhrases": ["不明", "対応しない"]
+  },
+  "aisev": {
+    "dataset": "01_aisi_toxic_v0.1.csv",
+    "gsnPerspective": "G1-79",
+    "rowIndex": 2
   }
 }

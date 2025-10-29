@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+from csv import DictReader
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
@@ -11,6 +12,8 @@ ROOT = Path(__file__).resolve().parents[3]
 PROJECT_SCENARIO = ROOT / "prototype/inspect-worker/scenarios/generic_eval.yaml"
 OUTPUT_DIR = ROOT / "prototype/inspect-worker/out"
 AISEV_ROOT = Path(os.environ.get("AISEV_HOME", ROOT / "third_party/aisev"))
+AISEV_DATASET_DIR = AISEV_ROOT / "backend/dataset/output"
+AISEV_DATASET_CACHE: Dict[str, List[Dict[str, str]]] = {}
 
 
 def parse_args() -> argparse.Namespace:
@@ -90,8 +93,74 @@ def _load_questions(base_dir: Path, files: List[str]) -> Dict[str, Dict[str, Any
         data = json.loads(question_path.read_text(encoding="utf-8"))
         question_id = data.get("id")
         if question_id:
-            result[question_id] = data
+            enriched = _apply_aisev_metadata(data)
+            result[question_id] = enriched
     return result
+
+
+def _apply_aisev_metadata(question: Dict[str, Any]) -> Dict[str, Any]:
+    aisev_cfg = question.get("aisev")
+    if not aisev_cfg:
+        return question
+
+    dataset_name = aisev_cfg.get("dataset")
+    if not dataset_name:
+        raise ValueError(f"aisev設定に dataset がありません: {question.get('id')}")
+
+    rows = _load_aisev_dataset(dataset_name)
+    candidates = rows
+
+    gsn_code = aisev_cfg.get("gsnPerspective")
+    if gsn_code:
+        candidates = [row for row in candidates if row.get("gsn_perspective") == gsn_code]
+
+    ten_perspective = aisev_cfg.get("tenPerspective")
+    if ten_perspective:
+        candidates = [row for row in candidates if row.get("ten_perspective") == ten_perspective]
+
+    text_contains = aisev_cfg.get("textContains")
+    if text_contains:
+        candidates = [row for row in candidates if text_contains in row.get("text", "")]
+
+    row_index = int(aisev_cfg.get("rowIndex", 0))
+    if not candidates:
+        raise ValueError(f"aisev dataset '{dataset_name}' に一致する行が見つかりません (questionId={question.get('id')}).")
+    if row_index >= len(candidates) or row_index < 0:
+        raise IndexError(f"aisev dataset '{dataset_name}' の rowIndex={row_index} が範囲外です (候補数={len(candidates)}).")
+
+    row = candidates[row_index]
+
+    question["prompt"] = row.get("text", question.get("prompt", ""))
+    question["expectedBehaviour"] = row.get("requirement", question.get("expectedBehaviour", ""))
+    question["notes"] = question.get("notes") or f"aisev dataset {dataset_name} / {row.get('gsn_perspective')}"
+    question["scorer"] = row.get("scorer", "requirement")
+    question["aisevMeta"] = {
+        "dataset": dataset_name,
+        "tenPerspective": row.get("ten_perspective"),
+        "gsnPerspective": row.get("gsn_perspective")
+    }
+    return question
+
+
+def _load_aisev_dataset(dataset_name: str) -> List[Dict[str, str]]:
+    if dataset_name in AISEV_DATASET_CACHE:
+        return AISEV_DATASET_CACHE[dataset_name]
+
+    dataset_path = AISEV_DATASET_DIR / dataset_name
+    if not dataset_path.exists():
+        raise FileNotFoundError(f"aisev dataset が見つかりません: {dataset_path}")
+
+    rows: List[Dict[str, str]] = []
+    with dataset_path.open(encoding="utf-8-sig") as f:
+        reader = DictReader(f)
+        for row in reader:
+            # Skip empty rows
+            if not any(value for value in row.values()):
+                continue
+            rows.append(row)
+
+    AISEV_DATASET_CACHE[dataset_name] = rows
+    return rows
 
 
 def _load_response_records(response_samples_file: Path, question_map: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -117,6 +186,8 @@ def _load_response_records(response_samples_file: Path, question_map: Dict[str, 
                 "tokensOut": sample.get("tokensOut"),
                 "tolerance": tolerance,
                 "notes": question.get("notes"),
+                "scorer": question.get("scorer", "requirement"),
+                "aisevMeta": question.get("aisevMeta"),
             }
             records.append(record)
     return records
@@ -153,7 +224,9 @@ def _placeholder_eval(records: List[Dict[str, Any]]) -> Tuple[List[float], List[
             "allowedPhrases": allowed,
             "blockedPhrases": blocked,
             "compliant": compliant,
-            "notes": record.get("expectedBehaviour")
+            "notes": record.get("expectedBehaviour"),
+            "scorer": record.get("scorer"),
+            "aisevMeta": record.get("aisevMeta")
         })
 
     compliance_ratio = passed / total if total else 0.0
@@ -205,6 +278,8 @@ def _run_inspect_eval(
             "tokensOut": record.get("tokensOut"),
             "notes": record.get("notes"),
             "outputText": record.get("outputText"),
+            "scorer": record.get("scorer"),
+            "aisevMeta": record.get("aisevMeta"),
         }
         sample = Sample(
             input=record.get("prompt") or record.get("inputText") or "",
@@ -265,7 +340,9 @@ def _run_inspect_eval(
             "explanation": getattr(score, "explanation", None),
             "compliant": compliant,
             "latencyMs": metadata.get("latencyMs"),
-            "notes": metadata.get("notes")
+            "notes": metadata.get("notes"),
+            "scorer": metadata.get("scorer"),
+            "aisevMeta": metadata.get("aisevMeta"),
         })
 
     compliance_ratio = passed / len(log.samples) if log.samples else 0.0
@@ -309,6 +386,8 @@ def _write_inspect_dataset(dataset_path: Path, records: List[Dict[str, Any]]) ->
                 "tokensOut": record.get("tokensOut"),
                 "tolerance": record.get("tolerance"),
                 "notes": record.get("notes"),
+                "scorer": record.get("scorer"),
+                "aisevMeta": record.get("aisevMeta"),
             }
             out_file.write(json.dumps(serialized, ensure_ascii=False) + "\n")
 

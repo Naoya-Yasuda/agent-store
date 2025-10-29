@@ -40,6 +40,7 @@
 4. サンドボックス成果物がある場合、`prototype/inspect-worker/scripts/run_eval.py` で `inspect_ai` を直接呼び出し、Sandbox結果をリプレイした上で `model_graded_qa` による判定を実行（デフォルトは `mockllm/model` での判定。`INSPECT_GRADER_MODEL` を設定するとOpenAI等のモデルに切り替えられる）。
 5. コンテナ実行の場合: `docker/inspect-worker/Dockerfile` でイメージをビルドし、Temporalアクティビティ側で `INSPECT_DOCKER_IMAGE` 環境変数を設定する。`AGENT_ID/REVISION/ARTIFACTS_DIR/MANIFEST_PATH` をエントリーポイントに渡す。
 6. ローカル検証: `scripts/run_inspect_flow.sh` を実行すると、アーティファクト生成→Inspectワーカー実行→結果表示までを一括で確認できる（デフォルトで `inspect_ai` による判定を行い、必要に応じて `INSPECT_USE_PLACEHOLDER=true` で旧来のヒューリスティック判定にフォールバック）。`prototype/inspect-worker/.env.inspect` を用意しておくと本番用の `INSPECT_GRADER_MODEL` や `OPENAI_API_KEY` がそのまま Docker コンテナに渡される。ディスク容量が足りない場合は `INSPECT_SKIP_DOCKER_BUILD=1 scripts/run_inspect_flow.sh` とするとホスト環境の `.venv` を使ってコンテナ実行をスキップできる。
+7. 質問JSONに `aisev` セクション（`dataset`, `gsnPerspective`, `textContains` など）を指定すると、`third_party/aisev/backend/dataset/output` の公式CSVからプロンプトと期待挙動を動的に読み込み、AISI公式の評価定義を再利用する。
 
 ## 技術スタック案
 - Python 3.11 + `inspect-ai`

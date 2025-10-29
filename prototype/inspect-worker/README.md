@@ -8,8 +8,10 @@
 
 ## 2. 評価フロー
 - `scripts/run_eval.py` が Sandbox Runner のレスポンスを `inspect_ai` の `Task` と `Sample` に変換し、リプレイ用ソルバーで回答を流し込む。
-- デフォルトの判定モデルは `mockllm/model`（外部API不要）。`INSPECT_GRADER_MODEL` を設定するとOpenAI等のモデルで `model_graded_qa` 判定を行う。
+- リプレイソルバーは `response_samples.jsonl` に記録された回答をそのまま `TaskState` にセットするだけの軽量処理で、評価対象の LLM を呼び直していません（ログの「再生」＝replay）。
+- 判定は `model_graded_qa` などのスコアラーが担当し、`INSPECT_GRADER_MODEL` で指定した LLM（例: `openai/gpt-4o-mini`）が回答の可否を判断します。
 - 評価用データは `inspect_dataset.jsonl` に書き出され、`inspect_logs/` 配下に JSON ログが保存される。
+- 各質問ファイル（`prompts/aisi/questions/*.json`）に `aisev.dataset` / `gsnPerspective` などを指定することで、AISI が提供する公式データセットからプロンプト・期待挙動・スコアラー種別を自動で取り込みます。
 
 ## 3. 実行例
 ```
