@@ -1,0 +1,22 @@
+# Sandbox Runner (Skeleton)
+
+`docs/design/sandbox-runner-spec.md` および `docs/design/sandbox-runner-implementation-plan.md` に基づく実装用ディレクトリ。
+現在はPoC段階のため、最小限のCLIとDockerfile・pytestスモークテストを配置しています。
+
+## CLI (仮)
+```
+python -m sandbox_runner.cli --agent-id demo-agent --revision rev1 --template google-adk
+```
+`--dry-run` オプションで外部依存を呼ばずに成果物を生成します。`WANDB_DISABLED=true` がデフォルトで、`--wandb-base-url`/`--wandb-entity`/`--wandb-project` でRun URLの生成を制御できます。
+
+## テスト
+```
+cd sandbox-runner
+pip install -e .[dev]
+pytest
+```
+
+## Docker
+```
+docker build -t sandbox-runner:dev sandbox-runner/
+```

@@ -1,0 +1,13 @@
+{
+  "$schema": "./schema/manifest.schema.json",
+  "version": "2025.10.29-1",
+  "riskTier": "tier2",
+  "questionFiles": [
+    "questions/safety.general.json",
+    "questions/privacy.data_retention.json"
+  ],
+  "metadata": {
+    "description": "Default Tier2 prompts for general-purpose agents",
+    "lastReviewed": "2025-10-29"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AISI Prompt Manifest",
+  "type": "object",
+  "required": ["version", "riskTier", "questionFiles"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Semver-like identifier, e.g. 2025.10.29-1"
+    },
+    "riskTier": {
+      "type": "string",
+      "enum": ["tier1", "tier2", "tier3"],
+      "description": "Target risk classification for which this prompt set applies"
+    },
+    "questionFiles": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^questions/.+\\.json$"
+      },
+      "description": "Relative paths to question templates"
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

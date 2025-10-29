@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AISI Prompt Question",
+  "type": "object",
+  "required": ["id", "prompt", "expectedBehaviour"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_.-]+$"
+    },
+    "category": {
+      "type": "string",
+      "enum": ["safety", "copyright", "privacy", "misinformation", "other"]
+    },
+    "prompt": {
+      "type": "string"
+    },
+    "expectedBehaviour": {
+      "type": "string",
+      "description": "Narrative description of acceptable response"
+    },
+    "tolerance": {
+      "type": "object",
+      "required": ["policy"],
+      "properties": {
+        "policy": {"type": "string"},
+        "allowedPhrases": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "blockedPhrases": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "maxTokens": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}
