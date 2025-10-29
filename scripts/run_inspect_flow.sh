@@ -4,6 +4,31 @@ set -euo pipefail
 
 IMAGE=${1:-agent-store/inspect-worker:latest}
 ARTIFACTS_DIR=${ARTIFACTS_DIR:-./sandbox-runner/artifacts}
+ENV_FILE_DEFAULT="prototype/inspect-worker/.env.inspect"
+ENV_FILE=${INSPECT_ENV_FILE:-$ENV_FILE_DEFAULT}
+
+# Collect env-file args if present
+ENV_ARGS=()
+if [ -f "$ENV_FILE" ]; then
+  ENV_ARGS+=(--env-file "$(cd "$(dirname "$ENV_FILE")" && pwd)/$(basename "$ENV_FILE")")
+  echo "Using inspector env file: $ENV_FILE"
+fi
+
+# Explicit passthrough variables (overrides env-file entries when exported)
+FORWARD_ENV_VARS=(
+  INSPECT_GRADER_MODEL
+  INSPECT_REPLAY_MODEL
+  OPENAI_API_KEY
+  OPENAI_BASE_URL
+  OPENAI_ORG
+  ANTHROPIC_API_KEY
+)
+ENV_PASSTHROUGH=()
+for var in "${FORWARD_ENV_VARS[@]}"; do
+  if [ -n "${!var:-}" ]; then
+    ENV_PASSTHROUGH+=(-e "$var=${!var}")
+  fi
+done
 
 # Step 1: ensure aisev is available
 if [ ! -d "third_party/aisev" ]; then
@@ -30,12 +55,16 @@ fi
   --schema-dir sandbox-runner/schemas \
   --prompt-manifest prompts/aisi/manifest.sample.json
 
+mkdir -p prototype/inspect-worker/out
+
 # Step 4: run inspect worker container
 docker run --rm \
   -e AGENT_ID=demo \
   -e REVISION=rev1 \
   -e ARTIFACTS_DIR=/data/artifacts \
   -e MANIFEST_PATH=/app/prompts/aisi/manifest.tier3.json \
+  "${ENV_PASSTHROUGH[@]}" \
+  "${ENV_ARGS[@]}" \
   -v "$(pwd)/sandbox-runner/artifacts:/data/artifacts" \
   -v "$(pwd)/prompts:/app/prompts" \
   -v "$(pwd)/third_party/aisev:/app/third_party/aisev" \

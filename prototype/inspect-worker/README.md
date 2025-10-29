@@ -33,11 +33,15 @@ scripts/run_inspect_flow.sh
 - `out/<agent-id>/<revision>/inspect_dataset.jsonl`: 評価に供した入力・期待値・出力のスナップショット。
 - `out/<agent-id>/<revision>/inspect_log_index.json`: Inspectログのパスと集計メトリクス。
 - `out/<agent-id>/<revision>/inspect_logs/*.json`: `inspect_ai` が生成する元ログ(JSON形式)。
+  - `prototype/inspect-worker/out/` は生成物専用のため Git には含めません。
 
 ## 5. 主な環境変数
 - `INSPECT_GRADER_MODEL`: 判定に使うモデルID。例: `openai/gpt-4o-mini`。
 - `INSPECT_REPLAY_MODEL`: ログに埋め込むリプレイ用モデル名 (既定値: `replay`)。
 - `INSPECT_USE_PLACEHOLDER`: `"true"` の場合、既存のヒューリスティック判定にフォールバック。
+- `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_ORG`, `ANTHROPIC_API_KEY`: モデル判定に必要な資格情報。
+
+`prototype/inspect-worker/.env.inspect.example` をコピーして `.env.inspect` を作成し、上記の環境変数を設定すると `scripts/run_inspect_flow.sh` が自動で `--env-file` に投入します。シェルから直接 `export INSPECT_GRADER_MODEL=...` した場合は、その値が `.env.inspect` より優先されます。
 
 ## 6. 今後のTODO
 - Temporalアクティビティから直接呼び出すラッパを実装。
