@@ -3,6 +3,7 @@
 ## 目的
 - Google ADK / LangGraph ベースのエージェントを統一インターフェースで検証し、審査前チェックに必要なログ・メトリクスを生成する。
 - 生成された成果物を Weights & Biases MCP、`Submission.auto_checks`、`compliance_report` に連携し、AISI判定や人手審査の入力材料を整える。
+  - WANDB連携: `WANDB_DISABLED=false` と `WANDB_API_KEY` を指定すると実Runを作成し、主要メトリクス/アーティファクトをアップロード。CIやTemporalワークフローでのゲート条件に利用。
 
 ## 実行環境
 - コンテナイメージ: `agent-store/sandbox-runner:<tag>`
@@ -21,7 +22,7 @@
   - `artifacts/policy_score.json` : 安全性・コンプライアンス自動評価スコア
 - `artifacts/fairness_probe.json` : 多様な入力に対する挙動(オプション)
   - `artifacts/logs/*.log` : 実行ログ
-  - `artifacts/wandb-run.json` : W&B Run ID/URL
+  - `artifacts/wandb-run.json` : W&B Run ID/URL (将来保存予定。現状は `metadata.json` にRun情報を格納)
 - スキーマ/マニフェスト:
   - `sandbox-runner/schemas/` にJSON Schemaを配置し、CLI実行時に `jsonschema` で検証。`fairness_probe.json` を生成する場合は専用スキーマでセグメント/スコアをチェック。
   - `prompts/aisi/manifest*.json` を参照して `questionId` の整合性をチェック。未知のIDが生成された場合はエラーとし、CIで検出。

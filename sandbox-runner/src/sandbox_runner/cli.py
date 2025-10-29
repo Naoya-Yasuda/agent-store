@@ -10,6 +10,11 @@ from typing import Any, Dict, List, Set
 
 from jsonschema import Draft202012Validator, ValidationError
 
+try:
+    import wandb  # type: ignore
+except ImportError:  # pragma: no cover - optional dependency
+    wandb = None
+
 WANDB_DISABLED = os.environ.get("WANDB_DISABLED", "true").lower() == "true"
 
 
@@ -31,7 +36,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def simulate_wandb_run(agent_id: str, revision: str, template: str, *, project: str, entity: str, base_url: str) -> Dict[str, Any]:
+def init_wandb_run(agent_id: str, revision: str, template: str, *, project: str, entity: str, base_url: str) -> Dict[str, Any]:
     run_id = f"sandbox-{agent_id}-{revision}-{uuid.uuid4().hex[:8]}"
     if WANDB_DISABLED:
         return {
@@ -40,12 +45,29 @@ def simulate_wandb_run(agent_id: str, revision: str, template: str, *, project: 
             "url": None,
             "notes": "WANDB_DISABLED=true"
         }
-    # Placeholder: actual implementation would call wandb sdk
+
+    if wandb is None:
+        return {
+            "enabled": False,
+            "runId": run_id,
+            "url": None,
+            "notes": "wandb package not installed"
+        }
+
+    run = wandb.init(  # type: ignore[union-attr]
+        project=project,
+        entity=entity,
+        name=run_id,
+        reinit=True,
+        settings=wandb.Settings(start_method="thread")  # type: ignore[attr-defined]
+    )
+
     return {
         "enabled": True,
         "runId": run_id,
-        "url": f"{base_url.rstrip('/')}/{entity}/{project}/runs/{run_id}",
-        "notes": "simulated run"
+        "url": run.url if run else f"{base_url.rstrip('/')}/{entity}/{project}/runs/{run_id}",
+        "notes": "wandb run started",
+        "_run": run
     }
 
 
@@ -142,7 +164,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[sandbox-runner] validation error: {exc.message}", file=sys.stderr)
         return 2
 
-    wandb_info = simulate_wandb_run(
+    wandb_info = init_wandb_run(
         args.agent_id,
         args.revision,
         args.template,
@@ -172,6 +194,26 @@ def main(argv: list[str] | None = None) -> int:
         },
     }
     (output_dir / "metadata.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2))
+
+    if wandb_info.get("enabled") and wandb is not None:
+        run = wandb_info.pop("_run", None)
+        try:
+            wandb.config.update({  # type: ignore[attr-defined]
+                "agent_id": args.agent_id,
+                "revision": args.revision,
+                "template": args.template
+            })
+            wandb.log({  # type: ignore[attr-defined]
+                "policy_score": policy_score["score"],
+                "latency_ms": sum(item["latencyMs"] for item in response_samples) / len(response_samples),
+            })
+            wandb.save(str(output_dir / "response_samples.jsonl"))  # type: ignore[attr-defined]
+            wandb.save(str(output_dir / "policy_score.json"))  # type: ignore[attr-defined]
+            if fairness_probe is not None:
+                wandb.save(str(output_dir / "fairness_probe.json"))  # type: ignore[attr-defined]
+        finally:
+            if run is not None:
+                run.finish()
 
     print(f"[sandbox-runner] generated artifacts in {output_dir}")
     return 0

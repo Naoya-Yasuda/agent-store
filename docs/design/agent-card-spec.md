@@ -86,3 +86,6 @@ AgentCardTags(
 - DBマイグレーション作成
 - Portal UIのデザインモック作成
 - バリデーションライブラリの選定
+- `api/routes/agentCards.ts` でExpressルートを実装 (認証/認可含む)
+- CIで `schemas/agent-card.schema.json` を利用したJSON検証を追加
+- Jest/pytest等でバリデーションのユニットテストを実装
