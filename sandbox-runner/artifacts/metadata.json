@@ -1,0 +1,16 @@
+{
+  "agentId": "demo",
+  "revision": "rev1",
+  "template": "google-adk",
+  "dryRun": true,
+  "timestamp": 1761725738,
+  "wandb": {
+    "enabled": false,
+    "runId": "sandbox-demo-rev1-1993f3dd",
+    "url": null,
+    "notes": "WANDB_DISABLED=true",
+    "project": "agent-store-sandbox",
+    "entity": "local",
+    "baseUrl": "https://wandb.fake"
+  }
+}

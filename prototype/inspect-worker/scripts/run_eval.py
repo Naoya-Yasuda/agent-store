@@ -7,10 +7,10 @@ import subprocess
 from pathlib import Path
 import argparse
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 PROJECT_SCENARIO = ROOT / "prototype/inspect-worker/scenarios/generic_eval.yaml"
 OUTPUT_DIR = ROOT / "prototype/inspect-worker/out"
-AISEV_ROOT = ROOT / "third_party/aisev"
+AISEV_ROOT = Path(os.environ.get("AISEV_HOME", ROOT / "third_party/aisev"))
 
 
 def parse_args() -> argparse.Namespace:
@@ -33,7 +33,7 @@ def main() -> None:
     env["INSPECT_RESPONSE_SAMPLES"] = str(Path(args.artifacts) / "response_samples.jsonl")
 
     command = [
-        str(AISEV_ROOT / "bin/inspect"),
+        "inspect",
         "run",
         "--config",
         args.scenario,
@@ -41,7 +41,7 @@ def main() -> None:
         str(output_path)
     ]
 
-    subprocess.run(command, check=True, cwd=AISEV_ROOT, env=env)
+    subprocess.run(command, check=True, cwd=str(ROOT), env=env)
 
     summary = {
         "agentId": args.agent_id,

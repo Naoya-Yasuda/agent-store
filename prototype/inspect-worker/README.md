@@ -20,6 +20,12 @@ poetry run python scripts/run_eval.py \
   --manifest ../../prompts/aisi/manifest.tier3.json
 ```
 
+### コンテナ経由のPoC実行
+```
+scripts/run_inspect_flow.sh
+```
+上記スクリプトは、Sandbox成果物の生成→Inspectワーカーイメージのビルド→コンテナ実行→サマリ表示までを一括で実行します。
+
 ## 4. 出力
 - `out/<agent-id>/<revision>/inspect_results.json`: スコア、ログ、判定を含む。
 - `out/.../inspect_stdout.log`: Inspect CLI の標準出力。
