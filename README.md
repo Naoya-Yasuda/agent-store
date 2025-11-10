@@ -79,7 +79,7 @@ flowchart TD
 - `pip install -r requirements.txt`
 - `pip install -e sandbox-runner` でローカルCLIを有効化（Google ADKテンプレートを含むSandbox Runnerコマンドが利用可能になります）。
 - `pytest` を実行するとリポジトリ内のユニットテストのみが走ります（`pytest.ini`で外部チェックアウトを除外）。
-- W&B MCPを使ってステージログ/アーティファクトを収集する場合は `. .venv/bin/activate && export WANDB_DISABLED=false` を設定してから各コマンドを実行してください（デフォルトでは有効化されますが、明示的にフラグを確認できます）。
+- W&B MCPを使ってステージログ/アーティファクトを収集する場合は `. .venv/bin/activate && export WANDB_DISABLED=false` を設定してから各コマンドを実行してください（デフォルトでは有効化されますが、明示的にフラグを確認できます）。Submission APIから`telemetry.wandb`フィールドでRun ID/Project/Entity/BaseURLを渡すと、同じRunをTemporalやSandbox Runnerが再利用できます。
 - Security Gateをローカルで試す場合は `sandbox-runner` で
   ```bash
   python3.13 -m sandbox_runner.cli \
@@ -111,7 +111,7 @@ flowchart TD
 ## W&B MCP 連携
 - Sandbox Runnerは各実行でW&B Runを生成し（`wandb_run_id`は`sandbox-runner/src/sandbox_runner/cli.py`の`init_wandb_run`で払い出し）、`metadata.json`の`wandbMcp`にRun IDとステージサマリを記録します。
 - ダッシュボードURLは `https://wandb.ai/<entity>/<project>/runs/<runId>`（CLIの`--wandb-entity`/`--wandb-project`/`--wandb-base-url`で指定）です。デフォルトは`project=agent-store-sandbox`,`entity=local`なので、実運用では `--wandb-base-url https://wandb.ai --wandb-entity <org> --wandb-project <proj>` のように明示してください。
-- Security Gate実行時には`security/security_report.jsonl`をW&B Artifactとしてアップロードし、ステージ別サマリ（blocked件数、needsReview件数など）がRunのチャートに反映されます。Functional Accuracyを有効にした場合は`functional/functional_report.jsonl`も同じRunに保存され、Embedding距離の統計を確認できます（Judge/ Human Reviewについても今後同様に拡張予定）。
+- Security Gate実行時には`security/security_report.jsonl`をW&B Artifactとしてアップロードし、ステージ別サマリ（blocked件数、needsReview件数など）がRunのチャートに反映されます。Functional Accuracyを有効にした場合は`functional/functional_report.jsonl`も同じRunに保存され、Embedding距離の統計を確認できます（Judge/ Human Reviewについても今後同様に拡張予定）。`--wandb-run-id`を渡すと既存Runへ継続記録できます。
 - 運用方針: PoCや素早い可視化が目的なら公式SaaS( `https://wandb.ai` )が便利ですが、審査ログを外部に出せない場合はローカル/Private CloudのW&B MCPサーバを用意し`--wandb-base-url http://localhost:XXXX`のように切り替えてください。
 
 ## Key Components
@@ -134,9 +134,9 @@ flowchart TD
 > ※実装や設計の更新を行った際は、必ず本READMEのステータステーブルと該当セクションを更新してください。
 
 ## 今後の優先タスク
-1. **Functional Accuracyステージ実装**: AgentCard `useCases`をDSL（Domain Specific Language: ユースケースを機械が読みやすいスクリプトにしたもの）へ変換し、RAGTruth（正解データセット）で応答を突合、Embedding距離（回答同士の類似度）を算出する処理を`sandbox-runner`に実装する。Temporalの`runFunctionalAccuracy`が実データで動く状態を目指す。
-2. **Judge Panel＋Human Review UI**: Google ADKベースの質問生成→実行→MCTS-Judge（Monte Carlo Tree Searchを応用した合議）を`prototype/inspect-worker`に実装し、Human Review UI（レビュワーが進捗や証拠を確認する画面）から`queryProgress`/`signalRetryStage`を操作できるようにする。
-3. **W&B MCP(Weights & Biases Model Context Protocol) 連携拡張**: Submission→Temporal→Sandbox Runner→Inspectの各ステージで共通Run IDを引き回し、Security Gate以外（FunctionalやJudge、Human Review）のログやアーティファクトも同じダッシュボードで閲覧できるようにする。外部持ち出しNGの場合はローカル/Private Cloud版W&Bで同じ構成を再現する。
+1. **W&B MCP Run ID伝播**: Submission APIで発行したRun IDをTemporal→Sandbox Runner→Inspect Worker→Human Review UIまで引き回し、各ステージのログ・Artifactsを同じダッシュボードで追跡できるようにする（ローカル/Private Cloud版W&Bでも同一構成を想定）。
+2. **Human Review UI / API**: `queryProgress`/`signalRetryStage`を叩けるREST APIを追加し、進捗バーと証拠ビューを備えたレビュワー画面を実装。Judge/Functional/SecurityレポートとW&Bリンクを確認しつつ承認/差戻し操作が可能な状態を目指す。
+3. **Temporal側のJudge/Human実行**: `prototype/temporal-review-workflow` の `runJudgePanel` / `notifyHumanReview` アクティビティをInspect Worker CLI・UIと接続し、モックから実装へ差し替える。
 
 ## Contributor Guide
 完全なコントリビュータガイド、コーディング規約、PR要件は[`AGENTS.md`](AGENTS.md)を参照してください。

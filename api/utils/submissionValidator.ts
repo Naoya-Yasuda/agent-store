@@ -10,12 +10,24 @@ export interface OrganizationMeta {
   operatorPublicKey: string;
 }
 
+export interface WandbTelemetry {
+  runId?: string;
+  project?: string;
+  entity?: string;
+  baseUrl?: string;
+}
+
+export interface SubmissionTelemetry {
+  wandb?: WandbTelemetry;
+}
+
 export interface SubmissionPayload {
   agentId: string;
   cardDocument: AgentCard;
   endpointManifest: EndpointManifest;
   signatureBundle: SignatureBundle;
   organization: OrganizationMeta;
+  telemetry?: SubmissionTelemetry;
 }
 
 export interface SubmissionValidationSuccess {
@@ -83,6 +95,23 @@ export function validateSubmissionPayload(input: unknown): SubmissionValidationR
     return invalid(['organization is missing required fields']);
   }
 
+  const telemetry = payload.telemetry as SubmissionTelemetry | undefined;
+  if (telemetry?.wandb) {
+    const { runId, project, entity, baseUrl } = telemetry.wandb;
+    if (runId && typeof runId !== 'string') {
+      return invalid(['telemetry.wandb.runId must be a string']);
+    }
+    if (project && typeof project !== 'string') {
+      return invalid(['telemetry.wandb.project must be a string']);
+    }
+    if (entity && typeof entity !== 'string') {
+      return invalid(['telemetry.wandb.entity must be a string']);
+    }
+    if (baseUrl && typeof baseUrl !== 'string') {
+      return invalid(['telemetry.wandb.baseUrl must be a string']);
+    }
+  }
+
   return {
     valid: true,
     payload: {
@@ -90,7 +119,8 @@ export function validateSubmissionPayload(input: unknown): SubmissionValidationR
       cardDocument,
       endpointManifest,
       signatureBundle,
-      organization
+      organization,
+      telemetry
     },
     manifestWarnings: manifestResult.warnings ?? []
   };

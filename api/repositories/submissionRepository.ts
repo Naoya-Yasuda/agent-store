@@ -23,8 +23,8 @@ export async function insertSubmission(payload: SubmissionPayload, manifestWarni
   try {
     await client.query('BEGIN');
     await client.query(
-      `INSERT INTO submissions (id, agent_id, card_document, endpoint_manifest, endpoint_snapshot_hash, signature_bundle, organization_meta, state, manifest_warnings, request_context, created_at)
-       VALUES ($1, $2, $3::jsonb, $4::jsonb, $5, $6::jsonb, $7::jsonb, $8, $9::text[], $10::jsonb, $11)
+      `INSERT INTO submissions (id, agent_id, card_document, endpoint_manifest, endpoint_snapshot_hash, signature_bundle, organization_meta, state, manifest_warnings, request_context, wandb_run, created_at)
+       VALUES ($1, $2, $3::jsonb, $4::jsonb, $5, $6::jsonb, $7::jsonb, $8, $9::text[], $10::jsonb, $11::jsonb, $12)
       `,
       [
         submissionId,
@@ -37,6 +37,7 @@ export async function insertSubmission(payload: SubmissionPayload, manifestWarni
         state,
         manifestWarnings,
         JSON.stringify(requestContext),
+        JSON.stringify(payload.telemetry?.wandb ?? null),
         createdAt
       ]
     );

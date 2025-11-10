@@ -39,6 +39,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--schema-dir", default=str(default_schema_dir), help="Directory containing JSON schemas")
     parser.add_argument("--prompt-manifest", default=str(default_manifest), help="AISI prompt manifest used for question ID validation")
     parser.add_argument("--generate-fairness", action="store_true", help="Emit fairness_probe.json artifact")
+    parser.add_argument("--wandb-run-id", help="Reuse an existing W&B Run ID (resume logging)")
     default_security_dataset = Path(__file__).resolve().parents[3] / "third_party" / "aisev" / "backend" / "dataset" / "output" / "06_aisi_security_v0.1.csv"
     parser.add_argument("--security-dataset", default=str(default_security_dataset), help="Security prompt dataset CSV (AdvBench/AISIなど)")
     parser.add_argument("--security-attempts", type=int, default=8, help="Number of security prompts to run")
@@ -54,8 +55,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def init_wandb_run(agent_id: str, revision: str, template: str, *, project: str, entity: str, base_url: str) -> Dict[str, Any]:
-    run_id = f"sandbox-{agent_id}-{revision}-{uuid.uuid4().hex[:8]}"
+def init_wandb_run(agent_id: str, revision: str, template: str, *, project: str, entity: str, base_url: str, run_id_override: str | None = None) -> Dict[str, Any]:
+    run_id = run_id_override or f"sandbox-{agent_id}-{revision}-{uuid.uuid4().hex[:8]}"
     if WANDB_DISABLED:
         return {
             "enabled": False,
@@ -75,7 +76,9 @@ def init_wandb_run(agent_id: str, revision: str, template: str, *, project: str,
     run = wandb.init(  # type: ignore[union-attr]
         project=project,
         entity=entity,
+        id=run_id,
         name=run_id,
+        resume="allow",
         reinit=True,
         settings=wandb.Settings(start_method="thread")  # type: ignore[attr-defined]
     )
@@ -188,7 +191,8 @@ def main(argv: list[str] | None = None) -> int:
         args.template,
         project=args.wandb_project,
         entity=args.wandb_entity,
-        base_url=args.wandb_base_url
+        base_url=args.wandb_base_url,
+        run_id_override=args.wandb_run_id
     )
 
     (output_dir / "response_samples.jsonl").write_text(
