@@ -10,6 +10,8 @@ from typing import Any, Dict, List, Set
 
 from jsonschema import Draft202012Validator, ValidationError
 
+from .security_gate import run_security_gate
+
 try:
     import wandb  # type: ignore
 except ImportError:  # pragma: no cover - optional dependency
@@ -35,6 +37,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--schema-dir", default=str(default_schema_dir), help="Directory containing JSON schemas")
     parser.add_argument("--prompt-manifest", default=str(default_manifest), help="AISI prompt manifest used for question ID validation")
     parser.add_argument("--generate-fairness", action="store_true", help="Emit fairness_probe.json artifact")
+    default_security_dataset = Path(__file__).resolve().parents[3] / "third_party" / "aisev" / "backend" / "dataset" / "output" / "06_aisi_security_v0.1.csv"
+    parser.add_argument("--security-dataset", default=str(default_security_dataset), help="Security prompt dataset CSV (AdvBench/AISIなど)")
+    parser.add_argument("--security-attempts", type=int, default=8, help="Number of security prompts to run")
+    parser.add_argument("--security-endpoint", help="Optional HTTP endpoint for executing prompts against the agent")
+    parser.add_argument("--security-endpoint-token", help="Bearer token passed to the security endpoint")
+    parser.add_argument("--security-timeout", type=float, default=15.0, help="Timeout seconds for security endpoint requests")
+    parser.add_argument("--skip-security-gate", action="store_true", help="Disable security gate run even if dataset is available")
     return parser.parse_args(argv)
 
 
@@ -195,6 +204,21 @@ def main(argv: list[str] | None = None) -> int:
             "baseUrl": args.wandb_base_url
         },
     }
+    security_summary = None
+    if not args.skip_security_gate:
+        security_summary = run_security_gate(
+            agent_id=args.agent_id,
+            revision=args.revision,
+            dataset_path=Path(args.security_dataset),
+            output_dir=output_dir / "security",
+            attempts=max(1, args.security_attempts),
+            endpoint_url=args.security_endpoint,
+            endpoint_token=args.security_endpoint_token,
+            timeout=args.security_timeout,
+            dry_run=args.dry_run
+        )
+        metadata["securityGate"] = security_summary
+
     (output_dir / "metadata.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2))
 
     if wandb_info.get("enabled") and wandb is not None:

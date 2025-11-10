@@ -2,6 +2,7 @@ README.md
 pyproject.toml
 src/sandbox_runner/__init__.py
 src/sandbox_runner/cli.py
+src/sandbox_runner/security_gate.py
 src/sandbox_runner.egg-info/PKG-INFO
 src/sandbox_runner.egg-info/SOURCES.txt
 src/sandbox_runner.egg-info/dependency_links.txt
