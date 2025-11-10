@@ -1,14 +1,13 @@
-import { proxyActivities, condition, setHandler, defineSignal, defineQuery } from '@temporalio/workflow';
+import { proxyActivities, setHandler, defineSignal, defineQuery } from '@temporalio/workflow';
 import { TASK_QUEUE } from '../../temporal.config';
 
-// Activities interface definition
 type Activities = {
-  fetchAgentDraft: (agentRevisionId: string) => Promise<{ agentId: string; riskTier: string }>;
-  runSandbox: (agentRevisionId: string) => Promise<{ latencyMs: number; policyScore: number; wandbRunId: string }>;
-  runAutoChecks: (agentRevisionId: string) => Promise<{ passed: boolean; checks: Record<string, boolean> }>;
-  invokeAISI: (args: { agentRevisionId: string; agentId: string; promptVersion: string }) => Promise<{ score: number; riskLabel: string }>;
-  triggerHumanReview: (agentRevisionId: string, context: { aisiScore: number; riskLabel: string }) => Promise<'approved' | 'rejected' | 'escalated'>;
-  publishAgent: (agentRevisionId: string) => Promise<void>;
+  preCheckSubmission: (args: { submissionId: string }) => Promise<{ passed: boolean; agentId: string; agentRevisionId: string; warnings: string[] }>;
+  runSecurityGate: (args: { submissionId: string; agentId: string; agentRevisionId: string }) => Promise<{ passed: boolean; artifactsPath: string; failReasons?: string[] }>;
+  runFunctionalAccuracy: (args: { submissionId: string; agentId: string; agentRevisionId: string }) => Promise<{ passed: boolean; metrics: { embeddingVariance: number }; failReasons?: string[] }>;
+  runJudgePanel: (args: { submissionId: string; agentId: string; agentRevisionId: string; promptVersion: string }) => Promise<{ verdict: 'approve' | 'reject' | 'manual'; score: number; explanation?: string }>;
+  notifyHumanReview: (args: { submissionId: string; agentId: string; agentRevisionId: string; reason: string; attachments?: string[] }) => Promise<'approved' | 'rejected'>;
+  publishAgent: (args: { submissionId: string; agentId: string; agentRevisionId: string }) => Promise<void>;
 };
 
 const activities = proxyActivities<Activities>({
@@ -16,67 +15,193 @@ const activities = proxyActivities<Activities>({
   startToCloseTimeout: '1 minute'
 });
 
-type WorkflowState = 'draft' | 'sandbox' | 'auto_checks' | 'aisi' | 'review' | 'published' | 'rejected' | 'escalated';
+type StageName = 'precheck' | 'security' | 'functional' | 'judge' | 'human' | 'publish';
+type StageStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
+type WorkflowTerminalState = 'running' | 'published' | 'rejected';
 
-export interface ReviewPipelineInput {
-  agentRevisionId: string;
-  promptVersion: string;
+interface StageProgress {
+  status: StageStatus;
+  attempts: number;
+  lastUpdatedSeq: number;
+  message?: string;
+  warnings?: string[];
 }
 
-const approveSignal = defineSignal('approve');
-const rejectSignal = defineSignal('reject');
-const escalateSignal = defineSignal('escalate');
-const stateQuery = defineQuery<WorkflowState>('state');
+interface WorkflowProgress {
+  terminalState: WorkflowTerminalState;
+  stages: Record<StageName, StageProgress>;
+}
+
+export interface ReviewPipelineInput {
+  submissionId: string;
+  promptVersion: string;
+  agentRevisionId?: string;
+  agentId?: string;
+}
+
+const retryStageSignal = defineSignal<[StageName, string]>('signalRetryStage');
+const progressQuery = defineQuery<WorkflowProgress>('queryProgress');
 
 export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promise<void> {
-  let currentState: WorkflowState = 'draft';
+  const stageOrder: StageName[] = ['precheck', 'security', 'functional', 'judge', 'human', 'publish'];
+  const stageProgress = stageOrder.reduce<Record<StageName, StageProgress>>((acc, stage) => {
+    acc[stage] = { status: 'pending', attempts: 0, lastUpdatedSeq: 0 };
+    return acc;
+  }, {} as Record<StageName, StageProgress>);
 
-  setHandler(stateQuery, () => currentState);
-  setHandler(approveSignal, () => {
-    currentState = 'published';
+  let terminalState: WorkflowTerminalState = 'running';
+  let seqCounter = 0;
+  const retryRequests = new Set<StageName>();
+
+  setHandler(progressQuery, () => ({ terminalState, stages: stageProgress }));
+  setHandler(retryStageSignal, (stage, reason) => {
+    retryRequests.add(stage);
+    updateStage(stage, { status: 'pending', message: `retry requested: ${reason}` });
   });
-  setHandler(rejectSignal, () => {
-    currentState = 'rejected';
-  });
-  setHandler(escalateSignal, () => {
-    currentState = 'escalated';
-  });
 
-  const { agentRevisionId, promptVersion } = input;
+  const context = {
+    submissionId: input.submissionId,
+    promptVersion: input.promptVersion,
+    agentId: input.agentId ?? '',
+    agentRevisionId: input.agentRevisionId ?? ''
+  };
 
-  const draftInfo = await activities.fetchAgentDraft(agentRevisionId);
-  currentState = 'sandbox';
-
-  const sandboxResult = await activities.runSandbox(agentRevisionId);
-  currentState = 'auto_checks';
-
-  const checks = await activities.runAutoChecks(agentRevisionId);
-  if (!checks.passed) {
-    currentState = 'rejected';
-    return;
+  function nextSeq(): number {
+    seqCounter += 1;
+    return seqCounter;
   }
 
-  currentState = 'aisi';
-  const aisiResult = await activities.invokeAISI({ agentRevisionId, agentId: draftInfo.agentId, promptVersion });
-
-  if (aisiResult.riskLabel === 'high') {
-    currentState = 'escalated';
-  } else {
-    currentState = 'review';
+  function updateStage(stage: StageName, updates: Partial<StageProgress>): void {
+    stageProgress[stage] = {
+      ...stageProgress[stage],
+      ...updates,
+      lastUpdatedSeq: nextSeq()
+    };
   }
 
-  const decision = await activities.triggerHumanReview(agentRevisionId, {
-    aisiScore: aisiResult.score,
-    riskLabel: aisiResult.riskLabel
-  });
+  async function runStage<T>(stage: StageName, fn: () => Promise<T>): Promise<T> {
+    const attempts = stageProgress[stage].attempts + 1;
+    updateStage(stage, { status: 'running', attempts, message: `attempt ${attempts}` });
+    try {
+      const result = await fn();
+      updateStage(stage, { status: 'completed', message: 'completed' });
+      return result;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'stage_failed';
+      updateStage(stage, { status: 'failed', message });
+      throw err;
+    }
+  }
 
-  if (decision === 'approved') {
-    await activities.publishAgent(agentRevisionId);
-    currentState = 'published';
-  } else if (decision === 'rejected') {
-    currentState = 'rejected';
-  } else {
-    // Wait for external signal to resolve escalation
-    await condition(() => currentState === 'published' || currentState === 'rejected', '24 hours');
+  async function runStageWithRetry<T>(stage: StageName, fn: () => Promise<T>): Promise<T> {
+    while (true) {
+      const result = await runStage(stage, fn);
+      if (!retryRequests.has(stage)) {
+        return result;
+      }
+      retryRequests.delete(stage);
+      updateStage(stage, { status: 'pending', message: 'retry scheduled' });
+    }
+  }
+
+  async function escalateToHuman(reason: string, notes?: string[]): Promise<'approved' | 'rejected'> {
+    const decision = await runStageWithRetry('human', () =>
+      activities.notifyHumanReview({
+        submissionId: context.submissionId,
+        agentId: context.agentId,
+        agentRevisionId: context.agentRevisionId,
+        reason,
+        attachments: notes
+      })
+    );
+    updateStage('human', {
+      status: decision === 'approved' ? 'completed' : 'failed',
+      message: `human decision: ${decision}`
+    });
+    if (decision === 'rejected') {
+      terminalState = 'rejected';
+    } else {
+      terminalState = 'running';
+    }
+    return decision;
+  }
+
+  function markPendingAsSkipped(): void {
+    for (const stage of stageOrder) {
+      if (stageProgress[stage].status === 'pending') {
+        updateStage(stage, { status: 'skipped', message: 'not executed' });
+      }
+    }
+  }
+
+  try {
+    const preCheck = await runStageWithRetry('precheck', () => activities.preCheckSubmission({ submissionId: context.submissionId }));
+    updateStage('precheck', { warnings: preCheck.warnings, message: 'pre-check completed' });
+    if (!preCheck.passed) {
+      updateStage('precheck', { status: 'failed', message: 'pre-check rejected submission' });
+      terminalState = 'rejected';
+      return;
+    }
+    context.agentId = preCheck.agentId;
+    context.agentRevisionId = preCheck.agentRevisionId;
+
+    const security = await runStageWithRetry('security', () => activities.runSecurityGate({
+      submissionId: context.submissionId,
+      agentId: context.agentId,
+      agentRevisionId: context.agentRevisionId
+    }));
+    if (!security.passed) {
+      updateStage('security', { status: 'failed', message: security.failReasons?.join(', ') ?? 'security gate failed' });
+      const decision = await escalateToHuman('security_gate_failure', security.failReasons);
+      if (decision === 'rejected') {
+        return;
+      }
+    }
+
+    const functional = await runStageWithRetry('functional', () => activities.runFunctionalAccuracy({
+      submissionId: context.submissionId,
+      agentId: context.agentId,
+      agentRevisionId: context.agentRevisionId
+    }));
+    if (!functional.passed) {
+      updateStage('functional', { status: 'failed', message: functional.failReasons?.join(', ') ?? 'functional accuracy failed' });
+      const decision = await escalateToHuman('functional_accuracy_failure', functional.failReasons);
+      if (decision === 'rejected') {
+        return;
+      }
+    }
+
+    const judge = await runStageWithRetry('judge', () => activities.runJudgePanel({
+      submissionId: context.submissionId,
+      agentId: context.agentId,
+      agentRevisionId: context.agentRevisionId,
+      promptVersion: context.promptVersion
+    }));
+    updateStage('judge', { message: `judge verdict: ${judge.verdict}` });
+
+    if (judge.verdict === 'reject') {
+      updateStage('judge', { status: 'failed', message: judge.explanation ?? 'judge rejected submission' });
+      terminalState = 'rejected';
+      return;
+    }
+
+    if (judge.verdict === 'manual') {
+      const decision = await escalateToHuman('judge_manual_review', judge.explanation ? [judge.explanation] : undefined);
+      if (decision === 'rejected') {
+        return;
+      }
+    }
+
+    await runStageWithRetry('publish', () =>
+      activities.publishAgent({
+        submissionId: context.submissionId,
+        agentId: context.agentId,
+        agentRevisionId: context.agentRevisionId
+      })
+    );
+    updateStage('publish', { message: 'agent published' });
+    terminalState = 'published';
+  } finally {
+    markPendingAsSkipped();
   }
 }

@@ -9,7 +9,7 @@ async function run(): Promise<void> {
   const handle = await client.start(reviewPipelineWorkflow, {
     taskQueue: 'review-pipeline-task-queue',
     workflowId: `review-pipeline-${Date.now()}`,
-    args: [{ agentRevisionId: 'demo-rev-1', promptVersion: '2025.10.29-1' }]
+    args: [{ submissionId: 'submission-demo-1', promptVersion: '2025.11.10-1' }]
   });
 
   console.log(`Started workflow ${handle.workflowId}`);

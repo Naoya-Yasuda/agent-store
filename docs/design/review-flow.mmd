@@ -1,0 +1,47 @@
+flowchart LR
+  subgraph "Submission Layer"
+    UI["Web UI\n(Endpoint URL + AgentCard JSON + 公開鍵 + 事業者ID)"] --> API["Submission API\nJSON Schema + 署名 + Manifest突合"]
+    API --> DB[("Store DB\nAgentCards + Submissions + EndpointSnapshots")]
+    API --> Relay["A2A Relay\n(実エンドポイント隔離)"]
+  end
+
+  API -->|submission.created| PRE("PreCheck State\nTemporal Workflow")
+
+  PRE -->|OK| SEC{"Security Gate\nAdvBench攻撃 + Sandbox Runnerログ"}
+  PRE -->|Fail| HR0["Human Review\n(Pre-check差戻し)"]
+  PRE -->|retry| PRE
+
+  SEC -->|OK| FUNC{"Functional Accuracy\nDSLシナリオ + RAGTruth突合 + 埋め込み距離"}
+  SEC -->|Fail| HR1["Human Review\nSecurity失敗ログ"]
+  SEC -->|signalRetryStage| SEC
+
+  FUNC -->|OK| JUDGE{"Judge Panel\n質問生成→Execution→MCTS-Judge"}
+  FUNC -->|Fail| HR2["Human Review\nFunctional差戻し"]
+  FUNC -->|signalRetryStage| FUNC
+
+  JUDGE -->|approve| PUB("Publish\nAgentCard status更新 + Relay解放")
+  JUDGE -->|manual| HR3["Human Review\nJudge矛盾/閾値境界"]
+  JUDGE -->|reject| REJ[Rejected]
+
+  HR0 -->|承認| SEC
+  HR1 -->|承認| FUNC
+  HR2 -->|承認| JUDGE
+  HR3 -->|承認| PUB
+  HR0 -->|差戻し| REJ
+  HR1 -->|差戻し| REJ
+  HR2 -->|差戻し| REJ
+  HR3 -->|差戻し| REJ
+
+  subgraph "Observability Layer"
+    QRY["queryProgress()\n(進捗バー用)"]
+    SIG["signalRetryStage(stage, reason)"]
+  end
+  QRY -.-> PRE
+  QRY -.-> SEC
+  QRY -.-> FUNC
+  QRY -.-> JUDGE
+  QRY -.-> HR3
+  SIG -.-> PRE
+  SIG -.-> SEC
+  SIG -.-> FUNC
+  SIG -.-> JUDGE

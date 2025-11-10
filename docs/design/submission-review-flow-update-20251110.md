@@ -11,11 +11,13 @@
    - アップロード直後にフロントでJSON Schema (構造検証ルール) のプレチェックを実施し、エラーを即時表示。
 2. **Submission API**
    - `POST /submissions` を新設して `agentId`, `cardDocument`, `endpointManifest`, `signatureBundle` を受領。
+   - 実装: `api/routes/submissions.ts` で `validateSubmissionPayload` → `createSubmission` の順に処理。
+   - 署名バンドルは `algorithm` (`rsa-sha256` or `ecdsa-sha256`), `publicKeyPem`, `signature`, `payloadDigest` を含み、`cardDocument` の安定化JSON（キーソート）に対するSHA256照合後にVerify APIを実行。
    - 検証チェーン:
      1. `schemas/agent-card.schema.json` によるバリデーション。
      2. `signatureBundle` と事業者公開鍵を使った署名検証。
      3. `endpointManifest` (OpenAPI/manifest) と AgentCard `capabilities`/`useCases` の突合。
-     4. Snapshot生成: `AgentEndpointSnapshot` レコードを `endpointRelayId` と紐付けて保存。
+   4. Snapshot生成: `AgentEndpointSnapshot` レコードを `endpointRelayId` と紐付けて保存。
    - 成功時にTemporalへ `submission.created` イベントを発行し、レスポンスでは公開用メタ情報のみ返却。
 3. **ストアDB保持**
    - AgentCardの完全コピーを `agent_cards` テーブルに保存し、公開APIでは `displayName` 等の最小フィールドのみ返す。
