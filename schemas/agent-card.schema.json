@@ -6,11 +6,10 @@
   "required": [
     "id",
     "agentId",
-    "locale",
-    "displayName",
-    "shortDescription",
-    "capabilities",
-    "status"
+    "defaultLocale",
+    "status",
+    "translations",
+    "executionProfile"
   ],
   "properties": {
     "id": {
@@ -21,37 +20,57 @@
       "type": "string",
       "format": "uuid"
     },
-    "locale": {
+    "defaultLocale": {
       "type": "string",
       "pattern": "^[a-z]{2}(?:-[A-Z]{2})?$"
     },
-    "displayName": {
-      "type": "string",
-      "minLength": 3,
-      "maxLength": 80
-    },
-    "shortDescription": {
-      "type": "string",
-      "maxLength": 200
-    },
-    "longDescription": {
-      "type": "string"
-    },
-    "capabilities": {
+    "translations": {
       "type": "array",
+      "minItems": 1,
       "items": {
-        "type": "string",
-        "maxLength": 40
-      },
-      "maxItems": 10
-    },
-    "useCases": {
-      "type": "array",
-      "items": {
-        "type": "string",
-        "maxLength": 60
-      },
-      "maxItems": 10
+        "type": "object",
+        "required": [
+          "locale",
+          "displayName",
+          "shortDescription",
+          "capabilities"
+        ],
+        "properties": {
+          "locale": {
+            "type": "string",
+            "pattern": "^[a-z]{2}(?:-[A-Z]{2})?$"
+          },
+          "displayName": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 80
+          },
+          "shortDescription": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "longDescription": {
+            "type": "string"
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 40
+            },
+            "maxItems": 10
+          },
+          "useCases": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 60
+            },
+            "maxItems": 10
+          }
+        },
+        "additionalProperties": false
+      }
     },
     "iconUrl": {
       "type": "string",
@@ -83,10 +102,6 @@
     "complianceNotes": {
       "type": "string"
     },
-    "lastReviewedAt": {
-      "type": "string",
-      "format": "date-time"
-    },
     "status": {
       "type": "string",
       "enum": [
@@ -94,6 +109,31 @@
         "published",
         "suspended"
       ]
+    },
+    "statusReason": {
+      "type": "string"
+    },
+    "lastReviewedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "executionProfile": {
+      "type": "string",
+      "enum": [
+        "self_hosted",
+        "store_hosted_candidate"
+      ]
+    },
+    "endpointRelayId": {
+      "type": "string"
+    },
+    "providerRegistryIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z0-9\\-]{4,32}$"
+      },
+      "maxItems": 10
     }
   },
   "additionalProperties": false

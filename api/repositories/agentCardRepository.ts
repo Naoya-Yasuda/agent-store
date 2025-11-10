@@ -8,16 +8,20 @@ export async function upsertAgentCard(card: AgentCard): Promise<void> {
   try {
     await client.query('BEGIN');
     await client.query(
-      `INSERT INTO agent_cards (id, agent_id, default_locale, icon_url, banner_url, status, pricing_type, pricing_details, compliance_notes, last_reviewed_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      `INSERT INTO agent_cards (id, agent_id, default_locale, icon_url, banner_url, status, status_reason, pricing_type, pricing_details, compliance_notes, last_reviewed_at, execution_profile, endpoint_relay_id, provider_registry_ids)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
        ON CONFLICT (id)
        DO UPDATE SET icon_url = EXCLUDED.icon_url,
                      banner_url = EXCLUDED.banner_url,
                      status = EXCLUDED.status,
+                     status_reason = EXCLUDED.status_reason,
                      pricing_type = EXCLUDED.pricing_type,
                      pricing_details = EXCLUDED.pricing_details,
                      compliance_notes = EXCLUDED.compliance_notes,
                      last_reviewed_at = EXCLUDED.last_reviewed_at,
+                     execution_profile = EXCLUDED.execution_profile,
+                     endpoint_relay_id = EXCLUDED.endpoint_relay_id,
+                     provider_registry_ids = EXCLUDED.provider_registry_ids,
                      updated_at = now()
       `,
       [
@@ -27,10 +31,14 @@ export async function upsertAgentCard(card: AgentCard): Promise<void> {
         card.iconUrl,
         card.bannerUrl,
         card.status,
+        card.statusReason ?? null,
         card.pricing?.type,
         card.pricing?.details,
         card.complianceNotes,
-        card.lastReviewedAt ?? null
+        card.lastReviewedAt ?? null,
+        card.executionProfile,
+        card.endpointRelayId ?? null,
+        card.providerRegistryIds ?? null
       ]
     );
 
@@ -103,7 +111,11 @@ export async function fetchAgentCards(): Promise<AgentCard[]> {
         pricing: row.pricing_type ? { type: row.pricing_type, details: row.pricing_details ?? undefined } : undefined,
         complianceNotes: row.compliance_notes ?? undefined,
         lastReviewedAt: row.last_reviewed_at ?? undefined,
-        status: row.status
+        status: row.status,
+        statusReason: row.status_reason ?? undefined,
+        executionProfile: row.execution_profile,
+        endpointRelayId: row.endpoint_relay_id ?? undefined,
+        providerRegistryIds: row.provider_registry_ids ?? undefined
       });
     }
     return cards;
@@ -142,7 +154,11 @@ export async function fetchAgentCardByAgentId(agentId: string): Promise<AgentCar
       pricing: row.pricing_type ? { type: row.pricing_type, details: row.pricing_details ?? undefined } : undefined,
       complianceNotes: row.compliance_notes ?? undefined,
       lastReviewedAt: row.last_reviewed_at ?? undefined,
-      status: row.status
+      status: row.status,
+      statusReason: row.status_reason ?? undefined,
+      executionProfile: row.execution_profile,
+      endpointRelayId: row.endpoint_relay_id ?? undefined,
+      providerRegistryIds: row.provider_registry_ids ?? undefined
     };
   } finally {
     client.release();

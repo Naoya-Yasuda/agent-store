@@ -28,7 +28,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--wandb-project", default="agent-store-sandbox")
     parser.add_argument("--wandb-entity", default="local")
     parser.add_argument("--wandb-base-url", default="https://wandb.fake")
-    default_schema_dir = Path(__file__).resolve().parents[1] / "schemas"
+    # NOTE: schemas live at sandbox-runner/schemas rather than inside src/
+    # Using parents[2] keeps the default stable even when the package is installed editable.
+    default_schema_dir = Path(__file__).resolve().parents[2] / "schemas"
     default_manifest = Path(__file__).resolve().parents[3] / "prompts/aisi/manifest.sample.json"
     parser.add_argument("--schema-dir", default=str(default_schema_dir), help="Directory containing JSON schemas")
     parser.add_argument("--prompt-manifest", default=str(default_manifest), help="AISI prompt manifest used for question ID validation")

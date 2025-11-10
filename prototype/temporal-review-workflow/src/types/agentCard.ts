@@ -1,4 +1,5 @@
 export type AgentCardStatus = 'draft' | 'published' | 'suspended';
+export type AgentExecutionProfile = 'self_hosted' | 'store_hosted_candidate';
 
 export interface PricingInfo {
   type: 'free' | 'subscription' | 'usage';
@@ -25,4 +26,8 @@ export interface AgentCard {
   complianceNotes?: string;
   lastReviewedAt?: string;
   status: AgentCardStatus;
+  statusReason?: string;
+  executionProfile: AgentExecutionProfile;
+  endpointRelayId?: string;
+  providerRegistryIds?: string[];
 }
