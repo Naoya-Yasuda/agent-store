@@ -29,11 +29,57 @@ Agent Storeは、AIエージェントを「提出→審査→公開」するま�
 6. **Human Review / Publish (最終ステージ)**
    - レビュワーUIで観点別の質問・証拠ログを確認し承認/差戻しを決定。承認するとAgentCardの`status`/`lastReviewedAt`を更新し、A2A Relay（審査完了まで実エンドポイントを隔離する中継サーバ）を解放してストアに公開されます。
 
+## フロー図 (Mermaid)
+```mermaid
+flowchart TD
+  subgraph 提出フェーズ
+    A["Web UI<br/>(エンドポイントURL・AgentCard JSON・公開鍵・事業者ID)"] --> B["Submission API<br/>JSON Schema検証 / 署名検証 / Manifest整合"]
+    B --> C[("Store DB<br/>AgentCards / Submissions / EndpointSnapshots")]
+    B --> D["A2A Relay<br/>(審査専用接続)"]
+  end
+
+  B -->|submission.created| E["Temporal: PreCheck<br/>A2Aチャレンジ / 差分判定"]
+  E -->|OK| F{"Security Gate<br/>Google ADK攻撃エージェント + AdvBench"}
+  E -- 差戻し --> H0["人手レビュー"]
+
+  F -->|OK| G{"Functional Accuracy<br/>DSLシナリオ + RAGTruth突合 + 埋め込み距離"}
+  F -- 異常検知 --> H1["人手レビュー"]
+
+  G -->|OK| I{"Judge Panel<br/>質問生成→実行→MCTS-Judge"}
+  G -- 異常検知 --> H2["人手レビュー"]
+
+  I -->|承認| J["Publish<br/>AgentCard更新 + Relay解放"]
+  I -- 手動判定 --> H3["人手レビュー"]
+  I -- 否認 --> K["Rejected"]
+
+  H0 -->|承認| F
+  H1 -->|承認| G
+  H2 -->|承認| I
+  H3 -->|承認| J
+  H0 -->|差戻し| K
+  H1 -->|差戻し| K
+  H2 -->|差戻し| K
+  H3 -->|差戻し| K
+
+  subgraph 観測レイヤー
+    W["W&B MCP<br/>Run / Artifact"]
+    T["OpenTelemetryトレース"]
+  end
+  W -.-> F
+  W -.-> G
+  W -.-> I
+  T -.-> E
+  T -.-> F
+  T -.-> G
+  T -.-> I
+```
+
 ## Getting Started
 - `python3.13 -m venv .venv && source .venv/bin/activate`
 - `pip install -r requirements.txt`
 - `pip install -e sandbox-runner` でローカルCLIを有効化（Google ADKテンプレートを含むSandbox Runnerコマンドが利用可能になります）。
 - `pytest` を実行するとリポジトリ内のユニットテストのみが走ります（`pytest.ini`で外部チェックアウトを除外）。
+- W&B MCPを使ってステージログ/アーティファクトを収集する場合は `. .venv/bin/activate && export WANDB_DISABLED=false` を設定してから各コマンドを実行してください（デフォルトでは有効化されますが、明示的にフラグを確認できます）。
 - Security Gateをローカルで試す場合は `sandbox-runner` で
   ```bash
   python3.13 -m sandbox_runner.cli \
@@ -42,6 +88,12 @@ Agent Storeは、AIエージェントを「提出→審査→公開」するま�
     --security-attempts 5 --output-dir sandbox-runner/artifacts
   ```
   を実行してください。`--security-endpoint` を指定すると実エージェントに対して攻撃プロンプトを送出できます（未指定の場合は`not_executed`として記録）。
+
+## W&B MCP 連携
+- Sandbox Runnerは各実行でW&B Runを生成し（`wandb_run_id`は`sandbox-runner/src/sandbox_runner/cli.py`の`init_wandb_run`で払い出し）、`metadata.json`の`wandbMcp`にRun IDとステージサマリを記録します。
+- ダッシュボードURLは `https://wandb.ai/<entity>/<project>/runs/<runId>`（CLIの`--wandb-entity`/`--wandb-project`/`--wandb-base-url`で指定）です。デフォルトは`project=agent-store-sandbox`,`entity=local`なので、実運用では `--wandb-base-url https://wandb.ai --wandb-entity <org> --wandb-project <proj>` のように明示してください。
+- Security Gate実行時には`security/security_report.jsonl`をW&B Artifactとしてアップロードし、ステージ別サマリ（blocked件数、needsReview件数など）がRunのチャートに反映されます。将来的にはFunctional/JudgeステージのDSL結果や埋め込み距離も同じRunにログする予定です。
+- 運用方針: PoCや素早い可視化が目的なら公式SaaS( `https://wandb.ai` )が便利ですが、審査ログを外部に出せない場合はローカル/Private CloudのW&B MCPサーバを用意し`--wandb-base-url http://localhost:XXXX`のように切り替えてください。
 
 ## Key Components
 - `api/`: Submission / Catalog APIルート・サービス。
@@ -58,6 +110,7 @@ Agent Storeは、AIエージェントを「提出→審査→公開」するま�
 | Functional DSL + RAGTruth突合 | ⏳ 未実装 | DSL生成やEmbedding距離算出は設計済みだがコード未着手。 |
 | Judge Panel (MCTS-Judge) | ⏳ 未実装 | Question Generator/Execution/判定エージェントはまだ疑似戻り値。 |
 | Human Review UI連携 | ⏳ 未実装 | Temporal Signal/Queryに連携するUIはPlaceholder状態。 |
+| W&B MCPトレース連携 | ⏳ 未実装 | Sandbox Runner/Temporalから共通のW&B Run IDを発行し、Artifacts/LogsをMCP経由で蓄積する仕組みを今後実装。 |
 
 > ※実装や設計の更新を行った際は、必ず本READMEのステータステーブルと該当セクションを更新してください。
 
@@ -66,7 +119,7 @@ Agent Storeは、AIエージェントを「提出→審査→公開」するま�
 2. **Functional Accuracyステージ実装**: DSLジェネレータとRAGTruth突合ロジック、Embedding距離算出を実装し、`runFunctionalAccuracy`を実データ指向に更新する。
 3. **Judge Panel本実装**: Question Generator / Execution Agent / 判定エージェントを`prototype/inspect-worker`に実装し、MCTS-Judge手順でスコアとログを返す。
 4. **Human Review UI最小版**: `queryProgress`/`signalRetryStage`を叩けるレビュワーダッシュボードと、各ステージアーティファクトへのリンク表示を作成する。
-5. **Observability & Ledger整備**: Temporal→Sandbox Runner→Inspect間でOpenTelemetryトレースIDを伝播し、`audit-ledger`への履歴書き込みを自動化する。
+5. **Observability & Ledger整備**: Temporal→Sandbox Runner→Inspect間でOpenTelemetryトレースIDとW&B MCP (Weights & Biases Model Context Protocol) のRun IDを伝播し、`audit-ledger`への履歴書き込みとダッシュボードリンクを自動化する。
 
 ## Contributor Guide
 完全なコントリビュータガイド、コーディング規約、PR要件は[`AGENTS.md`](AGENTS.md)を参照してください。

@@ -11,13 +11,14 @@ from typing import Any, Dict, List, Set
 from jsonschema import Draft202012Validator, ValidationError
 
 from .security_gate import run_security_gate
+from .wandb_mcp import create_wandb_mcp
 
 try:
     import wandb  # type: ignore
 except ImportError:  # pragma: no cover - optional dependency
     wandb = None
 
-WANDB_DISABLED = os.environ.get("WANDB_DISABLED", "true").lower() == "true"
+WANDB_DISABLED = os.environ.get("WANDB_DISABLED", "false").lower() == "true"
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -204,13 +205,22 @@ def main(argv: list[str] | None = None) -> int:
             "baseUrl": args.wandb_base_url
         },
     }
+    wandb_mcp = create_wandb_mcp(
+        base_metadata=metadata,
+        wandb_info=wandb_info,
+        project=args.wandb_project,
+        entity=args.wandb_entity,
+        base_url=args.wandb_base_url,
+    )
+
     security_summary = None
     if not args.skip_security_gate:
+        security_output = output_dir / "security"
         security_summary = run_security_gate(
             agent_id=args.agent_id,
             revision=args.revision,
             dataset_path=Path(args.security_dataset),
-            output_dir=output_dir / "security",
+            output_dir=security_output,
             attempts=max(1, args.security_attempts),
             endpoint_url=args.security_endpoint,
             endpoint_token=args.security_endpoint_token,
@@ -218,7 +228,10 @@ def main(argv: list[str] | None = None) -> int:
             dry_run=args.dry_run
         )
         metadata["securityGate"] = security_summary
+        wandb_mcp.log_stage_summary("security", security_summary)
+        wandb_mcp.save_artifact("security", security_output / "security_report.jsonl", name="security-report")
 
+    metadata["wandbMcp"] = wandb_mcp.export_metadata()
     (output_dir / "metadata.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2))
 
     if wandb_info.get("enabled") and wandb is not None:
