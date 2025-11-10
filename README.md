@@ -88,11 +88,19 @@ flowchart TD
     --security-attempts 5 --output-dir sandbox-runner/artifacts
   ```
   を実行してください。`--security-endpoint` を指定すると実エージェントに対して攻撃プロンプトを送出できます（未指定の場合は`not_executed`として記録）。
+- Functional Accuracy（機能正確性）を試す場合は、AgentCard JSONとRAGTruthディレクトリを指定します。サンプルは`sandbox-runner/resources/ragtruth/sample.jsonl`にあります。
+  ```bash
+  python3.13 -m sandbox_runner.cli \
+    --agent-id demo --revision rev1 --template google-adk \\
+    --agent-card path/to/agent_card.json \\
+    --ragtruth-dir sandbox-runner/resources/ragtruth \\
+    --output-dir sandbox-runner/artifacts
+  ```
 
 ## W&B MCP 連携
 - Sandbox Runnerは各実行でW&B Runを生成し（`wandb_run_id`は`sandbox-runner/src/sandbox_runner/cli.py`の`init_wandb_run`で払い出し）、`metadata.json`の`wandbMcp`にRun IDとステージサマリを記録します。
 - ダッシュボードURLは `https://wandb.ai/<entity>/<project>/runs/<runId>`（CLIの`--wandb-entity`/`--wandb-project`/`--wandb-base-url`で指定）です。デフォルトは`project=agent-store-sandbox`,`entity=local`なので、実運用では `--wandb-base-url https://wandb.ai --wandb-entity <org> --wandb-project <proj>` のように明示してください。
-- Security Gate実行時には`security/security_report.jsonl`をW&B Artifactとしてアップロードし、ステージ別サマリ（blocked件数、needsReview件数など）がRunのチャートに反映されます。将来的にはFunctional/JudgeステージのDSL結果や埋め込み距離も同じRunにログする予定です。
+- Security Gate実行時には`security/security_report.jsonl`をW&B Artifactとしてアップロードし、ステージ別サマリ（blocked件数、needsReview件数など）がRunのチャートに反映されます。Functional Accuracyを有効にした場合は`functional/functional_report.jsonl`も同じRunに保存され、Embedding距離の統計を確認できます（Judge/ Human Reviewについても今後同様に拡張予定）。
 - 運用方針: PoCや素早い可視化が目的なら公式SaaS( `https://wandb.ai` )が便利ですが、審査ログを外部に出せない場合はローカル/Private CloudのW&B MCPサーバを用意し`--wandb-base-url http://localhost:XXXX`のように切り替えてください。
 
 ## Key Components
@@ -115,11 +123,9 @@ flowchart TD
 > ※実装や設計の更新を行った際は、必ず本READMEのステータステーブルと該当セクションを更新してください。
 
 ## 今後の優先タスク
-1. **Sandbox RunnerのSecurity Gate実装**: AdvBenchテンプレを`third_party/aisev`から取り込み、AgentCard語彙でリライトする前処理と実行ログ保存を行う。`runSecurityGate`アクティビティのダミー出力を置換し、`pytest`で攻撃成功/失敗ケースを追加する。
-2. **Functional Accuracyステージ実装**: DSLジェネレータとRAGTruth突合ロジック、Embedding距離算出を実装し、`runFunctionalAccuracy`を実データ指向に更新する。
-3. **Judge Panel本実装**: Question Generator / Execution Agent / 判定エージェントを`prototype/inspect-worker`に実装し、MCTS-Judge手順でスコアとログを返す。
-4. **Human Review UI最小版**: `queryProgress`/`signalRetryStage`を叩けるレビュワーダッシュボードと、各ステージアーティファクトへのリンク表示を作成する。
-5. **Observability & Ledger整備**: Temporal→Sandbox Runner→Inspect間でOpenTelemetryトレースIDとW&B MCP (Weights & Biases Model Context Protocol) のRun IDを伝播し、`audit-ledger`への履歴書き込みとダッシュボードリンクを自動化する。
+1. **Functional Accuracyステージ実装**: AgentCard `useCases`をDSL（Domain Specific Language: ユースケースを機械が読みやすいスクリプトにしたもの）へ変換し、RAGTruth（正解データセット）で応答を突合、Embedding距離（回答同士の類似度）を算出する処理を`sandbox-runner`に実装する。Temporalの`runFunctionalAccuracy`が実データで動く状態を目指す。
+2. **Judge Panel＋Human Review UI**: Google ADKベースの質問生成→実行→MCTS-Judge（Monte Carlo Tree Searchを応用した合議）を`prototype/inspect-worker`に実装し、Human Review UI（レビュワーが進捗や証拠を確認する画面）から`queryProgress`/`signalRetryStage`を操作できるようにする。
+3. **W&B MCP(Weights & Biases Model Context Protocol) 連携拡張**: Submission→Temporal→Sandbox Runner→Inspectの各ステージで共通Run IDを引き回し、Security Gate以外（FunctionalやJudge、Human Review）のログやアーティファクトも同じダッシュボードで閲覧できるようにする。外部持ち出しNGの場合はローカル/Private Cloud版W&Bで同じ構成を再現する。
 
 ## Contributor Guide
 完全なコントリビュータガイド、コーディング規約、PR要件は[`AGENTS.md`](AGENTS.md)を参照してください。

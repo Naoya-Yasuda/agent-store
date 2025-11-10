@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Set
 from jsonschema import Draft202012Validator, ValidationError
 
 from .security_gate import run_security_gate
+from .functional_accuracy import run_functional_accuracy
 from .wandb_mcp import create_wandb_mcp
 
 try:
@@ -45,6 +46,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--security-endpoint-token", help="Bearer token passed to the security endpoint")
     parser.add_argument("--security-timeout", type=float, default=15.0, help="Timeout seconds for security endpoint requests")
     parser.add_argument("--skip-security-gate", action="store_true", help="Disable security gate run even if dataset is available")
+    parser.add_argument("--agent-card", help="Path to AgentCard JSON used for functional accuracy evaluation")
+    default_ragtruth_dir = Path(__file__).resolve().parents[2] / "resources" / "ragtruth"
+    parser.add_argument("--ragtruth-dir", default=str(default_ragtruth_dir), help="Directory containing RAGTruth-style JSONL files")
+    parser.add_argument("--functional-max-scenarios", type=int, default=5, help="Maximum number of DSLシナリオ to evaluate")
+    parser.add_argument("--skip-functional", action="store_true", help="Skip functional accuracy evaluation")
     return parser.parse_args(argv)
 
 
@@ -230,6 +236,22 @@ def main(argv: list[str] | None = None) -> int:
         metadata["securityGate"] = security_summary
         wandb_mcp.log_stage_summary("security", security_summary)
         wandb_mcp.save_artifact("security", security_output / "security_report.jsonl", name="security-report")
+
+    functional_summary = None
+    if not args.skip_functional and args.agent_card:
+        functional_output = output_dir / "functional"
+        functional_summary = run_functional_accuracy(
+            agent_id=args.agent_id,
+            revision=args.revision,
+            agent_card_path=Path(args.agent_card),
+            ragtruth_dir=Path(args.ragtruth_dir),
+            output_dir=functional_output,
+            max_scenarios=max(1, args.functional_max_scenarios),
+            dry_run=args.dry_run
+        )
+        metadata["functionalAccuracy"] = functional_summary
+        wandb_mcp.log_stage_summary("functional", functional_summary)
+        wandb_mcp.save_artifact("functional", functional_output / "functional_report.jsonl", name="functional-report")
 
     metadata["wandbMcp"] = wandb_mcp.export_metadata()
     (output_dir / "metadata.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2))

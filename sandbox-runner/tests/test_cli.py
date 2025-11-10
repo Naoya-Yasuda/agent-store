@@ -15,9 +15,45 @@ def create_security_dataset(tmp_path: Path) -> Path:
     return dataset_path
 
 
+def create_agent_card(tmp_path: Path) -> Path:
+    card_path = tmp_path / "agent_card.json"
+    card = {
+        "id": "11111111-1111-1111-1111-111111111111",
+        "agentId": "22222222-2222-2222-2222-222222222222",
+        "defaultLocale": "ja-JP",
+        "status": "draft",
+        "executionProfile": "self_hosted",
+        "translations": [
+            {
+                "locale": "ja-JP",
+                "displayName": "テストエージェント",
+                "shortDescription": "説明",
+                "capabilities": ["検索"],
+                "useCases": ["レストラン案内", "天気の説明"]
+            }
+        ]
+    }
+    card_path.write_text(json.dumps(card), encoding="utf-8")
+    return card_path
+
+
+def create_ragtruth(tmp_path: Path) -> Path:
+    ragtruth_dir = tmp_path / "ragtruth"
+    ragtruth_dir.mkdir(parents=True)
+    sample = ragtruth_dir / "sample.jsonl"
+    sample.write_text(
+        json.dumps({"useCase": "レストラン案内", "question": "おすすめは?", "answer": "和食レストランを紹介します。"}) + "\n"
+        + json.dumps({"useCase": "天気の説明", "question": "天気は?", "answer": "晴れです。"}) + "\n",
+        encoding="utf-8"
+    )
+    return ragtruth_dir
+
+
 def test_cli_generates_artifacts(tmp_path: Path) -> None:
     artifacts_dir = tmp_path / "artifacts"
     security_dataset = create_security_dataset(tmp_path)
+    agent_card = create_agent_card(tmp_path)
+    ragtruth_dir = create_ragtruth(tmp_path)
 
     exit_code = main([
         "--agent-id", "demo",
@@ -27,7 +63,9 @@ def test_cli_generates_artifacts(tmp_path: Path) -> None:
         "--dry-run",
         "--generate-fairness",
         "--security-dataset", str(security_dataset),
-        "--security-attempts", "2"
+        "--security-attempts", "2",
+        "--agent-card", str(agent_card),
+        "--ragtruth-dir", str(ragtruth_dir)
     ])
 
     assert exit_code == 0
@@ -36,6 +74,8 @@ def test_cli_generates_artifacts(tmp_path: Path) -> None:
     assert (artifacts_dir / "fairness_probe.json").exists()
     security_report = (artifacts_dir / "security" / "security_report.jsonl").read_text(encoding="utf-8")
     assert security_report.count("\n") == 1 or security_report.strip() != ""
+    functional_report = (artifacts_dir / "functional" / "functional_report.jsonl").read_text(encoding="utf-8")
+    assert "scenarioId" in functional_report
 
     metadata_text = (artifacts_dir / "metadata.json").read_text(encoding="utf-8")
     assert "demo" in metadata_text
@@ -99,3 +139,22 @@ def test_cli_handles_missing_security_dataset(tmp_path: Path) -> None:
     summary_path = artifacts_dir / "security" / "security_summary.json"
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     assert summary.get("error") == "dataset_missing"
+
+
+def test_cli_handles_missing_agent_card(tmp_path: Path) -> None:
+    artifacts_dir = tmp_path / "artifacts"
+    agent_card = tmp_path / "missing-card.json"
+    ragtruth_dir = create_ragtruth(tmp_path)
+    exit_code = main([
+        "--agent-id", "demo",
+        "--revision", "rev1",
+        "--template", "google-adk",
+        "--output-dir", str(artifacts_dir),
+        "--agent-card", str(agent_card),
+        "--ragtruth-dir", str(ragtruth_dir)
+    ])
+
+    assert exit_code == 0
+    summary_path = artifacts_dir / "functional" / "functional_summary.json"
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert summary.get("error") == "agent_card_missing"
