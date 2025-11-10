@@ -4,9 +4,16 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 from csv import DictReader
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
+
+PACKAGE_ROOT = Path(__file__).resolve().parents[1]
+if str(PACKAGE_ROOT) not in sys.path:
+    sys.path.insert(0, str(PACKAGE_ROOT))
+
+from inspect_worker import MCTSJudgeOrchestrator, dispatch_questions, generate_questions
 
 ROOT = Path(__file__).resolve().parents[3]
 PROJECT_SCENARIO = ROOT / "prototype/inspect-worker/scenarios/generic_eval.yaml"
@@ -23,6 +30,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--scenario", default=os.environ.get("INSPECT_SCENARIO", str(PROJECT_SCENARIO)))
     parser.add_argument("--artifacts", default=os.environ.get("ARTIFACTS_DIR"), help="Path to sandbox artifacts directory")
     parser.add_argument("--manifest", default=os.environ.get("MANIFEST_PATH", str(ROOT / "prompts/aisi/manifest.tier3.json")))
+    parser.add_argument("--enable-judge-panel", action="store_true", help="Generate judge_report.jsonl via Judge Panel PoC")
+    parser.add_argument("--agent-card", help="AgentCard JSON path used for Judge Panel question generation")
+    parser.add_argument("--relay-endpoint", help="A2A Relay endpoint for executing judge questions")
+    parser.add_argument("--relay-token", help="Bearer token for the A2A Relay endpoint")
+    parser.add_argument("--judge-max-questions", type=int, default=int(os.environ.get("JUDGE_MAX_QUESTIONS", 5)))
+    parser.add_argument("--judge-timeout", type=float, default=float(os.environ.get("JUDGE_TIMEOUT", 15.0)))
+    parser.add_argument(
+        "--judge-dry-run",
+        action="store_true",
+        default=os.environ.get("JUDGE_DRY_RUN", "false").lower() == "true",
+        help="Do not call the real agent during Judge Panel execution",
+    )
     return parser.parse_args()
 
 
@@ -37,6 +56,9 @@ def main() -> None:
 
     if not response_samples_file.exists():
         raise FileNotFoundError("response_samples.jsonl が見つかりません。Sandbox Runnerを実行してください。")
+
+    if args.enable_judge_panel and not args.agent_card:
+        raise ValueError("Judge Panelを有効にする場合は --agent-card を指定してください")
 
     manifest_path = Path(args.manifest)
     if not manifest_path.exists():
@@ -80,6 +102,18 @@ def main() -> None:
 
     details_path = output_path / "details.json"
     details_path.write_text(json.dumps(eval_results, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    if args.enable_judge_panel and args.agent_card:
+        judge_summary = _run_judge_panel(
+            output_path,
+            agent_card_path=Path(args.agent_card),
+            relay_endpoint=args.relay_endpoint,
+            relay_token=args.relay_token,
+            max_questions=args.judge_max_questions,
+            timeout=args.judge_timeout,
+            dry_run=args.judge_dry_run,
+        )
+        summary["judgePanel"] = judge_summary
 
     (output_path / "summary.json").write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
 
@@ -371,6 +405,58 @@ def _run_inspect_eval(
         )
 
     return latencies, eval_results, compliance_ratio, inspect_info
+
+
+def _run_judge_panel(
+    output_path: Path,
+    *,
+    agent_card_path: Path,
+    relay_endpoint: str | None,
+    relay_token: str | None,
+    max_questions: int,
+    timeout: float,
+    dry_run: bool,
+) -> Dict[str, Any]:
+    judge_dir = output_path / "judge"
+    judge_dir.mkdir(parents=True, exist_ok=True)
+
+    questions = generate_questions(agent_card_path, max_questions=max_questions)
+    executions = dispatch_questions(
+        questions,
+        relay_endpoint=relay_endpoint,
+        relay_token=relay_token,
+        timeout=timeout,
+        dry_run=dry_run,
+    )
+
+    orchestrator = MCTSJudgeOrchestrator()
+    verdicts = orchestrator.run_panel(questions, executions)
+
+    report_path = judge_dir / "judge_report.jsonl"
+    with report_path.open("w", encoding="utf-8") as f:
+        for verdict in verdicts:
+            execution = next((item for item in executions if item.question_id == verdict.question_id), None)
+            record = {
+                "questionId": verdict.question_id,
+                "prompt": execution.prompt if execution else "",
+                "response": execution.response if execution else "",
+                "latencyMs": execution.latency_ms if execution else None,
+                "score": verdict.score,
+                "verdict": verdict.verdict,
+                "rationale": verdict.rationale,
+                "judgeNotes": verdict.judge_notes,
+            }
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    summary = {
+        "questions": len(verdicts),
+        "approved": sum(1 for v in verdicts if v.verdict == "approve"),
+        "manual": sum(1 for v in verdicts if v.verdict == "manual"),
+        "rejected": sum(1 for v in verdicts if v.verdict == "reject"),
+        "notes": "Judge Panel PoC",
+    }
+    (judge_dir / "judge_summary.json").write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
+    return summary
 
 
 def _write_inspect_dataset(dataset_path: Path, records: List[Dict[str, Any]]) -> None:

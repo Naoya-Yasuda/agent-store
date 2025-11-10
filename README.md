@@ -96,6 +96,17 @@ flowchart TD
     --ragtruth-dir sandbox-runner/resources/ragtruth \\
     --output-dir sandbox-runner/artifacts
   ```
+- Judge Panel（Inspect Worker側のGoogle ADKチェーン）を試す場合は `prototype/inspect-worker` で
+  ```bash
+  cd prototype/inspect-worker
+  python scripts/run_eval.py \
+    --agent-id demo --revision rev1 \\
+    --artifacts ../..//sandbox-runner/artifacts \\
+    --manifest ../../prompts/aisi/manifest.tier3.json \\
+    --enable-judge-panel --agent-card path/to/agent_card.json \\
+    --judge-dry-run
+  ```
+  を実行すると `out/<agent>/<revision>/judge/judge_report.jsonl` と `judge_summary.json` が生成されます。`--relay-endpoint` を指定すればA2A Relay経由で実エージェントに質問できます。
 
 ## W&B MCP 連携
 - Sandbox Runnerは各実行でW&B Runを生成し（`wandb_run_id`は`sandbox-runner/src/sandbox_runner/cli.py`の`init_wandb_run`で払い出し）、`metadata.json`の`wandbMcp`にRun IDとステージサマリを記録します。
@@ -116,7 +127,7 @@ flowchart TD
 | Temporalワークフロー（PreCheck→Publish） | ✅ 実装済み | `signalRetryStage`/`queryProgress`対応。各ステージはモック活動で接続済み。 |
 | Sandbox RunnerのAdvBench統合 | 🚧 部分実装 | AISI/AdvBench由来CSVから攻撃プロンプトを抽出し`security_report.jsonl`を生成済み。実エンドポイント実行は今後の拡張。 |
 | Functional DSL + RAGTruth突合 | ⏳ 未実装 | DSL生成やEmbedding距離算出は設計済みだがコード未着手。 |
-| Judge Panel (MCTS-Judge) | ⏳ 未実装 | Question Generator/Execution/判定エージェントはまだ疑似戻り値。 |
+| Judge Panel (MCTS-Judge) | 🚧 部分実装 | Inspect WorkerのGoogle ADK型Judgeチェーンを実装（Judgeレポート/サマリ出力）。Temporal連携・UIは今後。 |
 | Human Review UI連携 | ⏳ 未実装 | Temporal Signal/Queryに連携するUIはPlaceholder状態。 |
 | W&B MCPトレース連携 | ⏳ 未実装 | Sandbox Runner/Temporalから共通のW&B Run IDを発行し、Artifacts/LogsをMCP経由で蓄積する仕組みを今後実装。 |
 

@@ -1,0 +1,60 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+from inspect_worker.question_generator import generate_questions
+from inspect_worker.execution_agent import dispatch_questions
+from inspect_worker.judge_orchestrator import MCTSJudgeOrchestrator
+
+
+def test_generate_questions_from_agent_card(tmp_path: Path) -> None:
+    card_path = tmp_path / "card.json"
+    card_path.write_text(
+        """
+{
+  "id": "1",
+  "agentId": "2",
+  "defaultLocale": "ja-JP",
+  "status": "draft",
+  "executionProfile": "self_hosted",
+  "translations": [
+    {
+      "locale": "ja-JP",
+      "displayName": "Demo Agent",
+      "shortDescription": "説明",
+      "capabilities": ["計画"],
+      "useCases": ["旅行プランを提案"]
+    }
+  ]
+}
+""",
+        encoding="utf-8",
+    )
+
+    questions = generate_questions(card_path, max_questions=2)
+    assert len(questions) == 1
+    assert questions[0].prompt.startswith("あなたはレビュワーです")
+
+
+def test_dispatch_questions_dry_run_generates_response(tmp_path: Path) -> None:
+    card_path = tmp_path / "card.json"
+    card_path.write_text(
+        '{"translations": [{"locale": "ja-JP", "useCases": ["FAQ"]}], "defaultLocale": "ja-JP"}',
+        encoding="utf-8",
+    )
+    questions = generate_questions(card_path, max_questions=1)
+    results = dispatch_questions(questions, relay_endpoint=None, relay_token=None, timeout=5.0, dry_run=True)
+    assert results[0].response.startswith("(dry-run)")
+
+
+def test_mcts_judge_returns_verdict(tmp_path: Path) -> None:
+    card_path = tmp_path / "card.json"
+    card_path.write_text(
+        '{"translations": [{"locale": "ja-JP", "useCases": ["FAQ"]}], "defaultLocale": "ja-JP"}',
+        encoding="utf-8",
+    )
+    questions = generate_questions(card_path, max_questions=1)
+    executions = dispatch_questions(questions, relay_endpoint=None, relay_token=None, timeout=5.0, dry_run=True)
+    orchestrator = MCTSJudgeOrchestrator(threshold=0.4)
+    verdicts = orchestrator.run_panel(questions, executions)
+    assert verdicts[0].verdict in {"approve", "manual", "needs_review"}
