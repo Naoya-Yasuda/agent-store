@@ -30,6 +30,15 @@ interface StageProgress {
 interface WorkflowProgress {
   terminalState: WorkflowTerminalState;
   stages: Record<StageName, StageProgress>;
+  wandbRun?: WandbRunInfo;
+}
+
+export interface WandbRunInfo {
+  runId?: string;
+  project?: string;
+  entity?: string;
+  baseUrl?: string;
+  url?: string;
 }
 
 export interface ReviewPipelineInput {
@@ -37,6 +46,7 @@ export interface ReviewPipelineInput {
   promptVersion: string;
   agentRevisionId?: string;
   agentId?: string;
+  wandbRun?: WandbRunInfo;
 }
 
 const retryStageSignal = defineSignal<[StageName, string]>('signalRetryStage');
@@ -53,7 +63,7 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
   let seqCounter = 0;
   const retryRequests = new Set<StageName>();
 
-  setHandler(progressQuery, () => ({ terminalState, stages: stageProgress }));
+  setHandler(progressQuery, () => ({ terminalState, stages: stageProgress, wandbRun: input.wandbRun }));
   setHandler(retryStageSignal, (stage, reason) => {
     retryRequests.add(stage);
     updateStage(stage, { status: 'pending', message: `retry requested: ${reason}` });
