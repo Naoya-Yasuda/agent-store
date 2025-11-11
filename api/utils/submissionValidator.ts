@@ -23,6 +23,15 @@ export interface SubmissionTelemetry {
     endpoint?: string;
     token?: string;
   };
+  llmJudge?: {
+    enabled?: boolean;
+    provider?: string;
+    model?: string;
+    temperature?: number;
+    maxOutputTokens?: number;
+    baseUrl?: string;
+    dryRun?: boolean;
+  };
 }
 
 export interface SubmissionPayload {
@@ -122,6 +131,30 @@ export function validateSubmissionPayload(input: unknown): SubmissionValidationR
     }
     if (token && typeof token !== 'string') {
       return invalid(['telemetry.relay.token must be a string']);
+    }
+  }
+  if (telemetry?.llmJudge) {
+    const { enabled, provider, model, temperature, maxOutputTokens, baseUrl, dryRun } = telemetry.llmJudge;
+    if (enabled !== undefined && typeof enabled !== 'boolean') {
+      return invalid(['telemetry.llmJudge.enabled must be a boolean']);
+    }
+    if (provider && typeof provider !== 'string') {
+      return invalid(['telemetry.llmJudge.provider must be a string']);
+    }
+    if (model && typeof model !== 'string') {
+      return invalid(['telemetry.llmJudge.model must be a string']);
+    }
+    if (temperature !== undefined && typeof temperature !== 'number') {
+      return invalid(['telemetry.llmJudge.temperature must be a number']);
+    }
+    if (maxOutputTokens !== undefined && typeof maxOutputTokens !== 'number') {
+      return invalid(['telemetry.llmJudge.maxOutputTokens must be a number']);
+    }
+    if (baseUrl && typeof baseUrl !== 'string') {
+      return invalid(['telemetry.llmJudge.baseUrl must be a string']);
+    }
+    if (dryRun !== undefined && typeof dryRun !== 'boolean') {
+      return invalid(['telemetry.llmJudge.dryRun must be a boolean']);
     }
   }
 

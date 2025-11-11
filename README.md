@@ -80,6 +80,7 @@ flowchart TD
 - `pip install -e sandbox-runner` でローカルCLIを有効化（Google ADKテンプレートを含むSandbox Runnerコマンドが利用可能になります）。
 - `pytest` を実行するとリポジトリ内のユニットテストのみが走ります（`pytest.ini`で外部チェックアウトを除外）。
 - W&B MCPを使ってステージログ/アーティファクトを収集する場合は `. .venv/bin/activate && export WANDB_DISABLED=false` を設定してから各コマンドを実行してください（デフォルトでは有効化されますが、明示的にフラグを確認できます）。Submission APIから`telemetry.wandb`フィールドでRun ID/Project/Entity/BaseURLを渡すと、同じRunをTemporalやSandbox Runnerが再利用できます。
+- LLM Judgeを有効化したい場合はSubmission payloadの`telemetry.llmJudge`（例: `{ "enabled": true, "model": "gpt-4o-mini", "provider": "openai", "temperature": 0.1 }`）を指定すると、Temporalワークフロー経由でInspect Worker CLIの`--judge-llm-*`フラグに伝播されます。dry-runを強制したい場合は`dryRun: true`を指定してください。
 - Security Gateをローカルで試す場合は `sandbox-runner` で
   ```bash
   python3.13 -m sandbox_runner.cli \
@@ -136,9 +137,9 @@ flowchart TD
 > ※実装や設計の更新を行った際は、必ず本READMEのステータステーブルと該当セクションを更新してください。
 
 ## 今後の優先タスク
-1. **Temporalアクティビティの本格実装 (完了/2025-11-11)**: Security/Functional/Judge各ステージで`sandbox_runner.cli`とInspect Worker CLIを実行し、Relay情報とW&B Run IDを引き回して実際の成果物を生成する。`runSecurityGate`/`runFunctionalAccuracy`/`runJudgePanel`はいずれもステージサマリとアーティファクトヒントをTemporal `queryProgress`に返すようになった。
-2. **Human Review UI強化 (完了/2025-11-11)**: Next.js製ダッシュボードが `/review/progress` と `/review/artifacts` を利用し、証拠JSON整形表示・再実行リクエスト・承認/差戻しフォーム・操作履歴テーブルを提供する。
-3. **Inspect Worker Relay強化 (完了/2025-11-11)**: Judge PanelがRelay HTTP呼び出しの詳細ログ（レスポンス/エラー/禁止語フラグ）を`relay_logs.jsonl`として保存し、W&Bアーティファクトにも添付。Human Review UIからも同じログをダウンロードできる。
+1. **LLM Judge設定のエンドツーエンド伝播**: Submission `telemetry.llmJudge` → Temporal → Inspect Worker CLI までLLM判定フラグ/モデル/温度を渡し、Workflow UI・Human Review UIからもオン/オフを制御できるようにする。
+2. **Human Review UIのJudge詳細強化**: `judge_report.jsonl` の `llmScore/llmVerdict` 等を整形表示し、ステージ再実行時にLLM設定を引き継ぐ。Relayログの可視化・DLも含む。
+3. **LLM判定ログの監査・W&B連携**: `queryProgress`/`metadata.json`/W&B Artifact/Audit LedgerへLLM判定メタデータ（モデル名、呼び出し回数、dry-run判定など）を記録して、審査証跡を一元化する。
 
 ## Contributor Guide
 完全なコントリビュータガイド、コーディング規約、PR要件は[`AGENTS.md`](AGENTS.md)を参照してください。

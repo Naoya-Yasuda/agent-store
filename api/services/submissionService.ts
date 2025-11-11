@@ -24,6 +24,7 @@ export async function createSubmission(payload: SubmissionPayload, manifestWarni
       agentRevisionId: payload.cardDocument.id,
       agentCardPath,
       relay,
+      llmJudge: payload.telemetry?.llmJudge,
       wandbRun: wandbRun
         ? {
             ...wandbRun,

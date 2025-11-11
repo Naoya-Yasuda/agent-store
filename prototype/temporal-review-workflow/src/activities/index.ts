@@ -1,7 +1,7 @@
 import path from 'path';
 import { promises as fs } from 'fs';
 import { spawn } from 'child_process';
-import { WandbRunInfo } from '../workflows/reviewPipeline.workflow';
+import { WandbRunInfo, LlmJudgeConfig } from '../workflows/reviewPipeline.workflow';
 
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..', '..');
 const SANDBOX_ARTIFACTS_DIR = path.join(PROJECT_ROOT, 'sandbox-runner', 'artifacts');
@@ -161,7 +161,7 @@ export async function runFunctionalAccuracy(args: { submissionId: string; agentI
   };
 }
 
-export async function runJudgePanel(args: { submissionId: string; agentId: string; agentRevisionId: string; promptVersion: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string } }): Promise<{ verdict: 'approve' | 'reject' | 'manual'; score: number; explanation?: string; artifactsPath: string; reportPath: string; summaryPath: string; relayLogPath: string; summary?: Record<string, unknown> }> {
+export async function runJudgePanel(args: { submissionId: string; agentId: string; agentRevisionId: string; promptVersion: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string }; llmJudge?: LlmJudgeConfig }): Promise<{ verdict: 'approve' | 'reject' | 'manual'; score: number; explanation?: string; artifactsPath: string; reportPath: string; summaryPath: string; relayLogPath: string; summary?: Record<string, unknown> }> {
   console.log(`[activities] runJudgePanel submission=${args.submissionId} prompt=${args.promptVersion}`);
   const outDir = path.join(INSPECT_OUT_DIR, args.agentId, args.agentRevisionId);
   await fs.mkdir(outDir, { recursive: true });
@@ -182,6 +182,7 @@ export async function runJudgePanel(args: { submissionId: string; agentId: strin
   if (args.relay?.token) {
     inspectArgs.push('--relay-token', args.relay.token);
   }
+  appendJudgeLlmArgs(inspectArgs, args.llmJudge);
   await runInspectCli(inspectArgs);
   const judgeDir = path.join(outDir, 'judge');
   const summaryPath = path.join(judgeDir, 'judge_summary.json');
@@ -256,4 +257,31 @@ function runInspectCli(cliArgs: string[]): Promise<void> {
     });
     child.on('error', reject);
   });
+}
+
+function appendJudgeLlmArgs(cliArgs: string[], llm?: LlmJudgeConfig): void {
+  if (!llm) {
+    return;
+  }
+  if (llm.enabled) {
+    cliArgs.push('--judge-llm-enabled');
+    if (llm.provider) {
+      cliArgs.push('--judge-llm-provider', llm.provider);
+    }
+    if (llm.model) {
+      cliArgs.push('--judge-llm-model', llm.model);
+    }
+    if (typeof llm.temperature === 'number') {
+      cliArgs.push('--judge-llm-temperature', llm.temperature.toString());
+    }
+    if (typeof llm.maxOutputTokens === 'number') {
+      cliArgs.push('--judge-llm-max-output', llm.maxOutputTokens.toString());
+    }
+    if (llm.baseUrl) {
+      cliArgs.push('--judge-llm-base-url', llm.baseUrl);
+    }
+  }
+  if (llm.dryRun) {
+    cliArgs.push('--judge-llm-dry-run');
+  }
 }

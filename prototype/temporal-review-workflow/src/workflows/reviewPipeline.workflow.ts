@@ -1,6 +1,16 @@
 import { proxyActivities, setHandler, defineSignal, defineQuery } from '@temporalio/workflow';
 import { TASK_QUEUE } from '../../temporal.config';
 
+export type LlmJudgeConfig = {
+  enabled?: boolean;
+  provider?: string;
+  model?: string;
+  temperature?: number;
+  maxOutputTokens?: number;
+  baseUrl?: string;
+  dryRun?: boolean;
+};
+
 type SecurityGateResult = {
   passed: boolean;
   artifactsPath: string;
@@ -39,7 +49,7 @@ type Activities = {
   preCheckSubmission: (args: { submissionId: string }) => Promise<{ passed: boolean; agentId: string; agentRevisionId: string; warnings: string[] }>;
   runSecurityGate: (args: { submissionId: string; agentId: string; agentRevisionId: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string } }) => Promise<SecurityGateResult>;
   runFunctionalAccuracy: (args: { submissionId: string; agentId: string; agentRevisionId: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string } }) => Promise<FunctionalAccuracyResult>;
-  runJudgePanel: (args: { submissionId: string; agentId: string; agentRevisionId: string; promptVersion: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string } }) => Promise<JudgePanelResult>;
+  runJudgePanel: (args: { submissionId: string; agentId: string; agentRevisionId: string; promptVersion: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string }; llmJudge?: LlmJudgeConfig }) => Promise<JudgePanelResult>;
   notifyHumanReview: (args: { submissionId: string; agentId: string; agentRevisionId: string; reason: string; attachments?: string[] }) => Promise<'approved' | 'rejected'>;
   publishAgent: (args: { submissionId: string; agentId: string; agentRevisionId: string }) => Promise<void>;
 };
@@ -69,6 +79,7 @@ interface WorkflowProgress {
   agentId?: string;
   agentRevisionId?: string;
   agentCardPath?: string;
+  llmJudge?: LlmJudgeConfig;
 }
 
 export interface WandbRunInfo {
@@ -90,6 +101,7 @@ export interface ReviewPipelineInput {
     token?: string;
   };
   wandbRun?: WandbRunInfo;
+  llmJudge?: LlmJudgeConfig;
 }
 
 const retryStageSignal = defineSignal<[StageName, string]>('signalRetryStage');
@@ -113,7 +125,8 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
     agentRevisionId: input.agentRevisionId ?? '',
     agentCardPath: input.agentCardPath,
     relay: input.relay,
-    wandbRun: input.wandbRun
+    wandbRun: input.wandbRun,
+    llmJudge: input.llmJudge
   };
 
   function mergeWandbRun(current?: WandbRunInfo, next?: WandbRunInfo): WandbRunInfo | undefined {
@@ -135,7 +148,8 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
     wandbRun: context.wandbRun,
     agentId: context.agentId,
     agentRevisionId: context.agentRevisionId,
-    agentCardPath: context.agentCardPath
+    agentCardPath: context.agentCardPath,
+    llmJudge: context.llmJudge
   }));
   setHandler(retryStageSignal, (stage, reason) => {
     retryRequests.add(stage);
@@ -282,7 +296,8 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
       promptVersion: context.promptVersion,
       wandbRun: context.wandbRun,
       agentCardPath: context.agentCardPath,
-      relay: context.relay
+      relay: context.relay,
+      llmJudge: context.llmJudge
     }));
     updateStage('judge', {
       message: `judge verdict: ${judge.verdict}`,
