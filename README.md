@@ -126,12 +126,12 @@ flowchart TD
 | 機能領域 | 状態 | メモ |
 | --- | --- | --- |
 | Submission API（提出〜スナップショット保存） | ✅ 実装済み | JSON Schema/署名/Manifest検証とDB保存を完了。Temporal連携イベントも送出。 |
-| Temporalワークフロー（PreCheck→Publish） | ✅ 実装済み | `signalRetryStage`/`queryProgress`対応。各ステージはモック活動で接続済み。 |
-| Sandbox RunnerのAdvBench統合 | 🚧 部分実装 | AISI/AdvBench由来CSVから攻撃プロンプトを抽出し`security_report.jsonl`を生成済み。実エンドポイント実行は今後の拡張。 |
-| Functional DSL + RAGTruth突合 | ⏳ 未実装 | DSL生成やEmbedding距離算出は設計済みだがコード未着手。 |
-| Judge Panel (MCTS-Judge) | 🚧 部分実装 | Inspect WorkerのGoogle ADK型Judgeチェーンを実装（Judgeレポート/サマリ出力）。Temporal連携・UIは今後。 |
-| Human Review UI連携 | ⏳ 未実装 | Temporal Signal/Queryに連携するUIはPlaceholder状態。 |
-| W&B MCPトレース連携 | ⏳ 未実装 | Sandbox Runner/Temporalから共通のW&B Run IDを発行し、Artifacts/LogsをMCP経由で蓄積する仕組みを今後実装。 |
+| Temporalワークフロー（PreCheck→Publish） | ✅ 実装済み | `runSecurityGate`/`runFunctionalAccuracy`/`runJudgePanel` が実CLIを叩き、`queryProgress`へW&B/アーティファクト情報を返却。 |
+| Sandbox RunnerのAdvBench統合 | 🚧 部分実装 | CSVプロンプト→Relay実行/禁止語検知まで対応。追加テンプレ/攻撃シナリオや自動再実行は今後。 |
+| Functional DSL + RAGTruth突合 | 🚧 部分実装 | AgentCardベースのシナリオ生成とRelay呼び出しを実装。Embeddingベクトル評価は未着手。 |
+| Judge Panel (MCTS-Judge) | 🚧 部分実装 | Relayログ＋MCTS評価に加え、任意のLLM (OpenAI等) をスコアリングに組み込めるレイヤーを追加。Verdict連携/UI統合は継続中。 |
+| Human Review UI連携 | ✅ 実装済み | `/review/*` RESTとNext.jsダッシュボードを実装。証拠JSON整形表示・再実行・承認/差戻しが可能。 |
+| W&B MCPトレース連携 | 🚧 部分実装 | Sandbox Runner/Inspect WorkerからRun IDを共有し、ステージサマリ/Artifactを記録。Human Review連携ログは今後。 |
 
 > ※実装や設計の更新を行った際は、必ず本READMEのステータステーブルと該当セクションを更新してください。
 

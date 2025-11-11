@@ -3,6 +3,7 @@
 from .question_generator import QuestionSpec, generate_questions
 from .execution_agent import dispatch_questions
 from .judge_orchestrator import JudgeVerdict, MCTSJudgeOrchestrator
+from .llm_judge import LLMJudge, LLMJudgeConfig
 
 __all__ = [
     "QuestionSpec",
@@ -10,4 +11,6 @@ __all__ = [
     "dispatch_questions",
     "JudgeVerdict",
     "MCTSJudgeOrchestrator",
+    "LLMJudge",
+    "LLMJudgeConfig",
 ]

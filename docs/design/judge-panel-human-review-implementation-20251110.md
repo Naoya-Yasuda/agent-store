@@ -21,6 +21,7 @@
 3. **Panel Judge (MCTS)**
    - 少なくとも3つのLLM（例: Gemini 1.5 Pro, GPT-4o, Claude 3.5）を並列実行し、Verdict + Rationaleを収集。
    - MCTS-Judge: 段階（主張→反証→再評価→集約→メタチェック）をコード化し、矛盾があれば`verdict=manual`、即NGなら`verdict=reject`。
+   - 2025-11-11 時点で、Inspect Worker に外部LLM (OpenAI) を判定レイヤーとして組み込むPoCを追加済み。資格情報が無い場合は `--judge-llm-dry-run` でMCTSヒューリスティックのみを使用する。
 4. **Artifacts**
    - `prototype/inspect-worker/out/<agent>/<revision>/judge_report.jsonl`（質問単位）と`judge_summary.json`（観点別スコア）。
    - 各質問IDには `securityGate` / `functionalAccuracy` からの証拠リンク、A2Aログ、LLM判定理由を含める。

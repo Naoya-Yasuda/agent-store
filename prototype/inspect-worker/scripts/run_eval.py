@@ -14,6 +14,7 @@ if str(PACKAGE_ROOT) not in sys.path:
     sys.path.insert(0, str(PACKAGE_ROOT))
 
 from inspect_worker import MCTSJudgeOrchestrator, dispatch_questions, generate_questions
+from inspect_worker.llm_judge import LLMJudge, LLMJudgeConfig
 from inspect_worker.wandb_logger import WandbConfig, init_wandb, log_artifact
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -42,6 +43,23 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         default=os.environ.get("JUDGE_DRY_RUN", "false").lower() == "true",
         help="Do not call the real agent during Judge Panel execution",
+    )
+    parser.add_argument(
+        "--judge-llm-enabled",
+        action="store_true",
+        default=os.environ.get("JUDGE_LLM_ENABLED", "false").lower() == "true",
+        help="Enable LLM-as-a-Judge scoring"
+    )
+    parser.add_argument("--judge-llm-provider", default=os.environ.get("JUDGE_LLM_PROVIDER", "openai"))
+    parser.add_argument("--judge-llm-model", default=os.environ.get("JUDGE_LLM_MODEL", "gpt-4o-mini"))
+    parser.add_argument("--judge-llm-temperature", type=float, default=float(os.environ.get("JUDGE_LLM_TEMPERATURE", 0.1)))
+    parser.add_argument("--judge-llm-max-output", type=int, default=int(os.environ.get("JUDGE_LLM_MAX_OUTPUT", 512)))
+    parser.add_argument("--judge-llm-base-url", default=os.environ.get("JUDGE_LLM_BASE_URL"))
+    parser.add_argument(
+        "--judge-llm-dry-run",
+        action="store_true",
+        default=os.environ.get("JUDGE_LLM_DRY_RUN", "false").lower() == "true",
+        help="Skip actual LLM API calls even if enabled"
     )
     parser.add_argument("--wandb-run-id", help="Reuse an existing W&B Run ID for Inspect outputs")
     parser.add_argument("--wandb-project", default=os.environ.get("WANDB_PROJECT", "agent-store-sandbox"))
@@ -118,6 +136,18 @@ def main() -> None:
     details_path = output_path / "details.json"
     details_path.write_text(json.dumps(eval_results, indent=2, ensure_ascii=False), encoding="utf-8")
 
+    llm_config = None
+    if args.judge_llm_enabled:
+        llm_config = LLMJudgeConfig(
+            enabled=True,
+            provider=args.judge_llm_provider,
+            model=args.judge_llm_model,
+            temperature=args.judge_llm_temperature,
+            max_output_tokens=args.judge_llm_max_output,
+            base_url=args.judge_llm_base_url,
+            dry_run=bool(args.judge_llm_dry_run or args.judge_dry_run),
+        )
+
     if args.enable_judge_panel and args.agent_card:
         judge_summary = _run_judge_panel(
             output_path,
@@ -128,6 +158,7 @@ def main() -> None:
             timeout=args.judge_timeout,
             dry_run=args.judge_dry_run,
             wandb_config=wandb_config if wandb_config.enabled else None,
+            llm_config=llm_config,
         )
         summary["judgePanel"] = judge_summary
 
@@ -435,6 +466,7 @@ def _run_judge_panel(
     timeout: float,
     dry_run: bool,
     wandb_config: WandbConfig | None,
+    llm_config: LLMJudgeConfig | None,
 ) -> Dict[str, Any]:
     judge_dir = output_path / "judge"
     judge_dir.mkdir(parents=True, exist_ok=True)
@@ -448,8 +480,24 @@ def _run_judge_panel(
         dry_run=dry_run,
     )
 
-    orchestrator = MCTSJudgeOrchestrator()
+    llm_summary = {
+        "enabled": bool(llm_config and llm_config.enabled),
+        "model": llm_config.model if llm_config and llm_config.enabled else None,
+        "dryRun": bool(llm_config.dry_run) if llm_config else False,
+        "error": None,
+        "calls": 0,
+    }
+    llm_judge_instance = None
+    if llm_config and llm_config.enabled:
+        try:
+            llm_judge_instance = LLMJudge(llm_config)
+        except Exception as error:  # pragma: no cover - env specific
+            llm_summary["error"] = str(error)
+            llm_summary["enabled"] = False
+
+    orchestrator = MCTSJudgeOrchestrator(llm_judge=llm_judge_instance)
     verdicts = orchestrator.run_panel(questions, executions)
+    llm_summary["calls"] = orchestrator.llm_calls if llm_judge_instance else 0
 
     report_path = judge_dir / "judge_report.jsonl"
     with report_path.open("w", encoding="utf-8") as f:
@@ -469,6 +517,9 @@ def _run_judge_panel(
                 "responseError": execution.error if execution else None,
                 "httpStatus": execution.http_status if execution else None,
                 "flags": verdict.flags,
+                "llmScore": verdict.llm_score,
+                "llmVerdict": verdict.llm_verdict,
+                "llmRationale": verdict.llm_rationale,
             }
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
@@ -495,6 +546,7 @@ def _run_judge_panel(
         "notes": "Judge Panel PoC",
         "flagged": sum(1 for exec in executions if exec.flags),
         "relayErrors": sum(1 for exec in executions if exec.status == "error"),
+        "llmJudge": llm_summary,
     }
     summary_path = judge_dir / "judge_summary.json"
     summary_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")

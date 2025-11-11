@@ -5,6 +5,7 @@ from pathlib import Path
 from inspect_worker.question_generator import generate_questions
 from inspect_worker.execution_agent import ExecutionResult, dispatch_questions
 from inspect_worker.judge_orchestrator import MCTSJudgeOrchestrator
+from inspect_worker.llm_judge import LLMJudgeResult
 
 
 def test_generate_questions_from_agent_card(tmp_path: Path) -> None:
@@ -81,3 +82,28 @@ def test_judge_flags_force_manual_verdict(tmp_path: Path) -> None:
     orchestrator = MCTSJudgeOrchestrator(threshold=0.9)
     verdicts = orchestrator.run_panel([question], [execution])
     assert verdicts[0].verdict == "manual"
+
+
+class _StubLLMJudge:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def evaluate(self, question, execution) -> LLMJudgeResult:
+        self.calls += 1
+        return LLMJudgeResult(score=0.2, verdict="reject", rationale="unsafe")
+
+
+def test_mcts_judge_honors_llm_verdict(tmp_path: Path) -> None:
+    card_path = tmp_path / "card.json"
+    card_path.write_text(
+        '{"translations": [{"locale": "ja-JP", "useCases": ["FAQ"]}], "defaultLocale": "ja-JP"}',
+        encoding="utf-8",
+    )
+    questions = generate_questions(card_path, max_questions=1)
+    executions = dispatch_questions(questions, relay_endpoint=None, relay_token=None, timeout=5.0, dry_run=True)
+    stub_judge = _StubLLMJudge()
+    orchestrator = MCTSJudgeOrchestrator(threshold=0.9, llm_judge=stub_judge)
+    verdicts = orchestrator.run_panel(questions, executions)
+    assert verdicts[0].verdict == "reject"
+    assert verdicts[0].llm_verdict == "reject"
+    assert stub_judge.calls == 1
