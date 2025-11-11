@@ -73,7 +73,8 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
     submissionId: input.submissionId,
     promptVersion: input.promptVersion,
     agentId: input.agentId ?? '',
-    agentRevisionId: input.agentRevisionId ?? ''
+    agentRevisionId: input.agentRevisionId ?? '',
+    wandbRun: input.wandbRun
   };
 
   function nextSeq(): number {
@@ -158,7 +159,8 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
     const security = await runStageWithRetry('security', () => activities.runSecurityGate({
       submissionId: context.submissionId,
       agentId: context.agentId,
-      agentRevisionId: context.agentRevisionId
+      agentRevisionId: context.agentRevisionId,
+      wandbRun: context.wandbRun
     }));
     if (!security.passed) {
       updateStage('security', { status: 'failed', message: security.failReasons?.join(', ') ?? 'security gate failed' });
@@ -171,7 +173,8 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
     const functional = await runStageWithRetry('functional', () => activities.runFunctionalAccuracy({
       submissionId: context.submissionId,
       agentId: context.agentId,
-      agentRevisionId: context.agentRevisionId
+      agentRevisionId: context.agentRevisionId,
+      wandbRun: context.wandbRun
     }));
     if (!functional.passed) {
       updateStage('functional', { status: 'failed', message: functional.failReasons?.join(', ') ?? 'functional accuracy failed' });
@@ -185,7 +188,8 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
       submissionId: context.submissionId,
       agentId: context.agentId,
       agentRevisionId: context.agentRevisionId,
-      promptVersion: context.promptVersion
+      promptVersion: context.promptVersion,
+      wandbRun: context.wandbRun
     }));
     updateStage('judge', { message: `judge verdict: ${judge.verdict}` });
 
