@@ -109,7 +109,7 @@ flowchart TD
     --judge-dry-run
   ```
   を実行すると `out/<agent>/<revision>/judge/judge_report.jsonl` と `judge_summary.json` が生成されます。`--relay-endpoint` を指定すればA2A Relay経由で実エージェントに質問できます。Relay呼び出しは最大3回まで自動リトライし、HTTPエラー履歴・レスポンススニペット・禁止語検知（パスワード/APIキー/SSN/秘密鍵等）を `judge_report.jsonl` と `relay_logs.jsonl` に書き出します。
-- Human Review UIは `GET /review/ui/:submissionId` で確認できます。ステージ状況、W&Bダッシュボードリンク、再実行フォーム、承認/差戻しボタンが表示されます（バックエンド: `api/routes/reviews.ts`）。Judge セクションでは `llmScore` / `llmVerdict` のカード表示と Relay JSONL ログの整形プレビューを確認でき、CLI版ビューとNext.jsダッシュボードのどちらからでもLLM設定を再確認できます。また、UIから送信した承認/差戻しは Temporal の `signalHumanDecision` を通じて Human ステージへ即時反映されます（実装メモ: [docs/design/judge-panel-human-review-implementation-20251110.md](docs/design/judge-panel-human-review-implementation-20251110.md)）。
+- Human Review UIは `GET /review/ui/:submissionId` で確認できます。ステージ状況、W&Bダッシュボードリンク、再実行フォーム、承認/差戻しボタンが表示されます（バックエンド: `api/routes/reviews.ts`）。Judge セクションでは `llmScore` / `llmVerdict` のカード表示と Relay JSONL ログの整形プレビューを確認でき、CLI版ビューとNext.jsダッシュボードのどちらからでもLLM設定を再確認できます。Security/JudgeステージのLedger（監査台帳）リンクも同じビューで参照可能で、UIから送信した承認/差戻しは Temporal の `signalHumanDecision` を通じて Human ステージへ即時反映されます（実装メモ: [docs/design/judge-panel-human-review-implementation-20251110.md](docs/design/judge-panel-human-review-implementation-20251110.md)）。LedgerリストだけをJSONで取得したい場合は `GET /review/ledger/:submissionId` を利用してください。
 - Next.js版のHuman Reviewダッシュボード（`review-ui/`）も用意しています。`cd review-ui && npm install && npm run dev`で起動し、`http://localhost:3000`からAPI経由で進捗・W&Bリンク・証拠ダウンロードを確認できます。
 
 ## W&B MCP 連携

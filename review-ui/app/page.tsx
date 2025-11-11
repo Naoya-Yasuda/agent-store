@@ -27,6 +27,10 @@ type StageDetails = {
   artifacts?: Record<string, ArtifactDescriptor>;
   llmJudge?: LlmJudgeConfig;
   categories?: Record<string, number>;
+  ledger?: {
+    entryPath?: string;
+    digest?: string;
+  };
 };
 
 type StageInfo = {
@@ -403,6 +407,50 @@ export default function ReviewDashboard() {
 
   const evidenceOptions = useMemo(() => evidenceStageOptions.filter((opt) => progress?.stages?.[opt.stage]), [progress]);
 
+  const renderLedgerSection = () => {
+    if (!progress) {
+      return null;
+    }
+    const ledgerEntries = stageOrder
+      .map((stage) => {
+        const ledger = progress.stages[stage]?.details?.ledger;
+        if (!ledger?.entryPath && !ledger?.digest) {
+          return null;
+        }
+        return { stage, ledger };
+      })
+      .filter(Boolean) as { stage: StageName; ledger: { entryPath?: string; digest?: string } }[];
+
+    if (!ledgerEntries.length) {
+      return null;
+    }
+
+    const formatEntryPath = (entryPath?: string) => {
+      if (!entryPath) {
+        return 'N/A';
+      }
+      if (entryPath.startsWith('http://') || entryPath.startsWith('https://')) {
+        return <a href={entryPath} target="_blank" rel="noreferrer">Ledger Link</a>;
+      }
+      return <code style={{ fontSize: 12 }}>{entryPath}</code>;
+    };
+
+    return (
+      <section style={{ display: 'grid', gap: 8 }}>
+        <h2 style={{ margin: 0 }}>Ledger 記録</h2>
+        <div style={{ display: 'grid', gap: 12 }}>
+          {ledgerEntries.map(({ stage, ledger }) => (
+            <div key={`ledger-${stage}`} style={{ border: '1px solid #d0d7de', borderRadius: 8, padding: 12 }}>
+              <div style={{ fontWeight: 600, marginBottom: 4 }}>{stageLabels[stage]}</div>
+              <div>Entry: {formatEntryPath(ledger.entryPath)}</div>
+              <div>Digest: {ledger.digest ? <code style={{ fontSize: 12 }}>{ledger.digest}</code> : 'N/A'}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+    );
+  };
+
   const renderLlmJudgeSummary = () => {
     const llm = progress?.llmJudge;
     if (!llm) {
@@ -517,6 +565,7 @@ export default function ReviewDashboard() {
 
       {renderSecurityInsights()}
       {renderJudgeInsights()}
+      {renderLedgerSection()}
 
       <section style={{ display: 'grid', gap: 12 }}>
         <h2 style={{ margin: 0 }}>ステージ再実行リクエスト</h2>
@@ -535,6 +584,17 @@ export default function ReviewDashboard() {
           </label>
           <button onClick={handleRetry}>再実行を依頼</button>
         </div>
+        {retryStage === 'judge' && progress?.llmJudge && (
+          <div style={{ border: '1px solid #d0d7de', borderRadius: 8, padding: 12, background: '#fff' }}>
+            <div style={{ fontWeight: 600, marginBottom: 4 }}>Judge再実行時に引き継がれるLLM設定</div>
+            <div style={{ fontSize: 13 }}>モデル: {progress.llmJudge.model ?? 'N/A'}</div>
+            <div style={{ fontSize: 13 }}>プロバイダ: {progress.llmJudge.provider ?? 'N/A'}</div>
+            <div style={{ fontSize: 13 }}>温度: {progress.llmJudge.temperature ?? '-'}</div>
+            <div style={{ fontSize: 13 }}>Max Tokens: {progress.llmJudge.maxOutputTokens ?? '-'}</div>
+            <div style={{ fontSize: 13 }}>Dry Run: {progress.llmJudge.dryRun ? 'true' : 'false'}</div>
+            <small style={{ color: '#57606a' }}>この設定はTemporal Workflowに保存されているため、再実行時に自動で適用されます。</small>
+          </div>
+        )}
         {retryStatus && <span>{retryStatus}</span>}
       </section>
 

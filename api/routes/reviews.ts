@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import path from 'path';
 import fs from 'fs';
-import { getWorkflowProgress, requestHumanDecision, requestStageRetry } from '../services/reviewService';
+import { getWorkflowProgress, getLedgerSummary, requestHumanDecision, requestStageRetry } from '../services/reviewService';
 
 const router = Router();
 
@@ -35,6 +35,15 @@ function readJsonlPreview(filePath: string, limit = 8): any[] {
     return [];
   }
 }
+
+const stageLabels: Record<string, string> = {
+  precheck: 'PreCheck',
+  security: 'Security Gate',
+  functional: 'Functional Accuracy',
+  judge: 'Judge Panel',
+  human: 'Human Review',
+  publish: 'Publish'
+};
 
 router.get('/review/progress/:submissionId', async (req: Request, res: Response) => {
   try {
@@ -129,6 +138,37 @@ router.get('/review/ui/:submissionId', async (req: Request, res: Response) => {
     const judgeInsights = judgeCardsHtml || relayPreviewHtml
       ? `<section style="margin-top:16px;">${judgeCardsHtml}${relayPreviewHtml}</section>`
       : '';
+    const ledgerEntries = stagesEntries
+      .map(([stage, info]) => {
+        const ledger = info?.details?.ledger;
+        if (!ledger?.entryPath && !ledger?.digest) {
+          return null;
+        }
+        return { stage, ledger };
+      })
+      .filter(Boolean) as { stage: string; ledger: { entryPath?: string; digest?: string } }[];
+    const ledgerHtml = ledgerEntries.length
+      ? `<section style="margin-top:16px;">
+          <h3>Ledger 記録</h3>
+          <div class="ledger-grid">
+            ${ledgerEntries.map((entry) => {
+              const entryPath = entry.ledger.entryPath;
+              const digest = entry.ledger.digest ? `<code>${escapeHtml(entry.ledger.digest)}</code>` : 'N/A';
+              const link = entryPath
+                ? (entryPath.startsWith('http://') || entryPath.startsWith('https://')
+                    ? `<a href="${escapeHtml(entryPath)}" target="_blank" rel="noreferrer">Ledger Link</a>`
+                    : `<code>${escapeHtml(entryPath)}</code>`)
+                : 'N/A';
+              return `
+                <div class="ledger-card">
+                  <div class="ledger-card__title">${escapeHtml(stageLabels[entry.stage as keyof typeof stageLabels] ?? entry.stage)}</div>
+                  <div>Entry: ${link}</div>
+                  <div>Digest: ${digest}</div>
+                </div>`;
+            }).join('')}
+          </div>
+        </section>`
+      : '';
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Review Progress</title>
       <style>
         body{font-family:system-ui, sans-serif;padding:24px;background:#f6f8fa;}
@@ -151,6 +191,9 @@ router.get('/review/ui/:submissionId', async (req: Request, res: Response) => {
         .relay-item__meta{font-size:12px;color:#57606a;}
         .relay-item__error{color:#d1242f;font-size:13px;margin-top:4px;}
         .relay-item pre{white-space:pre-wrap;background:#0f172a;color:#e2e8f0;padding:8px;border-radius:6px;}
+        .ledger-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;}
+        .ledger-card{background:#fff;border:1px solid #d0d7de;border-radius:8px;padding:12px;}
+        .ledger-card__title{font-weight:600;margin-bottom:4px;}
       </style>
       </head><body>
       <h1>Submission ${req.params.submissionId}</h1>
@@ -162,6 +205,7 @@ router.get('/review/ui/:submissionId', async (req: Request, res: Response) => {
       </div>
       ${judgeTable}
       ${judgeInsights}
+      ${ledgerHtml}
       <table><thead><tr><th>ステージ</th><th>状態</th><th>試行数</th><th>メッセージ</th></tr></thead><tbody>${stageRows}</tbody></table>
       <form id="retry-form">
         <h2>ステージ再実行</h2>
@@ -252,6 +296,19 @@ router.post('/review/decision', async (req: Request, res: Response) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : 'unknown_error';
     res.status(500).json({ error: 'decision_failed', message });
+  }
+});
+
+router.get('/review/ledger/:submissionId', async (req: Request, res: Response) => {
+  try {
+    const entries = await getLedgerSummary(req.params.submissionId);
+    if (!entries.length) {
+      return res.status(404).json({ error: 'ledger_not_found' });
+    }
+    res.json({ submissionId: req.params.submissionId, entries });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'unknown_error';
+    res.status(500).json({ error: 'ledger_fetch_failed', message });
   }
 });
 
