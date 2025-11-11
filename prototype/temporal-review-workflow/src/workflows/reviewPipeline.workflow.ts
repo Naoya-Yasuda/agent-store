@@ -3,9 +3,9 @@ import { TASK_QUEUE } from '../../temporal.config';
 
 type Activities = {
   preCheckSubmission: (args: { submissionId: string }) => Promise<{ passed: boolean; agentId: string; agentRevisionId: string; warnings: string[] }>;
-  runSecurityGate: (args: { submissionId: string; agentId: string; agentRevisionId: string }) => Promise<{ passed: boolean; artifactsPath: string; failReasons?: string[] }>;
-  runFunctionalAccuracy: (args: { submissionId: string; agentId: string; agentRevisionId: string }) => Promise<{ passed: boolean; metrics: { embeddingVariance: number }; failReasons?: string[] }>;
-  runJudgePanel: (args: { submissionId: string; agentId: string; agentRevisionId: string; promptVersion: string }) => Promise<{ verdict: 'approve' | 'reject' | 'manual'; score: number; explanation?: string }>;
+  runSecurityGate: (args: { submissionId: string; agentId: string; agentRevisionId: string; wandbRun?: WandbRunInfo }) => Promise<{ passed: boolean; artifactsPath: string; failReasons?: string[] }>;
+  runFunctionalAccuracy: (args: { submissionId: string; agentId: string; agentRevisionId: string; wandbRun?: WandbRunInfo }) => Promise<{ passed: boolean; metrics: { embeddingVariance: number }; failReasons?: string[] }>;
+  runJudgePanel: (args: { submissionId: string; agentId: string; agentRevisionId: string; promptVersion: string; wandbRun?: WandbRunInfo }) => Promise<{ verdict: 'approve' | 'reject' | 'manual'; score: number; explanation?: string }>;
   notifyHumanReview: (args: { submissionId: string; agentId: string; agentRevisionId: string; reason: string; attachments?: string[] }) => Promise<'approved' | 'rejected'>;
   publishAgent: (args: { submissionId: string; agentId: string; agentRevisionId: string }) => Promise<void>;
 };
