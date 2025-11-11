@@ -38,6 +38,22 @@ router.get('/review/ui/:submissionId', async (req: Request, res: Response) => {
             <tr><td>Dry Run</td><td>${llm.dryRun ? 'true' : 'false'}</td></tr>
           </tbody></table>`
       : 'LLM Judge: 未設定';
+    const judgeDetails = progress.stages?.judge?.details ?? {};
+    const judgeSummary = judgeDetails.summary ?? {};
+    const judgeTable = Object.keys(judgeSummary).length
+      ? `<div style="margin-top:8px;background:#fff;border:1px solid #d0d7de;border-radius:8px;padding:12px;">
+          <h3>Judge Panel 統計</h3>
+          <table>
+            <tbody>
+              <tr><td>Questions</td><td>${judgeSummary.questions ?? '-'}</td></tr>
+              <tr><td>Approved</td><td>${judgeSummary.approved ?? '-'}</td></tr>
+              <tr><td>Manual</td><td>${judgeSummary.manual ?? '-'}</td></tr>
+              <tr><td>Rejected</td><td>${judgeSummary.rejected ?? '-'}</td></tr>
+              <tr><td>Flagged</td><td>${judgeSummary.flagged ?? '-'}</td></tr>
+            </tbody>
+          </table>
+        </div>`
+      : '';
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Review Progress</title>
       <style>
         body{font-family:system-ui, sans-serif;padding:24px;background:#f6f8fa;}
@@ -56,6 +72,7 @@ router.get('/review/ui/:submissionId', async (req: Request, res: Response) => {
         <h3>LLM Judge設定</h3>
         ${llmInfo}
       </div>
+      ${judgeTable}
       <table><thead><tr><th>ステージ</th><th>状態</th><th>試行数</th><th>メッセージ</th></tr></thead><tbody>${stageRows}</tbody></table>
       <form id="retry-form">
         <h2>ステージ再実行</h2>

@@ -4,6 +4,7 @@ import json
 import math
 import random
 import time
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
@@ -166,6 +167,7 @@ def run_functional_accuracy(
   passes = 0
   needs_review = 0
   distances: List[float] = []
+  embedding_distances: List[float] = []
 
   error_count = 0
   scenario_records: List[Dict[str, Any]] = []
@@ -191,6 +193,9 @@ def run_functional_accuracy(
       else:
         needs_review += 1
       distances.append(evaluation["distance"])
+      emb_distance = embedding_distance(scenario.expected_answer, response_text)
+      if emb_distance is not None:
+        embedding_distances.append(emb_distance)
       record = {
         "scenarioId": scenario.id,
         "locale": scenario.locale,
@@ -201,7 +206,8 @@ def run_functional_accuracy(
         "evaluation": evaluation,
         "timestamp": int(time.time()),
         "responseStatus": status,
-        "responseError": error_text
+        "responseError": error_text,
+        "embeddingDistance": emb_distance
       }
       report_file.write(json.dumps(record, ensure_ascii=False) + "\n")
       scenario_records.append({
@@ -211,7 +217,8 @@ def run_functional_accuracy(
         "finalPrompt": scenario.prompt,
         "responseStatus": status,
         "response": response_text,
-        "evaluation": evaluation
+        "evaluation": evaluation,
+        "embeddingDistance": emb_distance
       })
 
   with prompts_path.open("w", encoding="utf-8") as prompts_file:
@@ -219,6 +226,8 @@ def run_functional_accuracy(
       prompts_file.write(json.dumps(record, ensure_ascii=False) + "\n")
 
   avg_distance = sum(distances) / len(distances) if distances else math.nan
+  avg_embedding_distance = sum(embedding_distances) / len(embedding_distances) if embedding_distances else math.nan
+  max_embedding_distance = max(embedding_distances) if embedding_distances else None
   summary = {
     "agentId": agent_id,
     "revision": revision,
@@ -226,6 +235,8 @@ def run_functional_accuracy(
     "passes": passes,
     "needsReview": needs_review,
     "averageDistance": round(avg_distance, 4) if not math.isnan(avg_distance) else None,
+    "embeddingAverageDistance": round(avg_embedding_distance, 4) if not math.isnan(avg_embedding_distance) else None,
+    "embeddingMaxDistance": max_embedding_distance,
     "ragtruthRecords": len(ragtruth_records),
     "responsesWithError": error_count,
     "endpoint": endpoint_url,
@@ -235,3 +246,22 @@ def run_functional_accuracy(
   }
   (output_dir / "functional_summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
   return summary
+def tokenize(text: str) -> List[str]:
+  return [token for token in text.lower().split() if token]
+
+
+def embedding_distance(expected: str, response: Optional[str]) -> Optional[float]:
+  if response is None:
+    return None
+  expected_counts = Counter(tokenize(expected))
+  response_counts = Counter(tokenize(response))
+  if not expected_counts or not response_counts:
+    return None
+  all_tokens = set(expected_counts.keys()) | set(response_counts.keys())
+  dot = sum(expected_counts[token] * response_counts[token] for token in all_tokens)
+  norm_expected = math.sqrt(sum(count * count for count in expected_counts.values()))
+  norm_response = math.sqrt(sum(count * count for count in response_counts.values()))
+  if norm_expected == 0 or norm_response == 0:
+    return None
+  cosine_similarity = dot / (norm_expected * norm_response)
+  return round(1 - cosine_similarity, 4)

@@ -123,7 +123,7 @@ export async function runSecurityGate(args: { submissionId: string; agentId: str
   };
 }
 
-export async function runFunctionalAccuracy(args: { submissionId: string; agentId: string; agentRevisionId: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string } }): Promise<{ passed: boolean; metrics: { embeddingVariance: number; maxDistance?: number }; artifactsPath: string; summaryPath: string; reportPath: string; promptsPath: string; metadataPath: string; summary?: Record<string, unknown>; wandb?: WandbRunInfo; failReasons?: string[] }> {
+export async function runFunctionalAccuracy(args: { submissionId: string; agentId: string; agentRevisionId: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string } }): Promise<{ passed: boolean; metrics: { averageDistance?: number; embeddingAverageDistance?: number; embeddingMaxDistance?: number }; artifactsPath: string; summaryPath: string; reportPath: string; promptsPath: string; metadataPath: string; summary?: Record<string, unknown>; wandb?: WandbRunInfo; failReasons?: string[] }> {
   console.log(`[activities] runFunctionalAccuracy submission=${args.submissionId}`);
   const artifactsPath = await ensureSandboxArtifacts(args.agentRevisionId);
   const cliArgs = [
@@ -157,7 +157,11 @@ export async function runFunctionalAccuracy(args: { submissionId: string; agentI
   const passed = (summary as any).needsReview ? (summary as any).needsReview === 0 : !(summary as any).error;
   return {
     passed,
-    metrics: { embeddingVariance: (summary as any).averageDistance ?? 0.0, maxDistance: (summary as any).maxDistance },
+    metrics: {
+      averageDistance: (summary as any).averageDistance,
+      embeddingAverageDistance: (summary as any).embeddingAverageDistance,
+      embeddingMaxDistance: (summary as any).embeddingMaxDistance
+    },
     artifactsPath,
     summaryPath,
     reportPath,
