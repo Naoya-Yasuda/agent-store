@@ -74,7 +74,7 @@ export async function preCheckSubmission(args: { submissionId: string }): Promis
   };
 }
 
-export async function runSecurityGate(args: { submissionId: string; agentId: string; agentRevisionId: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string } }): Promise<{ passed: boolean; artifactsPath: string; summaryPath: string; reportPath: string; metadataPath: string; summary?: Record<string, unknown>; wandb?: WandbRunInfo; failReasons?: string[] }> {
+export async function runSecurityGate(args: { submissionId: string; agentId: string; agentRevisionId: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string } }): Promise<{ passed: boolean; artifactsPath: string; summaryPath: string; reportPath: string; promptsPath: string; metadataPath: string; summary?: Record<string, unknown>; wandb?: WandbRunInfo; failReasons?: string[] }> {
   console.log(`[activities] runSecurityGate submission=${args.submissionId}`);
   const artifactsPath = await ensureSandboxArtifacts(args.agentRevisionId);
   const cliArgs = [
@@ -97,6 +97,9 @@ export async function runSecurityGate(args: { submissionId: string; agentId: str
   await runSandboxCli(cliArgs);
   const summaryPath = path.join(artifactsPath, 'security', 'security_summary.json');
   const summary = await readJsonFile<Record<string, unknown>>(summaryPath) ?? {};
+  const promptsPath = typeof (summary as any).promptsArtifact === 'string'
+    ? (summary as any).promptsArtifact as string
+    : path.join(artifactsPath, 'security', 'security_prompts.jsonl');
   const reportPath = path.join(artifactsPath, 'security', 'security_report.jsonl');
   const metadataPath = path.join(artifactsPath, 'metadata.json');
   const metadata = await readJsonFile(metadataPath);
@@ -108,6 +111,7 @@ export async function runSecurityGate(args: { submissionId: string; agentId: str
     artifactsPath,
     summaryPath,
     reportPath,
+    promptsPath,
     metadataPath,
     summary,
     wandb,

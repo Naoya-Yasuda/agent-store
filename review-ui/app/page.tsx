@@ -26,6 +26,7 @@ type StageDetails = {
   metrics?: Record<string, unknown>;
   artifacts?: Record<string, ArtifactDescriptor>;
   llmJudge?: LlmJudgeConfig;
+  categories?: Record<string, number>;
 };
 
 type StageInfo = {
@@ -71,7 +72,7 @@ const stageLabels: Record<StageName, string> = {
 };
 
 const evidenceStageOptions: { stage: StageName; artifacts: string[] }[] = [
-  { stage: 'security', artifacts: ['summary', 'report', 'metadata'] },
+  { stage: 'security', artifacts: ['summary', 'report', 'metadata', 'prompts'] },
   { stage: 'functional', artifacts: ['summary', 'report'] },
   { stage: 'judge', artifacts: ['summary', 'report', 'relay'] }
 ];
@@ -325,6 +326,59 @@ export default function ReviewDashboard() {
     );
   };
 
+  const renderSecurityInsights = () => {
+    if (selectedEvidenceStage !== 'security' || !progress) {
+      return null;
+    }
+    const securityDetails = progress.stages.security?.details;
+    const summary = (securityDetails?.summary as Record<string, any>) ?? {};
+    const categories = (securityDetails?.categories as Record<string, number>) ?? summary.categories ?? {};
+    const prompts = (artifactStates['security:prompts']?.data as any[]) ?? [];
+    return (
+      <section style={{ display: 'grid', gap: 12 }}>
+        <h3 style={{ margin: 0 }}>Security Gate 統計</h3>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <div style={{ border: '1px solid #d0d7de', borderRadius: 8, padding: 12, minWidth: 220 }}>
+            <div>Attempted: {summary.attempted ?? '-'}</div>
+            <div>Blocked: {summary.blocked ?? '-'}</div>
+            <div>Needs Review: {summary.needsReview ?? '-'}</div>
+            <div>Errors: {summary.errors ?? '-'}</div>
+            <div>Endpoint failures: {summary.endpointFailures ?? 0}</div>
+            <div>Timeout failures: {summary.timeoutFailures ?? 0}</div>
+          </div>
+          <div style={{ border: '1px solid #d0d7de', borderRadius: 8, padding: 12, minWidth: 240 }}>
+            <div style={{ fontWeight: 600, marginBottom: 6 }}>カテゴリ別件数</div>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <tbody>
+                {Object.keys(categories).length === 0 && <tr><td>データなし</td></tr>}
+                {Object.entries(categories).map(([cat, count]) => (
+                  <tr key={cat}>
+                    <td>{cat}</td>
+                    <td>{count as number}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        {prompts.length > 0 && (
+          <div>
+            <div style={{ fontWeight: 600, marginBottom: 4 }}>攻撃テンプレ一覧</div>
+            <div style={{ maxHeight: 240, overflow: 'auto', border: '1px solid #d0d7de', borderRadius: 8 }}>
+              {prompts.map((item) => (
+                <div key={item.promptId ?? Math.random()} style={{ padding: 8, borderBottom: '1px solid #eaeef2' }}>
+                  <div style={{ fontWeight: 600 }}>{item.promptId}</div>
+                  <div style={{ fontSize: 12, color: '#57606a' }}>{item.requirement}</div>
+                  <pre style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{item.finalPrompt ?? item.basePrompt}</pre>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </section>
+    );
+  };
+
   const statusColor = (status: string) => {
     switch (status) {
       case 'completed':
@@ -452,6 +506,7 @@ export default function ReviewDashboard() {
         {renderArtifactViewer()}
       </section>
 
+      {renderSecurityInsights()}
       {renderJudgeInsights()}
 
       <section style={{ display: 'grid', gap: 12 }}>

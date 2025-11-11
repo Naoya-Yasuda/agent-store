@@ -161,7 +161,8 @@ router.get('/review/artifacts/:agentRevisionId', async (req: Request, res: Respo
     security: {
       report: path.join(baseDir, 'security', 'security_report.jsonl'),
       summary: path.join(baseDir, 'security', 'security_summary.json'),
-      metadata: path.join(baseDir, 'metadata.json')
+      metadata: path.join(baseDir, 'metadata.json'),
+      prompts: path.join(baseDir, 'security', 'security_prompts.jsonl')
     },
     functional: {
       report: path.join(baseDir, 'functional', 'functional_report.jsonl'),

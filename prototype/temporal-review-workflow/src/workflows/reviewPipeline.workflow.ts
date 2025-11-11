@@ -247,10 +247,12 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
     updateStage('security', {
       details: {
         summary: security.summary,
+        categories: (security.summary as any)?.categories,
         artifacts: {
           report: { stage: 'security', type: 'report', agentRevisionId: context.agentRevisionId },
           summary: { stage: 'security', type: 'summary', agentRevisionId: context.agentRevisionId },
-          metadata: { stage: 'security', type: 'metadata', agentRevisionId: context.agentRevisionId }
+          metadata: { stage: 'security', type: 'metadata', agentRevisionId: context.agentRevisionId },
+          prompts: { stage: 'security', type: 'prompts', agentRevisionId: context.agentRevisionId }
         }
       }
     });

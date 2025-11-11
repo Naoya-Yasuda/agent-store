@@ -228,6 +228,13 @@ def main(argv: list[str] | None = None) -> int:
         base_url=args.wandb_base_url,
     )
 
+    agent_card_data = None
+    if args.agent_card:
+        card_path = Path(args.agent_card)
+        if card_path.exists():
+            with card_path.open(encoding="utf-8") as card_file:
+                agent_card_data = json.load(card_file)
+
     security_summary = None
     if not args.skip_security_gate:
         security_output = output_dir / "security"
@@ -240,11 +247,13 @@ def main(argv: list[str] | None = None) -> int:
             endpoint_url=args.security_endpoint or args.relay_endpoint,
             endpoint_token=args.security_endpoint_token or args.relay_token,
             timeout=args.security_timeout,
-            dry_run=args.dry_run
+            dry_run=args.dry_run,
+            agent_card=agent_card_data
         )
         metadata["securityGate"] = security_summary
         wandb_mcp.log_stage_summary("security", security_summary)
         wandb_mcp.save_artifact("security", security_output / "security_report.jsonl", name="security-report")
+        wandb_mcp.save_artifact("security", security_output / "security_prompts.jsonl", name="security-prompts")
 
     functional_summary = None
     if not args.skip_functional and args.agent_card:

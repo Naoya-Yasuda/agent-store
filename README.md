@@ -88,7 +88,7 @@ flowchart TD
     --security-dataset third_party/aisev/backend/dataset/output/06_aisi_security_v0.1.csv \\
     --security-attempts 5 --output-dir sandbox-runner/artifacts
   ```
-  を実行してください。`--security-endpoint` を指定すると実エージェントに対して攻撃プロンプトを送出できます（未指定の場合は`not_executed`として記録）。
+  を実行してください。`--security-endpoint` を指定すると実エージェントに対して攻撃プロンプトを送出できます（未指定の場合は`not_executed`として記録）。`--agent-card path/to/card.json` を渡すとユースケース語彙を組み合わせた攻撃テンプレートが生成され、`security/security_prompts.jsonl` に保存されます。
 - Functional Accuracy（機能正確性）を試す場合は、AgentCard JSONとRAGTruthディレクトリを指定します。サンプルは`sandbox-runner/resources/ragtruth/sample.jsonl`にあります。
   ```bash
   python3.13 -m sandbox_runner.cli \
@@ -128,7 +128,7 @@ flowchart TD
 | --- | --- | --- |
 | Submission API（提出〜スナップショット保存） | ✅ 実装済み | JSON Schema/署名/Manifest検証とDB保存を完了。Temporal連携イベントも送出。 |
 | Temporalワークフロー（PreCheck→Publish） | ✅ 実装済み | `runSecurityGate`/`runFunctionalAccuracy`/`runJudgePanel` が実CLIを叩き、`queryProgress`へW&B/アーティファクト情報を返却。 |
-| Sandbox RunnerのAdvBench統合 | 🚧 部分実装 | CSVプロンプト→Relay実行/禁止語検知まで対応。追加テンプレ/攻撃シナリオや自動再実行は今後。 |
+| Sandbox RunnerのAdvBench統合 | ✅ 実装済み | AgentCard語彙を差し込んだ攻撃テンプレ生成・Relay実行・カテゴリ別統計・W&B/Temporal連携まで完了。 |
 | Functional DSL + RAGTruth突合 | 🚧 部分実装 | AgentCardベースのシナリオ生成とRelay呼び出しを実装。Embeddingベクトル評価は未着手。 |
 | Judge Panel (MCTS-Judge) | 🚧 部分実装 | Relayログ＋MCTS評価に加え、任意のLLM (OpenAI等) をスコアリングに組み込めるレイヤーを追加。Verdict連携/UI統合は継続中。 |
 | Human Review UI連携 | ✅ 実装済み | `/review/*` RESTとNext.jsダッシュボードを実装。証拠JSON整形表示・再実行・承認/差戻しが可能。 |
@@ -137,9 +137,10 @@ flowchart TD
 > ※実装や設計の更新を行った際は、必ず本READMEのステータステーブルと該当セクションを更新してください。
 
 ## 今後の優先タスク
-1. **Human Review UI: Judge詳細強化**: `judge_report.jsonl` の `llmScore/llmVerdict` をカード表示し、RelayログJSONLを整形表示。再実行フォームがLLM設定を保持するよう改善する。
-2. **LLM Judgeメタデータの監査共有**: `queryProgress` で得たLLM設定/結果をW&B metadataやAuditログにも書き込み、ステージ毎の証跡を揃える。
-3. **HTMLレビュー画面のLLM表示**: `GET /review/ui/:submissionId` のHTMLビューにもLLM設定を表示して、CLI/ブラウザ双方から確認できるようにする。
+1. **Temporal/W&B連携の仕上げ**: Security Gateのカテゴリ統計や攻撃テンプレアーティファクトをW&B metadataにも掲載し、監査証跡を強化する。
+2. **Functional DSL + RAGTruth高度化**: Embedding距離ベースの判定や追加シナリオ生成ロジックを実装し、UI/Temporalへメトリクスを返す。
+3. **Judge Panel LLM統合の完了**: LLMジャッジ結果をHuman Review UIとW&Bに完全連携し、再実行時の設定保持や監査ログを整備する。
+4. **テスト＆ドキュメント整備**: AdvBench/Functional/Judgeの自動テストを拡充し、README/設計メモで完了条件を明文化する。
 
 ## Contributor Guide
 完全なコントリビュータガイド、コーディング規約、PR要件は[`AGENTS.md`](AGENTS.md)を参照してください。
