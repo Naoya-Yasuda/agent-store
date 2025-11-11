@@ -1,6 +1,6 @@
 import { randomUUID, createHash } from 'crypto';
 import { getDbPool } from '../db/pool';
-import { SubmissionPayload } from '../utils/submissionValidator';
+import { SubmissionPayload, WandbTelemetry } from '../utils/submissionValidator';
 import { stableStringify } from '../utils/json';
 
 export type SubmissionState = 'precheck_pending';
@@ -12,7 +12,7 @@ export interface SubmissionRecord {
   manifestWarnings: string[];
 }
 
-export async function insertSubmission(payload: SubmissionPayload, manifestWarnings: string[], requestContext: Record<string, string | undefined>): Promise<SubmissionRecord> {
+export async function insertSubmission(payload: SubmissionPayload, manifestWarnings: string[], requestContext: Record<string, string | undefined>, wandbOverride?: WandbTelemetry | null): Promise<SubmissionRecord> {
   const pool = getDbPool();
   const client = await pool.connect();
   const submissionId = randomUUID();
@@ -37,7 +37,7 @@ export async function insertSubmission(payload: SubmissionPayload, manifestWarni
         state,
         manifestWarnings,
         JSON.stringify(requestContext),
-        JSON.stringify(payload.telemetry?.wandb ?? null),
+        JSON.stringify(wandbOverride ?? payload.telemetry?.wandb ?? null),
         createdAt
       ]
     );

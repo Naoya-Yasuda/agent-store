@@ -456,6 +456,13 @@ export async function recordHumanDecisionMetadata(args: { agentRevisionId: strin
     notes: args.notes,
     decidedAt: args.decidedAt ?? new Date().toISOString()
   });
+  await appendWandbEvent(args.agentRevisionId, {
+    stage: 'human',
+    type: 'human_decision',
+    decision: args.decision,
+    notes: args.notes,
+    timestamp: args.decidedAt ?? new Date().toISOString()
+  });
 }
 
 async function upsertStageMetadata(agentRevisionId: string, stage: string, update: Record<string, unknown>): Promise<void> {
@@ -481,3 +488,21 @@ async function upsertStageMetadata(agentRevisionId: string, stage: string, updat
   }
 }
 
+async function appendWandbEvent(agentRevisionId: string, event: Record<string, unknown>): Promise<void> {
+  const metadataPath = path.join(SANDBOX_ARTIFACTS_DIR, agentRevisionId, 'metadata.json');
+  try {
+    const raw = await fs.readFile(metadataPath, 'utf8');
+    const metadata = JSON.parse(raw);
+    metadata.wandbMcp = metadata.wandbMcp ?? {};
+    metadata.wandbMcp.events = Array.isArray(metadata.wandbMcp.events) ? metadata.wandbMcp.events : [];
+    metadata.wandbMcp.events.push({
+      ...event,
+      id: event.id ?? `event-${Date.now()}`
+    });
+    await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2), 'utf8');
+  } catch (err: any) {
+    if (err?.code !== 'ENOENT') {
+      console.warn('[activities] failed to append wandb event', err);
+    }
+  }
+}
