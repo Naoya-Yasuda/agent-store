@@ -42,6 +42,8 @@ def parse_args() -> argparse.Namespace:
         default=os.environ.get("JUDGE_DRY_RUN", "false").lower() == "true",
         help="Do not call the real agent during Judge Panel execution",
     )
+    parser.add_argument("--relay-endpoint")
+    parser.add_argument("--relay-token")
     return parser.parse_args()
 
 

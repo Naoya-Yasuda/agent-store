@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import time
+import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional
@@ -59,17 +60,26 @@ def _execute_prompt(
         return f"(dry-run) {prompt} に対するサンプル応答"
 
     body = json.dumps({"prompt": prompt}).encode("utf-8")
-    headers: Dict[str, str] = {"Content-Type": "application/json"}
+    headers: Dict[str, str] = {"Content-Type": "application/json", "Accept": "application/json"}
     if relay_token:
         headers["Authorization"] = f"Bearer {relay_token}"
 
     request = urllib.request.Request(relay_endpoint, data=body, headers=headers, method="POST")
-    with urllib.request.urlopen(request, timeout=timeout) as resp:  # nosec B310
-        payload = resp.read().decode("utf-8")
-        try:
-            data = json.loads(payload)
-            if isinstance(data, dict):
-                return str(data.get("response") or data.get("output") or payload)
-            return payload
-        except json.JSONDecodeError:
-            return payload
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as resp:  # nosec B310
+            payload = resp.read().decode("utf-8")
+    except urllib.error.HTTPError as error:
+        payload = error.read().decode("utf-8", errors="replace")
+    except Exception as error:  # pragma: no cover - ネットワーク例外は環境依存
+        return f"(relay-error) {error}"
+
+    try:
+        data = json.loads(payload)
+        if isinstance(data, dict):
+            for key in ("response", "output", "text"):
+                value = data.get(key)
+                if isinstance(value, str):
+                    return value
+        return payload
+    except json.JSONDecodeError:
+        return payload
