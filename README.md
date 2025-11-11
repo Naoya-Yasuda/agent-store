@@ -137,9 +137,9 @@ flowchart TD
 > ※実装や設計の更新を行った際は、必ず本READMEのステータステーブルと該当セクションを更新してください。
 
 ## 今後の優先タスク
-1. **LLM Judge設定のエンドツーエンド伝播**: Submission `telemetry.llmJudge` → Temporal → Inspect Worker CLI までLLM判定フラグ/モデル/温度を渡し、Workflow UI・Human Review UIからもオン/オフを制御できるようにする。
-2. **Human Review UIのJudge詳細強化**: `judge_report.jsonl` の `llmScore/llmVerdict` 等を整形表示し、ステージ再実行時にLLM設定を引き継ぐ。Relayログの可視化・DLも含む。
-3. **LLM判定ログの監査・W&B連携**: `queryProgress`/`metadata.json`/W&B Artifact/Audit LedgerへLLM判定メタデータ（モデル名、呼び出し回数、dry-run判定など）を記録して、審査証跡を一元化する。
+1. **Human Review UI: Judge詳細強化**: `judge_report.jsonl` の `llmScore/llmVerdict` をカード表示し、RelayログJSONLを整形表示。再実行フォームがLLM設定を保持するよう改善する。
+2. **LLM Judgeメタデータの監査共有**: `queryProgress` で得たLLM設定/結果をW&B metadataやAuditログにも書き込み、ステージ毎の証跡を揃える。
+3. **HTMLレビュー画面のLLM表示**: `GET /review/ui/:submissionId` のHTMLビューにもLLM設定を表示して、CLI/ブラウザ双方から確認できるようにする。
 
 ## Contributor Guide
 完全なコントリビュータガイド、コーディング規約、PR要件は[`AGENTS.md`](AGENTS.md)を参照してください。

@@ -39,9 +39,9 @@ async function main(): Promise<void> {
   const connection = await Connection.connect();
   const client = new WorkflowClient({ connection, namespace: NAMESPACE });
 
-  const handle = client.getHandle(workflowId, runId ? { runId } : undefined);
+  const handle = client.getHandle(workflowId, runId);
   const info = await handle.describe();
-  const effectiveRunId = info.execution?.runId ?? runId;
+  const effectiveRunId = info.runId ?? runId;
 
   const historyResponse = await connection.workflowService.getWorkflowExecutionHistory({
     namespace: NAMESPACE,

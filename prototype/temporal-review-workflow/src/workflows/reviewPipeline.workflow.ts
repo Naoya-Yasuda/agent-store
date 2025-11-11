@@ -299,10 +299,14 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
       relay: context.relay,
       llmJudge: context.llmJudge
     }));
+    const judgeSummary = judge.summary as Record<string, unknown> | undefined;
+    const judgeLlm = (judgeSummary?.llmJudge as LlmJudgeConfig | undefined) ?? context.llmJudge;
+    context.llmJudge = judgeLlm;
     updateStage('judge', {
       message: `judge verdict: ${judge.verdict}`,
       details: {
         summary: judge.summary,
+        llmJudge: judgeLlm,
         artifacts: {
           report: { stage: 'judge', type: 'report', agentRevisionId: context.agentRevisionId, agentId: context.agentId },
           summary: { stage: 'judge', type: 'summary', agentRevisionId: context.agentRevisionId, agentId: context.agentId },

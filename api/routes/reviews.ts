@@ -27,6 +27,17 @@ router.get('/review/ui/:submissionId', async (req: Request, res: Response) => {
     const wandbLink = progress.wandbRun?.url
       ? `<a href="${progress.wandbRun.url}" target="_blank" rel="noreferrer">W&B Dashboard</a>`
       : 'N/A';
+    const llm = progress.llmJudge;
+    const llmInfo = llm
+      ? `<table><tbody>
+            <tr><td>Enabled</td><td>${llm.enabled ? 'ON' : 'OFF'}</td></tr>
+            <tr><td>Model</td><td>${llm.model ?? 'N/A'}</td></tr>
+            <tr><td>Provider</td><td>${llm.provider ?? 'N/A'}</td></tr>
+            <tr><td>Temperature</td><td>${llm.temperature ?? '-'}</td></tr>
+            <tr><td>Max Tokens</td><td>${llm.maxOutputTokens ?? '-'}</td></tr>
+            <tr><td>Dry Run</td><td>${llm.dryRun ? 'true' : 'false'}</td></tr>
+          </tbody></table>`
+      : 'LLM Judge: 未設定';
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Review Progress</title>
       <style>
         body{font-family:system-ui, sans-serif;padding:24px;background:#f6f8fa;}
@@ -41,6 +52,10 @@ router.get('/review/ui/:submissionId', async (req: Request, res: Response) => {
       <h1>Submission ${req.params.submissionId}</h1>
       <p>状態: ${progress.terminalState}</p>
       <p>W&B: ${wandbLink}</p>
+      <div style="margin-top:8px; padding:12px; background:#fff; border:1px solid #d0d7de; border-radius:8px;">
+        <h3>LLM Judge設定</h3>
+        ${llmInfo}
+      </div>
       <table><thead><tr><th>ステージ</th><th>状態</th><th>試行数</th><th>メッセージ</th></tr></thead><tbody>${stageRows}</tbody></table>
       <form id="retry-form">
         <h2>ステージ再実行</h2>

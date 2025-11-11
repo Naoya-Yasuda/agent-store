@@ -11,10 +11,21 @@ type ArtifactDescriptor = {
   agentId?: string;
 };
 
+type LlmJudgeConfig = {
+  enabled?: boolean;
+  provider?: string;
+  model?: string;
+  temperature?: number;
+  maxOutputTokens?: number;
+  baseUrl?: string;
+  dryRun?: boolean;
+};
+
 type StageDetails = {
   summary?: unknown;
   metrics?: Record<string, unknown>;
   artifacts?: Record<string, ArtifactDescriptor>;
+  llmJudge?: LlmJudgeConfig;
 };
 
 type StageInfo = {
@@ -39,6 +50,7 @@ type ProgressResponse = {
   wandbRun?: WandbInfo;
   agentId?: string;
   agentRevisionId?: string;
+  llmJudge?: LlmJudgeConfig;
 };
 
 type ArtifactState = {
@@ -233,6 +245,86 @@ export default function ReviewDashboard() {
     );
   };
 
+  const renderJudgeInsights = () => {
+    if (selectedEvidenceStage !== 'judge' || !progress) {
+      return null;
+    }
+    const judgeDetails = progress.stages.judge?.details;
+    const summary = (judgeDetails?.summary as Record<string, any>) ?? {};
+    const llm = judgeDetails?.llmJudge ?? progress.llmJudge;
+    const reportData = (artifactStates['judge:report']?.data as any[]) ?? [];
+    const relayData = (artifactStates['judge:relay']?.data as any[]) ?? [];
+
+    return (
+      <section style={{ display: 'grid', gap: 12 }}>
+        <h3 style={{ margin: 0 }}>Judge 詳細</h3>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <div style={{ border: '1px solid #d0d7de', borderRadius: 8, padding: 12, minWidth: 220 }}>
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>集計</div>
+            <div>質問数: {summary.questions ?? '-'}</div>
+            <div>Approved: {summary.approved ?? '-'}</div>
+            <div>Manual: {summary.manual ?? '-'}</div>
+            <div>Rejected: {summary.rejected ?? '-'}</div>
+            <div>Relay Errors: {summary.relayErrors ?? 0}</div>
+          </div>
+          <div style={{ border: '1px solid #d0d7de', borderRadius: 8, padding: 12, minWidth: 260 }}>
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>LLM Judge</div>
+            <div>有効: {llm?.enabled ? 'ON' : 'OFF'}</div>
+            <div>モデル: {llm?.model ?? 'N/A'}</div>
+            <div>プロバイダ: {llm?.provider ?? 'N/A'}</div>
+            <div>温度: {llm?.temperature ?? '-'}</div>
+            <div>Max Tokens: {llm?.maxOutputTokens ?? '-'}</div>
+            <div>Dry Run: {llm?.dryRun ? 'true' : 'false'}</div>
+          </div>
+        </div>
+        {reportData.length > 0 && (
+          <div>
+            <div style={{ fontWeight: 600, marginBottom: 4 }}>質問別LLM判定</div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr>
+                    <th>Question</th>
+                    <th>Verdict</th>
+                    <th>LLM Verdict</th>
+                    <th>LLM Score</th>
+                    <th>Flags</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reportData.map((item) => (
+                    <tr key={item.questionId}>
+                      <td>{item.questionId}</td>
+                      <td>{item.verdict}</td>
+                      <td>{item.llmVerdict ?? 'N/A'}</td>
+                      <td>{item.llmScore ?? '-'}</td>
+                      <td>{(item.flags ?? []).join(', ')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+        {relayData.length > 0 && (
+          <div>
+            <div style={{ fontWeight: 600, marginBottom: 4 }}>Relay ログ</div>
+            <div style={{ maxHeight: 240, overflow: 'auto', border: '1px solid #d0d7de', borderRadius: 8 }}>
+              {relayData.map((item) => (
+                <div key={`${item.questionId}-${item.latencyMs ?? 0}`} style={{ padding: 8, borderBottom: '1px solid #eaeef2' }}>
+                  <div style={{ fontWeight: 600 }}>{item.questionId} ({item.status})</div>
+                  <div style={{ fontSize: 12, color: '#57606a' }}>latency: {Math.round(item.latencyMs ?? 0)} ms / http: {item.httpStatus ?? 'n/a'}</div>
+                  {item.error && <div style={{ color: '#d1242f' }}>{item.error}</div>}
+                  {item.response && <pre style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{item.response}</pre>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </section>
+    );
+  };
+
   const statusColor = (status: string) => {
     switch (status) {
       case 'completed':
@@ -247,6 +339,37 @@ export default function ReviewDashboard() {
   };
 
   const evidenceOptions = useMemo(() => evidenceStageOptions.filter((opt) => progress?.stages?.[opt.stage]), [progress]);
+
+  const renderLlmJudgeSummary = () => {
+    const llm = progress?.llmJudge;
+    if (!llm) {
+      return <div style={{ fontSize: 14, color: '#57606a' }}>LLM Judge: 設定なし</div>;
+    }
+    const rows = [
+      { label: '有効', value: llm.enabled ? 'ON' : 'OFF' },
+      { label: 'モデル', value: llm.model ?? 'N/A' },
+      { label: 'プロバイダ', value: llm.provider ?? 'N/A' },
+      { label: '温度', value: llm.temperature ?? '-' },
+      { label: 'Max Tokens', value: llm.maxOutputTokens ?? '-' },
+      { label: 'Base URL', value: llm.baseUrl ?? '-' },
+      { label: 'Dry Run', value: llm.dryRun ? 'true' : 'false' },
+    ];
+    return (
+      <div style={{ border: '1px solid #d0d7de', borderRadius: 8, padding: 12 }}>
+        <div style={{ fontWeight: 600, marginBottom: 8 }}>LLM Judge 設定</div>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.label}>
+                <td style={{ width: 140, fontSize: 13, color: '#57606a' }}>{row.label}</td>
+                <td style={{ fontSize: 13 }}>{String(row.value)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
 
   return (
     <main style={{ fontFamily: 'system-ui, sans-serif', padding: 24, display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -281,6 +404,9 @@ export default function ReviewDashboard() {
                   <a href={progress.wandbRun.url} target="_blank" rel="noreferrer">ダッシュボードを開く</a>
                 ) : 'N/A'}
               </div>
+            </div>
+            <div style={{ flex: 1, minWidth: 240 }}>
+              {renderLlmJudgeSummary()}
             </div>
           </div>
 
@@ -325,6 +451,8 @@ export default function ReviewDashboard() {
         </div>
         {renderArtifactViewer()}
       </section>
+
+      {renderJudgeInsights()}
 
       <section style={{ display: 'grid', gap: 12 }}>
         <h2 style={{ margin: 0 }}>ステージ再実行リクエスト</h2>
