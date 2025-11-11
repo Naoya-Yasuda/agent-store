@@ -139,10 +139,10 @@ flowchart TD
 > ※実装や設計の更新を行った際は、必ず本READMEのステータステーブルと該当セクションを更新してください。
 
 ## 今後の優先タスク
-1. **W&BイベントUI露出**: `recordStageEvent`で蓄積したRetry/エスカレーションログをHuman Review UIとW&Bメタデータに可視化（タイムライン/ヒートマップ）し、ステージ再実行理由やHuman決裁を即時把握できるようにする。
-2. **Judge Panel仕上げ**: Inspect WorkerのMCTS-Judge結果をUIに完全表示し、LLM override履歴・RelayエラーをLedger/W&B両方で追跡できるよう [docs/design/judge-panel-human-review-implementation-20251110.md](docs/design/judge-panel-human-review-implementation-20251110.md) を更新する。
-3. **Ledger耐障害性の強化**: `/review/ledger/download` の存在チェック/リトライ、HTTPアップロード失敗時の再送制御を追加し、[security-gate-ledger-plan.md](docs/design/security-gate-ledger-plan.md) に運用手順を追記する。
-4. **FunctionalリプレイUI**: Functional AccuracyステージのEmbedding距離やRAGTruth照合結果をHuman Review UIで比較表示し、Functional Ledgerと同期した差分ビューを提供する。
+1. **Judge Panel仕上げ**: Inspect WorkerのMCTS-Judge結果をUIに完全表示し、LLM override履歴・RelayエラーをLedger/W&B両方で追跡できるよう [docs/design/judge-panel-human-review-implementation-20251110.md](docs/design/judge-panel-human-review-implementation-20251110.md) を更新する。
+2. **Ledger耐障害性の強化**: `/review/ledger/download` の存在チェック/リトライ、HTTPアップロード失敗時の再送制御を追加し、[security-gate-ledger-plan.md](docs/design/security-gate-ledger-plan.md) に運用手順を追記する。
+3. **FunctionalリプレイUI**: Functional AccuracyステージのEmbedding距離やRAGTruth照合結果をHuman Review UIで比較表示し、Functional Ledgerと同期した差分ビューを提供する。
+4. **Inspect Workerトレーサビリティ**: Judge Panel CLIがW&BタイムラインやイベントAPIと整合するよう、LLM呼び出し/RelayリトライのトレースIDをArtifacts・Ledgerへ書き込み、UIで辿れるようにする。
 
 ## Contributor Guide
 完全なコントリビュータガイド、コーディング規約、PR要件は[`AGENTS.md`](AGENTS.md)を参照してください。

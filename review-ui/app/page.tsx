@@ -131,6 +131,8 @@ export default function ReviewDashboard() {
   const [stageEventError, setStageEventError] = useState<string | null>(null);
   const [eventStageFilter, setEventStageFilter] = useState<'all' | StageName>('all');
   const [eventSearchTerm, setEventSearchTerm] = useState('');
+  const [judgeCardLimit, setJudgeCardLimit] = useState(12);
+  const [showRelayErrorsOnly, setShowRelayErrorsOnly] = useState(false);
 
   const llmOverrideResult = useMemo<LlmOverrideResult>(() => {
     if (!llmOverrideEnabled) {
@@ -197,6 +199,10 @@ export default function ReviewDashboard() {
   useEffect(() => {
     fetchProgress();
   }, [fetchProgress]);
+
+  useEffect(() => {
+    setJudgeCardLimit(12);
+  }, [submissionId, progress?.agentRevisionId]);
 
   useEffect(() => {
     if (retryStage !== 'judge') {
@@ -477,9 +483,14 @@ export default function ReviewDashboard() {
     const reportData = (artifactStates['judge:report']?.data as any[]) ?? [];
     const relayData = (artifactStates['judge:relay']?.data as any[]) ?? [];
     const relayTerm = relaySearchTerm.trim().toLowerCase();
+    const relayBase = showRelayErrorsOnly ? relayData.filter((item) => item?.error) : relayData;
     const filteredRelay = relayTerm
-      ? relayData.filter((item) => JSON.stringify(item).toLowerCase().includes(relayTerm))
-      : relayData;
+      ? relayBase.filter((item) => JSON.stringify(item).toLowerCase().includes(relayTerm))
+      : relayBase;
+    const relayErrorCount = relayData.filter((item) => item?.error).length;
+    const displayedReport = reportData.slice(0, Math.min(judgeCardLimit, reportData.length));
+    const hasMoreCards = reportData.length > judgeCardLimit;
+    const llmOverrideHistory = stageEvents.filter((evt) => evt.stage === 'judge' && evt.event === 'llm_override_received');
 
     return (
       <section style={{ display: 'grid', gap: 12 }}>
@@ -507,7 +518,7 @@ export default function ReviewDashboard() {
           <div>
             <div style={{ fontWeight: 600, marginBottom: 4 }}>質問別LLM判定カード</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
-              {reportData.slice(0, 12).map((item) => (
+              {displayedReport.map((item) => (
                 <div key={item.questionId} style={{ border: '1px solid #d0d7de', borderRadius: 10, padding: 12, background: '#fff' }}>
                   <div style={{ fontWeight: 600 }}>{item.questionId}</div>
                   <div style={{ fontSize: 13, color: '#475467' }}>Verdict: {item.verdict}</div>
@@ -524,6 +535,41 @@ export default function ReviewDashboard() {
                   )}
                 </div>
               ))}
+            </div>
+            {hasMoreCards && (
+              <button style={{ marginTop: 8 }} onClick={() => setJudgeCardLimit((limit) => limit + 12)}>
+                さらに読み込む ({Math.max(reportData.length - judgeCardLimit, 0)} 件)
+              </button>
+            )}
+            {reportData.length > 12 && !hasMoreCards && (
+              <button style={{ marginTop: 8 }} onClick={() => setJudgeCardLimit(12)}>先頭のみ表示</button>
+            )}
+          </div>
+        )}
+        {llmOverrideHistory.length > 0 && (
+          <div>
+            <div style={{ fontWeight: 600, marginBottom: 4 }}>LLM Override 履歴</div>
+            <div style={{ border: '1px solid #d0d7de', borderRadius: 8, maxHeight: 180, overflow: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: 'left', padding: 6 }}>時刻</th>
+                    <th style={{ textAlign: 'left', padding: 6 }}>モデル/プロバイダ</th>
+                    <th style={{ textAlign: 'left', padding: 6 }}>設定</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {llmOverrideHistory.map((evt) => (
+                    <tr key={`llm-override-${evt.id}`} style={{ borderTop: '1px solid #eaeef2' }}>
+                      <td style={{ padding: 6, fontSize: 12 }}>{formatEventTimestamp(evt.timestamp)}</td>
+                      <td style={{ padding: 6 }}>{String(evt.data?.model ?? 'N/A')}<div style={{ fontSize: 12, color: '#57606a' }}>{String(evt.data?.provider ?? 'N/A')}</div></td>
+                      <td style={{ padding: 6, fontSize: 12 }}>
+                        <pre style={{ margin: 0 }}>{JSON.stringify(evt.data, null, 2)}</pre>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         )}
@@ -544,9 +590,13 @@ export default function ReviewDashboard() {
                     クリア
                   </button>
                 )}
+                <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
+                  <input type="checkbox" checked={showRelayErrorsOnly} onChange={(e) => setShowRelayErrorsOnly(e.target.checked)} />
+                  エラーのみ表示 ({relayErrorCount})
+                </label>
               </div>
             </div>
-            <div style={{ fontSize: 12, color: '#57606a', marginBottom: 4 }}>該当: {filteredRelay.length} / {relayData.length}</div>
+            <div style={{ fontSize: 12, color: '#57606a', marginBottom: 4 }}>該当: {filteredRelay.length} / {showRelayErrorsOnly ? relayBase.length : relayData.length}</div>
             <div style={{ maxHeight: 240, overflow: 'auto', border: '1px solid #d0d7de', borderRadius: 8 }}>
               {filteredRelay.map((item) => (
                 <div key={`${item.questionId}-${item.latencyMs ?? 0}`} style={{ padding: 8, borderBottom: '1px solid #eaeef2' }}>

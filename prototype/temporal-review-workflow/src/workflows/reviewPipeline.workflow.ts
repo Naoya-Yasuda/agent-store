@@ -191,6 +191,15 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
         llmJudge: config
       }
     });
+    emitStageEvent('judge', 'llm_override_received', {
+      enabled: config?.enabled,
+      provider: config?.provider,
+      model: config?.model,
+      temperature: config?.temperature,
+      maxOutputTokens: config?.maxOutputTokens,
+      baseUrl: config?.baseUrl,
+      dryRun: config?.dryRun
+    }).catch((err) => console.warn('[workflow] failed to log llm override event', err));
   });
 
   function nextSeq(): number {
