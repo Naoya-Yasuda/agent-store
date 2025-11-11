@@ -46,6 +46,11 @@ export interface ReviewPipelineInput {
   promptVersion: string;
   agentRevisionId?: string;
   agentId?: string;
+  agentCardPath?: string;
+  relay?: {
+    endpoint?: string;
+    token?: string;
+  };
   wandbRun?: WandbRunInfo;
 }
 
@@ -74,6 +79,8 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
     promptVersion: input.promptVersion,
     agentId: input.agentId ?? '',
     agentRevisionId: input.agentRevisionId ?? '',
+    agentCardPath: input.agentCardPath,
+    relay: input.relay,
     wandbRun: input.wandbRun
   };
 
@@ -160,7 +167,9 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
       submissionId: context.submissionId,
       agentId: context.agentId,
       agentRevisionId: context.agentRevisionId,
-      wandbRun: context.wandbRun
+      wandbRun: context.wandbRun,
+      agentCardPath: context.agentCardPath,
+      relay: context.relay
     }));
     if (!security.passed) {
       updateStage('security', { status: 'failed', message: security.failReasons?.join(', ') ?? 'security gate failed' });
@@ -174,7 +183,8 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
       submissionId: context.submissionId,
       agentId: context.agentId,
       agentRevisionId: context.agentRevisionId,
-      wandbRun: context.wandbRun
+      wandbRun: context.wandbRun,
+      agentCardPath: context.agentCardPath
     }));
     if (!functional.passed) {
       updateStage('functional', { status: 'failed', message: functional.failReasons?.join(', ') ?? 'functional accuracy failed' });
@@ -189,7 +199,9 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
       agentId: context.agentId,
       agentRevisionId: context.agentRevisionId,
       promptVersion: context.promptVersion,
-      wandbRun: context.wandbRun
+      wandbRun: context.wandbRun,
+      agentCardPath: context.agentCardPath,
+      relay: context.relay
     }));
     updateStage('judge', { message: `judge verdict: ${judge.verdict}` });
 

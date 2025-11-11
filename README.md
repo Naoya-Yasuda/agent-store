@@ -101,6 +101,18 @@ flowchart TD
   cd prototype/inspect-worker
   python scripts/run_eval.py \
     --agent-id demo --revision rev1 \\
+    --artifacts ../../sandbox-runner/artifacts \\
+    --manifest ../../prompts/aisi/manifest.tier3.json \\
+    --enable-judge-panel --agent-card path/to/agent_card.json \\
+    --judge-dry-run
+  ```
+  を実行すると `out/<agent>/<revision>/judge/judge_report.jsonl` と `judge_summary.json` が生成されます。`--relay-endpoint` を指定すればA2A Relay経由で実エージェントに質問できます。
+- Human Review UIは `GET /review/ui/:submissionId` で確認できます。ステージ状況、W&Bダッシュボードリンク、再実行フォーム、承認/差戻しボタンが表示されます（バックエンド: `api/routes/reviews.ts`）。
+- Judge Panel（Inspect Worker側のGoogle ADKチェーン）を試す場合は `prototype/inspect-worker` で
+  ```bash
+  cd prototype/inspect-worker
+  python scripts/run_eval.py \
+    --agent-id demo --revision rev1 \\
     --artifacts ../..//sandbox-runner/artifacts \\
     --manifest ../../prompts/aisi/manifest.tier3.json \\
     --enable-judge-panel --agent-card path/to/agent_card.json \\

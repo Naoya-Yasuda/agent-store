@@ -26,7 +26,7 @@ export async function preCheckSubmission(args: { submissionId: string }): Promis
   };
 }
 
-export async function runSecurityGate(args: { submissionId: string; agentId: string; agentRevisionId: string; wandbRun?: WandbRunInfo }): Promise<{ passed: boolean; artifactsPath: string; failReasons?: string[] }> {
+export async function runSecurityGate(args: { submissionId: string; agentId: string; agentRevisionId: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string } }): Promise<{ passed: boolean; artifactsPath: string; failReasons?: string[] }> {
   console.log(`[activities] runSecurityGate submission=${args.submissionId}`);
   const artifactsPath = await ensureSandboxArtifacts(args.agentRevisionId);
   const cliArgs = [
@@ -48,7 +48,10 @@ export async function runSecurityGate(args: { submissionId: string; agentId: str
   if (args.wandbRun?.baseUrl) {
     cliArgs.push('--wandb-base-url', args.wandbRun.baseUrl);
   }
-  await runSandboxCli(cliArgs);
+  if (args.agentCardPath) {
+    cliArgs.push('--agent-card', args.agentCardPath);
+  }
+  await runSandboxCli(cliArgs, args.agentCardPath);
   const summaryPath = path.join(artifactsPath, 'security', 'security_summary.json');
   let summary: any = {};
   try {
@@ -69,7 +72,7 @@ export async function runSecurityGate(args: { submissionId: string; agentId: str
   };
 }
 
-export async function runFunctionalAccuracy(args: { submissionId: string; agentId: string; agentRevisionId: string; wandbRun?: WandbRunInfo }): Promise<{ passed: boolean; metrics: { embeddingVariance: number }; failReasons?: string[] }> {
+export async function runFunctionalAccuracy(args: { submissionId: string; agentId: string; agentRevisionId: string; wandbRun?: WandbRunInfo; agentCardPath?: string }): Promise<{ passed: boolean; metrics: { embeddingVariance: number }; failReasons?: string[] }> {
   console.log(`[activities] runFunctionalAccuracy submission=${args.submissionId}`);
   const artifactsPath = await ensureSandboxArtifacts(args.agentRevisionId);
   const cliArgs = [
@@ -91,7 +94,10 @@ export async function runFunctionalAccuracy(args: { submissionId: string; agentI
   if (args.wandbRun?.baseUrl) {
     cliArgs.push('--wandb-base-url', args.wandbRun.baseUrl);
   }
-  await runSandboxCli(cliArgs);
+  if (args.agentCardPath) {
+    cliArgs.push('--agent-card', args.agentCardPath);
+  }
+  await runSandboxCli(cliArgs, args.agentCardPath);
   const summaryPath = path.join(artifactsPath, 'functional', 'functional_summary.json');
   let summary: any = {};
   try {
@@ -106,7 +112,7 @@ export async function runFunctionalAccuracy(args: { submissionId: string; agentI
   };
 }
 
-export async function runJudgePanel(args: { submissionId: string; agentId: string; agentRevisionId: string; promptVersion: string; wandbRun?: WandbRunInfo }): Promise<{ verdict: 'approve' | 'reject' | 'manual'; score: number; explanation?: string }> {
+export async function runJudgePanel(args: { submissionId: string; agentId: string; agentRevisionId: string; promptVersion: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string } }): Promise<{ verdict: 'approve' | 'reject' | 'manual'; score: number; explanation?: string }> {
   console.log(`[activities] runJudgePanel submission=${args.submissionId} prompt=${args.promptVersion}`);
   const outDir = path.join(INSPECT_OUT_DIR, args.agentId, args.agentRevisionId);
   await fs.mkdir(outDir, { recursive: true });
@@ -116,9 +122,15 @@ export async function runJudgePanel(args: { submissionId: string; agentId: strin
     '--artifacts', path.join(SANDBOX_ARTIFACTS_DIR, args.agentRevisionId),
     '--manifest', path.join(PROJECT_ROOT, 'prompts', 'aisi', 'manifest.tier3.json'),
     '--enable-judge-panel',
-    '--agent-card', path.join(SANDBOX_ARTIFACTS_DIR, args.agentRevisionId, 'agent_card.json'),
+    '--agent-card', args.agentCardPath ?? path.join(SANDBOX_ARTIFACTS_DIR, args.agentRevisionId, 'agent_card.json'),
     '--judge-dry-run'
   ];
+  if (args.relay?.endpoint) {
+    inspectArgs.push('--relay-endpoint', args.relay.endpoint);
+  }
+  if (args.relay?.token) {
+    inspectArgs.push('--relay-token', args.relay.token);
+  }
   await runInspectCli(inspectArgs);
   const summaryPath = path.join(outDir, 'judge', 'judge_summary.json');
   let summary: any = {};
@@ -145,7 +157,7 @@ export async function publishAgent(args: { submissionId: string; agentId: string
 
 const PYTHON_BIN = process.env.SANDBOX_PYTHON ?? 'python3.13';
 
-function runSandboxCli(cliArgs: string[]): Promise<void> {
+function runSandboxCli(cliArgs: string[], agentCardPath?: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(PYTHON_BIN, ['-m', 'sandbox_runner.cli', ...cliArgs], {
       cwd: PROJECT_ROOT,

@@ -19,6 +19,10 @@ export interface WandbTelemetry {
 
 export interface SubmissionTelemetry {
   wandb?: WandbTelemetry;
+  relay?: {
+    endpoint?: string;
+    token?: string;
+  };
 }
 
 export interface SubmissionPayload {
@@ -109,6 +113,15 @@ export function validateSubmissionPayload(input: unknown): SubmissionValidationR
     }
     if (baseUrl && typeof baseUrl !== 'string') {
       return invalid(['telemetry.wandb.baseUrl must be a string']);
+    }
+  }
+  if (telemetry?.relay) {
+    const { endpoint, token } = telemetry.relay;
+    if (endpoint && typeof endpoint !== 'string') {
+      return invalid(['telemetry.relay.endpoint must be a string']);
+    }
+    if (token && typeof token !== 'string') {
+      return invalid(['telemetry.relay.token must be a string']);
     }
   }
 
