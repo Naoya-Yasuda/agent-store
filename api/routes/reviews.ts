@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import path from 'path';
 import fs from 'fs';
-import { getWorkflowProgress, getLedgerSummary, getLedgerEntryFile, requestHumanDecision, requestStageRetry } from '../services/reviewService';
+import { getWorkflowProgress, getLedgerSummary, getLedgerEntryFile, getStageEvents, requestHumanDecision, requestStageRetry } from '../services/reviewService';
 import { StageName } from '../types/reviewTypes';
 
 const router = Router();
@@ -309,6 +309,19 @@ router.get('/review/ledger/:submissionId', async (req: Request, res: Response) =
   } catch (err) {
     const message = err instanceof Error ? err.message : 'unknown_error';
     res.status(500).json({ error: 'ledger_fetch_failed', message });
+  }
+});
+
+router.get('/review/events/:submissionId', async (req: Request, res: Response) => {
+  try {
+    const result = await getStageEvents(req.params.submissionId);
+    if (!result) {
+      return res.status(404).json({ error: 'workflow_not_found' });
+    }
+    res.json({ submissionId: req.params.submissionId, events: result.events, agentRevisionId: result.agentRevisionId });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'unknown_error';
+    res.status(500).json({ error: 'events_fetch_failed', message });
   }
 });
 

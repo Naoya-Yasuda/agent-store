@@ -43,3 +43,7 @@
 ## 6. ステージイベント汎用ロガー（2025-11-11追加）
 - Temporalアクティビティ `recordStageEvent` を新設。`stage` / `event` / `data` を `sandbox-runner/artifacts/<rev>/metadata.json` の `wandbMcp.events` と `stageDetails.<stage>.lastEvent` に書き込み、同時に W&B Run へ `event/<stage>/<event>/...` メトリクスを投稿。
 - Workflow側では `emitStageEvent` ヘルパーを追加し、Retry要求・Security/Functional失敗・Judge verdict（manual/reject）・Humanへのエスカレーションなどで呼び出す。これにより、W&Bダッシュボード上で再実行やエスカレーションの履歴をトレース可能になった。
+
+## 7. UI / API でのイベント露出（2025-11-11追加）
+- REST: `GET /review/events/:submissionId` を追加し、`metadata.json` に保存された `wandbMcp.events` をJSON形式で取得できるようにした。Human Review UIはSubmission ID変更・進捗更新に合わせてこのエンドポイントをフェッチし、タイムラインテーブルを表示する。
+- UI: Next.jsダッシュボードの「イベントタイムライン」セクションではステージフィルタとキーワード検索、最大100件の最新イベント表示、timestamp表示（ローカル時刻 + ISO）を提供。W&Bダッシュボードを開かずともRetry理由・Human決裁内容・LLM override受付を確認できる。

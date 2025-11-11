@@ -19,6 +19,7 @@ export async function requestHumanDecision(submissionId: string, decision: 'appr
 }
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
+const SANDBOX_ARTIFACTS_DIR = path.join(REPO_ROOT, 'sandbox-runner', 'artifacts');
 
 type LedgerEntry = {
   stage: StageName;
@@ -35,6 +36,15 @@ export type LedgerFileHandle = {
   absolutePath: string;
   relativePath: string;
   exists: boolean;
+};
+
+export type StageEventRecord = {
+  id: string;
+  stage: string;
+  event: string;
+  type?: string;
+  timestamp?: string;
+  data?: Record<string, unknown>;
 };
 
 export async function getLedgerSummary(submissionId: string): Promise<LedgerEntry[]> {
@@ -107,4 +117,40 @@ async function readLedgerMetadata(entryPath?: string): Promise<{ metadata?: Reco
   } catch {
     return {};
   }
+}
+
+async function readMetadata(agentRevisionId: string): Promise<any | undefined> {
+  const metadataPath = path.join(SANDBOX_ARTIFACTS_DIR, agentRevisionId, 'metadata.json');
+  try {
+    const raw = await fs.readFile(metadataPath, 'utf8');
+    return JSON.parse(raw);
+  } catch (err: any) {
+    if (err?.code !== 'ENOENT') {
+      console.warn('[reviewService] failed to read metadata', err);
+    }
+    return undefined;
+  }
+}
+
+export async function getStageEvents(submissionId: string): Promise<{ events: StageEventRecord[]; agentRevisionId?: string } | undefined> {
+  const progress = await fetchProgress(submissionId);
+  if (!progress?.agentRevisionId) {
+    return progress ? { events: [], agentRevisionId: undefined } : undefined;
+  }
+  const metadata = await readMetadata(progress.agentRevisionId);
+  const rawEvents: any[] = Array.isArray(metadata?.wandbMcp?.events) ? metadata.wandbMcp.events : [];
+  const events: StageEventRecord[] = rawEvents.map((event, index) => ({
+    id: String(event?.id ?? `event-${index}`),
+    stage: String(event?.stage ?? 'unknown'),
+    event: String(event?.event ?? event?.type ?? 'unknown'),
+    type: event?.type ? String(event.type) : undefined,
+    timestamp: event?.timestamp ? String(event.timestamp) : undefined,
+    data: typeof event?.data === 'object' && event?.data !== null ? event.data : undefined
+  }));
+  events.sort((a, b) => {
+    const at = a.timestamp ? Date.parse(a.timestamp) : 0;
+    const bt = b.timestamp ? Date.parse(b.timestamp) : 0;
+    return bt - at;
+  });
+  return { events, agentRevisionId: progress.agentRevisionId };
 }

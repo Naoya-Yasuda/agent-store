@@ -77,6 +77,15 @@ type LedgerEntrySummary = {
   sourceFile?: string;
 };
 
+type StageEventEntry = {
+  id: string;
+  stage: string;
+  event: string;
+  type?: string;
+  timestamp?: string;
+  data?: Record<string, unknown>;
+};
+
 const stageOrder: StageName[] = ['precheck', 'security', 'functional', 'judge', 'human', 'publish'];
 const stageLabels: Record<StageName, string> = {
   precheck: 'PreCheck',
@@ -118,6 +127,10 @@ export default function ReviewDashboard() {
   const [ledgerError, setLedgerError] = useState<string | null>(null);
   const [ledgerCopyStage, setLedgerCopyStage] = useState<StageName | null>(null);
   const [ledgerCopyError, setLedgerCopyError] = useState<string | null>(null);
+  const [stageEvents, setStageEvents] = useState<StageEventEntry[]>([]);
+  const [stageEventError, setStageEventError] = useState<string | null>(null);
+  const [eventStageFilter, setEventStageFilter] = useState<'all' | StageName>('all');
+  const [eventSearchTerm, setEventSearchTerm] = useState('');
 
   const llmOverrideResult = useMemo<LlmOverrideResult>(() => {
     if (!llmOverrideEnabled) {
@@ -146,6 +159,20 @@ export default function ReviewDashboard() {
     }
     return false;
   }, [llmOverrideEnabled, llmOverridePayload, retryReason, retryStage]);
+
+  const filteredStageEvents = useMemo(() => {
+    const keyword = eventSearchTerm.trim().toLowerCase();
+    return stageEvents.filter((evt) => {
+      if (eventStageFilter !== 'all' && evt.stage !== eventStageFilter) {
+        return false;
+      }
+      if (!keyword) {
+        return true;
+      }
+      const haystack = `${evt.stage} ${evt.event} ${evt.type ?? ''} ${JSON.stringify(evt.data ?? {})}`.toLowerCase();
+      return haystack.includes(keyword);
+    });
+  }, [stageEvents, eventSearchTerm, eventStageFilter]);
 
   const fetchProgress = useCallback(async () => {
     setLoading(true);
@@ -227,6 +254,41 @@ export default function ReviewDashboard() {
       setLedgerCopyError('クリップボードへのコピーに失敗しました');
     }
   }, []);
+
+  useEffect(() => {
+    if (!progress) {
+      setStageEvents([]);
+      return;
+    }
+    const controller = new AbortController();
+    (async () => {
+      try {
+        const res = await fetch(`/review/events/${submissionId}`, { signal: controller.signal });
+        if (res.status === 404) {
+          setStageEvents([]);
+          setStageEventError(null);
+          return;
+        }
+        if (!res.ok) {
+          throw new Error(await res.text());
+        }
+        const payload = await res.json();
+        const events: StageEventEntry[] = Array.isArray(payload.events) ? payload.events : [];
+        events.sort((a, b) => {
+          const at = a.timestamp ? Date.parse(a.timestamp) : 0;
+          const bt = b.timestamp ? Date.parse(b.timestamp) : 0;
+          return bt - at;
+        });
+        setStageEvents(events);
+        setStageEventError(null);
+      } catch (err) {
+        if (!(err instanceof DOMException && err.name === 'AbortError')) {
+          setStageEventError(err instanceof Error ? err.message : 'events_fetch_failed');
+        }
+      }
+    })();
+    return () => controller.abort();
+  }, [progress, submissionId]);
 
   useEffect(() => {
     if (!progress?.llmJudge) {
@@ -663,6 +725,89 @@ export default function ReviewDashboard() {
 
   const errorTextStyle = { fontSize: 12, color: '#d1242f' } as const;
 
+  const formatEventTimestamp = (value?: string) => {
+    if (!value) return '-';
+    try {
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) {
+        return value;
+      }
+      return `${date.toLocaleString()} (${date.toISOString()})`;
+    } catch {
+      return value;
+    }
+  };
+
+  const renderStageEvents = () => {
+    if (!progress && !stageEvents.length) {
+      return null;
+    }
+    return (
+      <section style={{ display: 'grid', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+          <h2 style={{ margin: 0 }}>イベントタイムライン</h2>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            ステージ
+            <select value={eventStageFilter} onChange={(e) => setEventStageFilter(e.target.value as 'all' | StageName)}>
+              <option value="all">すべて</option>
+              {stageOrder.map((stage) => (
+                <option key={`event-filter-${stage}`} value={stage}>{stageLabels[stage]}</option>
+              ))}
+            </select>
+          </label>
+          <input
+            type="search"
+            value={eventSearchTerm}
+            onChange={(e) => setEventSearchTerm(e.target.value)}
+            placeholder="イベント名/理由/メモ"
+            style={{ border: '1px solid #d0d7de', borderRadius: 6, padding: '4px 8px', minWidth: 240 }}
+          />
+        </div>
+        {stageEventError && <span style={{ color: '#d1242f' }}>{stageEventError}</span>}
+        {filteredStageEvents.length === 0 ? (
+          <span style={{ color: '#57606a' }}>イベント履歴がありません。</span>
+        ) : (
+          <div style={{ border: '1px solid #d0d7de', borderRadius: 8, overflow: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead style={{ background: '#f6f8fa' }}>
+                <tr>
+                  <th style={{ textAlign: 'left', padding: 8 }}>時刻</th>
+                  <th style={{ textAlign: 'left', padding: 8 }}>ステージ</th>
+                  <th style={{ textAlign: 'left', padding: 8 }}>イベント</th>
+                  <th style={{ textAlign: 'left', padding: 8 }}>データ</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredStageEvents.slice(0, 100).map((evt) => (
+                  <tr key={evt.id} style={{ borderTop: '1px solid #d0d7de' }}>
+                    <td style={{ padding: 8, fontSize: 12 }}>{formatEventTimestamp(evt.timestamp)}</td>
+                    <td style={{ padding: 8 }}>{stageLabels[evt.stage as StageName] ?? evt.stage}</td>
+                    <td style={{ padding: 8 }}>
+                      <div style={{ fontWeight: 600 }}>{evt.event}</div>
+                      {evt.type && <div style={{ fontSize: 12, color: '#57606a' }}>{evt.type}</div>}
+                    </td>
+                    <td style={{ padding: 8 }}>
+                      {evt.data ? (
+                        <pre style={{ margin: 0, fontSize: 12, background: '#0f172a', color: '#e2e8f0', padding: 8, borderRadius: 6 }}>
+                          {JSON.stringify(evt.data, null, 2)}
+                        </pre>
+                      ) : (
+                        <span style={{ fontSize: 12, color: '#57606a' }}>-</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {stageEvents.length > 100 && (
+              <div style={{ fontSize: 12, color: '#57606a', padding: 8 }}>最新100件を表示中</div>
+            )}
+          </div>
+        )}
+      </section>
+    );
+  };
+
   return (
     <main style={{ fontFamily: 'system-ui, sans-serif', padding: 24, display: 'flex', flexDirection: 'column', gap: 24 }}>
       <header style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -747,6 +892,7 @@ export default function ReviewDashboard() {
       {renderSecurityInsights()}
       {renderJudgeInsights()}
       {renderLedgerSection()}
+      {renderStageEvents()}
 
       <section style={{ display: 'grid', gap: 12 }}>
         <h2 style={{ margin: 0 }}>ステージ再実行リクエスト</h2>
