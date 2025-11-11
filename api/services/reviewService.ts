@@ -36,6 +36,7 @@ export type LedgerFileHandle = {
   absolutePath: string;
   relativePath: string;
   exists: boolean;
+  fallback?: boolean;
 };
 
 export type StageEventRecord = {
@@ -57,6 +58,10 @@ export async function getLedgerSummary(submissionId: string): Promise<LedgerEntr
     const ledger = info?.details?.ledger;
     if (ledger?.entryPath || ledger?.digest) {
       const { metadata, relativePath } = await readLedgerMetadata(ledger.entryPath);
+      const resolvedSource = ledger.sourceFile && ledger.sourceFile.startsWith(REPO_ROOT)
+        ? ledger.sourceFile
+        : undefined;
+      const sourceRelative = resolvedSource ? path.relative(REPO_ROOT, resolvedSource) : relativePath;
       entries.push({
         stage,
         entryPath: ledger.entryPath,
@@ -64,7 +69,7 @@ export async function getLedgerSummary(submissionId: string): Promise<LedgerEntr
         workflowId: metadata?.workflowId,
         workflowRunId: metadata?.runId,
         generatedAt: metadata?.exportedAt ?? metadata?.generatedAt,
-        sourceFile: relativePath,
+        sourceFile: sourceRelative,
         downloadUrl: ledger.entryPath && !isRemotePath(ledger.entryPath)
           ? `/review/ledger/download?submissionId=${submissionId}&stage=${stage}`
           : ledger.entryPath
@@ -92,12 +97,44 @@ export async function getLedgerEntryFile(submissionId: string, stage: StageName,
     await fs.access(resolved);
     return { absolutePath: resolved, relativePath, exists: true };
   } catch {
+    const fallbackResolved = ledger.sourceFile && ledger.sourceFile.startsWith(REPO_ROOT)
+      ? ledger.sourceFile
+      : undefined;
+    if (fallbackResolved) {
+      try {
+        await fs.access(fallbackResolved);
+        return {
+          absolutePath: fallbackResolved,
+          relativePath: path.relative(REPO_ROOT, fallbackResolved),
+          exists: true,
+          fallback: true
+        };
+      } catch {
+        return {
+          absolutePath: fallbackResolved,
+          relativePath: path.relative(REPO_ROOT, fallbackResolved),
+          exists: false,
+          fallback: true
+        };
+      }
+    }
     return { absolutePath: resolved, relativePath, exists: false };
   }
 }
 
 function isRemotePath(entryPath?: string): boolean {
   return !!entryPath && /^https?:\/\//i.test(entryPath);
+}
+
+function resolveRepoPath(target?: string): string | undefined {
+  if (!target) {
+    return undefined;
+  }
+  const resolved = path.resolve(REPO_ROOT, target);
+  if (!resolved.startsWith(REPO_ROOT)) {
+    return undefined;
+  }
+  return resolved;
 }
 
 async function readLedgerMetadata(entryPath?: string): Promise<{ metadata?: Record<string, any>; relativePath?: string }> {

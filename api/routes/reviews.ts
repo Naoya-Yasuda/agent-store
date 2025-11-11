@@ -341,12 +341,16 @@ router.get('/review/ledger/download', async (req: Request, res: Response) => {
         error: 'ledger_file_not_found',
         submissionId,
         stage,
-        sourceFile: fileHandle.relativePath
+        sourceFile: fileHandle.relativePath,
+        fallback: fileHandle.fallback ?? false
       });
     }
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename=${stage}-ledger.json`);
     res.setHeader('X-Ledger-Source', fileHandle.relativePath);
+    if (fileHandle.fallback) {
+      res.setHeader('X-Ledger-Fallback', 'true');
+    }
     fs.createReadStream(fileHandle.absolutePath).pipe(res);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'unknown_error';

@@ -62,7 +62,7 @@
 | `submissionId` | 対象Submission。`/review/ledger/:id` と同じID。|
 | `stage` | `security` / `functional` / `judge` / `human` などLedgerを持つステージ。|
 
-- レスポンス成功時: `Content-Type: application/json; charset=utf-8`、`Content-Disposition: attachment; filename=<stage>-ledger.json`、`X-Ledger-Source: <repo-relative-path>` を付与し、ローカルLedgerファイルをストリーミング返却。
+- レスポンス成功時: `Content-Type: application/json; charset=utf-8`、`Content-Disposition: attachment; filename=<stage>-ledger.json`、`X-Ledger-Source: <repo-relative-path>` を付与し、ローカルLedgerファイルをストリーミング返却。`X-Ledger-Fallback: true` が付く場合は、`ledger.entryPath` が欠損していたため `sourceFile`（Sandbox Artifacts 配下の `*_ledger_entry.json`）から復元したことを示す。
 - Ledgerファイルが存在しない/削除済みの場合は `404 { error: 'ledger_file_not_found', submissionId, stage, sourceFile }` を返す。`sourceFile` で期待パスを伝え、再取得 or Ledger復元手順へ誘導できる。
 - `entryPath` がHTTP/HTTPSの場合はローカルダウンロードは行わず、`/review/ledger` 側で直接URLを返す運用とする。
 

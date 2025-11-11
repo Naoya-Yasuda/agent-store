@@ -58,4 +58,5 @@ Functional Accuracyの場合は、RAGTruth突合の `functional_summary.json` / 
 - Functional Accuracy: `recordFunctionalLedger` が `functional_summary.json` / `functional_report.jsonl` / `functional_scenarios.jsonl` のハッシュとEmbedding距離メトリクスを `functional_ledger_entry.json` に書き出し、`FUNCTIONAL_LEDGER_*`（未設定時はSecurity用変数を再利用）でLedgerへ転送。Workflow progressとHuman Review UIのFunctionalステージ details にLedgerダイジェストを表示。
 - Judge Panel: Inspect Worker CLI実行後に `recordJudgeLedger` が summary/report/relayログのSHA256とLLM設定（`llmJudge`）、判定件数（approved/manual/rejected）、Relayエラー件数をまとめたpayloadを `judge_ledger_entry.json` として書き出し、`JUDGE_LEDGER_*`（未設定時はSecurity用変数を再利用）でLedgerへ転送する。
 - Workflow: `reviewPipeline.workflow.ts` のステージ details に Ledgerパス/ダイジェストを含め、Human Review UIとW&Bから参照できるようにした。
+- Ledgerのエントリパスに加えて、原本 (`sandbox-runner/artifacts/<rev>/<stage>_ledger_entry.json`) への `sourceFile` をStage Metadataに保持し、`/review/ledger/download` がローカルLedger欠損時にFallback配信できるようにした。
 - Pending: Ledger API障害時のリトライ/警告UI出力。

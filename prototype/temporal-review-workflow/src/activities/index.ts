@@ -128,7 +128,7 @@ export async function runSecurityGate(args: { submissionId: string; agentId: str
   });
   await upsertStageMetadata(args.agentRevisionId, 'security', {
     summary,
-    ledger: ledgerInfo.entryPath ? { entryPath: ledgerInfo.entryPath, digest: ledgerInfo.digest } : undefined
+    ledger: ledgerInfo.entryPath ? { entryPath: ledgerInfo.entryPath, digest: ledgerInfo.digest, sourceFile: ledgerInfo.sourceFile } : undefined
   });
   return {
     passed,
@@ -141,6 +141,7 @@ export async function runSecurityGate(args: { submissionId: string; agentId: str
     wandb,
     ledgerEntryPath: ledgerInfo.entryPath,
     ledgerDigest: ledgerInfo.digest,
+    ledgerSourceFile: ledgerInfo.sourceFile,
     failReasons: (summary as any).error
       ? [(summary as any).error]
       : needsReview && needsReview > 0
@@ -199,7 +200,7 @@ export async function runFunctionalAccuracy(args: { submissionId: string; agentI
       embeddingAverageDistance: (summary as any).embeddingAverageDistance,
       embeddingMaxDistance: (summary as any).embeddingMaxDistance
     },
-    ledger: ledgerInfo.entryPath ? { entryPath: ledgerInfo.entryPath, digest: ledgerInfo.digest } : undefined
+    ledger: ledgerInfo.entryPath ? { entryPath: ledgerInfo.entryPath, digest: ledgerInfo.digest, sourceFile: ledgerInfo.sourceFile } : undefined
   });
   return {
     passed,
@@ -217,7 +218,8 @@ export async function runFunctionalAccuracy(args: { submissionId: string; agentI
     wandb,
     failReasons: (summary as any).error ? [(summary as any).error] : undefined,
     ledgerEntryPath: ledgerInfo.entryPath,
-    ledgerDigest: ledgerInfo.digest
+    ledgerDigest: ledgerInfo.digest,
+    ledgerSourceFile: ledgerInfo.sourceFile
   };
 }
 
@@ -278,7 +280,7 @@ export async function runJudgePanel(args: { submissionId: string; agentId: strin
   await upsertStageMetadata(args.agentRevisionId, 'judge', {
     summary,
     llmJudge: llmSummary,
-    ledger: ledgerInfo.entryPath ? { entryPath: ledgerInfo.entryPath, digest: ledgerInfo.digest } : undefined
+    ledger: ledgerInfo.entryPath ? { entryPath: ledgerInfo.entryPath, digest: ledgerInfo.digest, sourceFile: ledgerInfo.sourceFile } : undefined
   });
 
   return {
@@ -291,7 +293,8 @@ export async function runJudgePanel(args: { submissionId: string; agentId: strin
     relayLogPath,
     summary,
     ledgerEntryPath: ledgerInfo.entryPath,
-    ledgerDigest: ledgerInfo.digest
+    ledgerDigest: ledgerInfo.digest,
+    ledgerSourceFile: ledgerInfo.sourceFile
   };
 }
 
@@ -386,6 +389,12 @@ async function tryHashFile(filePath?: string): Promise<string | undefined> {
   }
 }
 
+type LedgerRecordResult = {
+  entryPath?: string;
+  digest?: string;
+  sourceFile?: string;
+};
+
 export async function recordSecurityLedger(args: {
   workflowId: string;
   workflowRunId: string;
@@ -396,7 +405,7 @@ export async function recordSecurityLedger(args: {
   reportPath: string;
   promptsPath: string;
   summary: Record<string, unknown>;
-}): Promise<{ entryPath?: string; digest?: string }> {
+}): Promise<LedgerRecordResult> {
   try {
     const summaryDigest = await hashFile(args.summaryPath);
     const payload = {
@@ -427,7 +436,7 @@ export async function recordSecurityLedger(args: {
       httpEndpoint: process.env.SECURITY_LEDGER_ENDPOINT,
       httpToken: process.env.SECURITY_LEDGER_TOKEN
     });
-    return { entryPath, digest: ledgerDigest };
+    return { entryPath, digest: ledgerDigest, sourceFile: payloadPath };
   } catch (err) {
     console.warn('[activities] failed to record security ledger entry', err);
     return {};
@@ -444,7 +453,7 @@ export async function recordFunctionalLedger(args: {
   reportPath: string;
   promptsPath: string;
   summary: Record<string, unknown>;
-}): Promise<{ entryPath?: string; digest?: string }> {
+}): Promise<LedgerRecordResult> {
   try {
     const summaryDigest = await hashFile(args.summaryPath);
     const reportDigest = await hashFile(args.reportPath);
@@ -486,7 +495,7 @@ export async function recordFunctionalLedger(args: {
       httpEndpoint: process.env.FUNCTIONAL_LEDGER_ENDPOINT ?? process.env.SECURITY_LEDGER_ENDPOINT,
       httpToken: process.env.FUNCTIONAL_LEDGER_TOKEN ?? process.env.SECURITY_LEDGER_TOKEN
     });
-    return { entryPath, digest: ledgerDigest };
+    return { entryPath, digest: ledgerDigest, sourceFile: payloadPath };
   } catch (err) {
     console.warn('[activities] failed to record functional ledger entry', err);
     return {};
@@ -503,7 +512,7 @@ export async function recordJudgeLedger(args: {
   reportPath: string;
   relayLogPath: string;
   summary: Record<string, unknown>;
-}): Promise<{ entryPath?: string; digest?: string }> {
+}): Promise<LedgerRecordResult> {
   try {
     const summaryDigest = await hashFile(args.summaryPath);
     const reportDigest = await hashFile(args.reportPath);
@@ -544,7 +553,7 @@ export async function recordJudgeLedger(args: {
       httpEndpoint: process.env.JUDGE_LEDGER_ENDPOINT ?? process.env.SECURITY_LEDGER_ENDPOINT,
       httpToken: process.env.JUDGE_LEDGER_TOKEN ?? process.env.SECURITY_LEDGER_TOKEN
     });
-    return { entryPath, digest: ledgerDigest };
+    return { entryPath, digest: ledgerDigest, sourceFile: payloadPath };
   } catch (err) {
     console.warn('[activities] failed to record judge ledger entry', err);
     return {};

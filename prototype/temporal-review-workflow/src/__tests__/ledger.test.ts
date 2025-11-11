@@ -92,6 +92,7 @@ describe('recordSecurityLedger', () => {
 
     expect(result.digest).toBeTruthy();
     expect(result.entryPath).toBeTruthy();
+    expect(result.sourceFile).toBeTruthy();
     const ledgerContent = JSON.parse(await fs.readFile(result.entryPath!, 'utf8'));
     expect(ledgerContent.workflowId).toBe('wf-id');
     expect(ledgerContent.historyDigestSha256).toBe(result.digest);
@@ -130,6 +131,7 @@ describe('recordJudgeLedger', () => {
 
     expect(result.digest).toBeTruthy();
     expect(result.entryPath).toBeTruthy();
+    expect(result.sourceFile).toBeTruthy();
     const ledgerContent = JSON.parse(await fs.readFile(result.entryPath!, 'utf8'));
     expect(ledgerContent.workflowId).toBe('wf-judge');
     expect(ledgerContent.historyDigestSha256).toBe(result.digest);
@@ -168,6 +170,7 @@ describe('recordFunctionalLedger', () => {
 
     expect(result.digest).toBeTruthy();
     expect(result.entryPath).toBeTruthy();
+    expect(result.sourceFile).toBeTruthy();
     const ledgerContent = JSON.parse(await fs.readFile(result.entryPath!, 'utf8'));
     expect(ledgerContent.workflowId).toBe('wf-functional');
     const payload = JSON.parse(await fs.readFile(path.join(workDir, 'functional_ledger_entry.json'), 'utf8'));
@@ -257,5 +260,29 @@ describe('getLedgerEntryFile', () => {
     expect(result).toBeDefined();
     expect(result?.exists).toBe(false);
     expect(result?.relativePath).toContain('missing_security_ledger.json');
+  });
+
+  it('returns fallback handle when sourceFile exists', async () => {
+    const revisionDir = path.join(PRIMARY_ARTIFACTS_DIR, `ledger-fallback-${Date.now()}`);
+    artifactDirs.push(revisionDir);
+    await fs.mkdir(revisionDir, { recursive: true });
+    const ledgerEntryPath = path.join(revisionDir, 'missing_output.json');
+    const sourceFile = path.join(revisionDir, 'security_ledger_entry.json');
+    await fs.writeFile(sourceFile, JSON.stringify({ ok: true }), 'utf8');
+
+    const progress = {
+      stages: {
+        security: {
+          details: {
+            ledger: { entryPath: ledgerEntryPath, digest: 'abc', sourceFile }
+          }
+        }
+      }
+    };
+
+    const result = await getLedgerEntryFile('subm-test', 'security', { progress });
+    expect(result?.fallback).toBe(true);
+    expect(result?.exists).toBe(true);
+    expect(result?.absolutePath).toBe(sourceFile);
   });
 });

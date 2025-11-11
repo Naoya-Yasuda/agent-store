@@ -491,6 +491,8 @@ export default function ReviewDashboard() {
     const displayedReport = reportData.slice(0, Math.min(judgeCardLimit, reportData.length));
     const hasMoreCards = reportData.length > judgeCardLimit;
     const llmOverrideHistory = stageEvents.filter((evt) => evt.stage === 'judge' && evt.event === 'llm_override_received');
+    const manualRecords = reportData.filter((item) => item.verdict === 'manual');
+    const rejectedRecords = reportData.filter((item) => item.verdict === 'reject');
 
     return (
       <section style={{ display: 'grid', gap: 12 }}>
@@ -574,6 +576,60 @@ export default function ReviewDashboard() {
                 </tbody>
               </table>
             </div>
+          </div>
+        )}
+        {(manualRecords.length > 0 || rejectedRecords.length > 0) && (
+          <div style={{ display: 'grid', gap: 8 }}>
+            {manualRecords.length > 0 && (
+              <div style={{ border: '1px solid #d0d7de', borderRadius: 8, padding: 12 }}>
+                <div style={{ fontWeight: 600, marginBottom: 4 }}>Manual 判定一覧</div>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: 'left', padding: 6 }}>質問ID</th>
+                      <th style={{ textAlign: 'left', padding: 6 }}>理由</th>
+                      <th style={{ textAlign: 'left', padding: 6 }}>操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {manualRecords.map((item) => (
+                      <tr key={`manual-${item.questionId}`} style={{ borderTop: '1px solid #eaeef2' }}>
+                        <td style={{ padding: 6 }}>{item.questionId}</td>
+                        <td style={{ padding: 6, fontSize: 12 }}>{item.rationale ?? item.llmRationale ?? 'manual decision'}</td>
+                        <td style={{ padding: 6 }}>
+                          <button onClick={() => handlePrefillRetry(`judge manual follow-up: ${item.questionId}`)}>再実行理由にコピー</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {rejectedRecords.length > 0 && (
+              <div style={{ border: '1px solid #d0d7de', borderRadius: 8, padding: 12 }}>
+                <div style={{ fontWeight: 600, marginBottom: 4 }}>Reject 判定一覧</div>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: 'left', padding: 6 }}>質問ID</th>
+                      <th style={{ textAlign: 'left', padding: 6 }}>理由</th>
+                      <th style={{ textAlign: 'left', padding: 6 }}>操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rejectedRecords.map((item) => (
+                      <tr key={`reject-${item.questionId}`} style={{ borderTop: '1px solid #eaeef2' }}>
+                        <td style={{ padding: 6 }}>{item.questionId}</td>
+                        <td style={{ padding: 6, fontSize: 12 }}>{item.rationale ?? item.llmRationale ?? 'reject decision'}</td>
+                        <td style={{ padding: 6 }}>
+                          <button onClick={() => handlePrefillRetry(`judge reject follow-up: ${item.questionId}`)}>再実行理由にコピー</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
         {relayData.length > 0 && (
@@ -780,6 +836,11 @@ export default function ReviewDashboard() {
   });
 
   const errorTextStyle = { fontSize: 12, color: '#d1242f' } as const;
+  const handlePrefillRetry = (reason: string) => {
+    setRetryStage('judge');
+    setRetryReason(reason);
+    setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 50);
+  };
 
   const formatEventTimestamp = (value?: string) => {
     if (!value) return '-';
