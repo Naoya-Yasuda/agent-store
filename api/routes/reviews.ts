@@ -167,7 +167,8 @@ router.get('/review/artifacts/:agentRevisionId', async (req: Request, res: Respo
     functional: {
       report: path.join(baseDir, 'functional', 'functional_report.jsonl'),
       summary: path.join(baseDir, 'functional', 'functional_summary.json'),
-      metadata: path.join(baseDir, 'metadata.json')
+      metadata: path.join(baseDir, 'metadata.json'),
+      prompts: path.join(baseDir, 'functional', 'functional_scenarios.jsonl')
     },
     judge: {
       report: path.join(judgeBase, 'judge_report.jsonl'),

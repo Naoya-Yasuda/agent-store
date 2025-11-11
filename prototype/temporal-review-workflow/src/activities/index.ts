@@ -123,7 +123,7 @@ export async function runSecurityGate(args: { submissionId: string; agentId: str
   };
 }
 
-export async function runFunctionalAccuracy(args: { submissionId: string; agentId: string; agentRevisionId: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string } }): Promise<{ passed: boolean; metrics: { embeddingVariance: number }; artifactsPath: string; summaryPath: string; reportPath: string; metadataPath: string; summary?: Record<string, unknown>; wandb?: WandbRunInfo; failReasons?: string[] }> {
+export async function runFunctionalAccuracy(args: { submissionId: string; agentId: string; agentRevisionId: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string } }): Promise<{ passed: boolean; metrics: { embeddingVariance: number; maxDistance?: number }; artifactsPath: string; summaryPath: string; reportPath: string; promptsPath: string; metadataPath: string; summary?: Record<string, unknown>; wandb?: WandbRunInfo; failReasons?: string[] }> {
   console.log(`[activities] runFunctionalAccuracy submission=${args.submissionId}`);
   const artifactsPath = await ensureSandboxArtifacts(args.agentRevisionId);
   const cliArgs = [
@@ -148,16 +148,20 @@ export async function runFunctionalAccuracy(args: { submissionId: string; agentI
   const summaryPath = path.join(artifactsPath, 'functional', 'functional_summary.json');
   const summary = await readJsonFile<Record<string, unknown>>(summaryPath) ?? {};
   const reportPath = path.join(artifactsPath, 'functional', 'functional_report.jsonl');
+  const promptsPath = typeof (summary as any).promptsArtifact === 'string'
+    ? (summary as any).promptsArtifact as string
+    : path.join(artifactsPath, 'functional', 'functional_scenarios.jsonl');
   const metadataPath = path.join(artifactsPath, 'metadata.json');
   const metadata = await readJsonFile(metadataPath);
   const wandb = extractWandbFromMetadata(metadata) ?? args.wandbRun;
   const passed = (summary as any).needsReview ? (summary as any).needsReview === 0 : !(summary as any).error;
   return {
     passed,
-    metrics: { embeddingVariance: (summary as any).averageDistance ?? 0.0 },
+    metrics: { embeddingVariance: (summary as any).averageDistance ?? 0.0, maxDistance: (summary as any).maxDistance },
     artifactsPath,
     summaryPath,
     reportPath,
+    promptsPath,
     metadataPath,
     summary,
     wandb,

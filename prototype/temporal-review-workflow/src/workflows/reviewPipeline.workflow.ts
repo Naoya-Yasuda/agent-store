@@ -279,7 +279,8 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
         summary: functional.summary,
         artifacts: {
           report: { stage: 'functional', type: 'report', agentRevisionId: context.agentRevisionId },
-          summary: { stage: 'functional', type: 'summary', agentRevisionId: context.agentRevisionId }
+          summary: { stage: 'functional', type: 'summary', agentRevisionId: context.agentRevisionId },
+          prompts: { stage: 'functional', type: 'prompts', agentRevisionId: context.agentRevisionId }
         }
       }
     });

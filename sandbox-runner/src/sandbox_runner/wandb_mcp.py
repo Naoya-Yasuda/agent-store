@@ -36,9 +36,19 @@ class WandbMCP:
       import wandb  # type: ignore
     except ImportError:  # pragma: no cover - optional dependency
       return
-    wandb.log({  # type: ignore[attr-defined]
-      f"{stage}/summary": summary
-    })
+    numeric_metrics: Dict[str, float] = {}
+    for key, value in summary.items():
+      metric_key = f"{stage}/{key}"
+      if isinstance(value, (int, float)):
+        numeric_metrics[metric_key] = float(value)
+      elif isinstance(value, dict):
+        for sub_key, sub_value in value.items():
+          if isinstance(sub_value, (int, float)):
+            numeric_metrics[f"{stage}/{key}/{sub_key}"] = float(sub_value)
+    log_payload = {f"{stage}/summary": summary}
+    if numeric_metrics:
+      log_payload.update(numeric_metrics)
+    wandb.log(log_payload)  # type: ignore[attr-defined]
 
   def save_artifact(self, stage: str, path: Path, name: Optional[str] = None) -> None:
     if not self.enabled:

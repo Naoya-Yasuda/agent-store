@@ -123,13 +123,13 @@ flowchart TD
 - `prototype/inspect-worker/`: AISI Inspectワークフローと連携し、Judgeエージェントの結果をリプレイ。
 - `docs/`: 設計メモと研究検討資料。
 
-## 実装ステータス (2025-11-10時点)
+## 実装ステータス (2025-11-11時点)
 | 機能領域 | 状態 | メモ |
 | --- | --- | --- |
 | Submission API（提出〜スナップショット保存） | ✅ 実装済み | JSON Schema/署名/Manifest検証とDB保存を完了。Temporal連携イベントも送出。 |
 | Temporalワークフロー（PreCheck→Publish） | ✅ 実装済み | `runSecurityGate`/`runFunctionalAccuracy`/`runJudgePanel` が実CLIを叩き、`queryProgress`へW&B/アーティファクト情報を返却。 |
 | Sandbox RunnerのAdvBench統合 | ✅ 実装済み | AgentCard語彙を差し込んだ攻撃テンプレ生成・Relay実行・カテゴリ別統計・W&B/Temporal連携まで完了。 |
-| Functional DSL + RAGTruth突合 | 🚧 部分実装 | AgentCardベースのシナリオ生成とRelay呼び出しを実装。Embeddingベクトル評価は未着手。 |
+| Functional DSL + RAGTruth突合 | 🚧 部分実装 | AgentCardシナリオ生成 + Relay実行 + `functional_scenarios.jsonl` 出力まで対応。Embeddingベクトル評価は未着手。 |
 | Judge Panel (MCTS-Judge) | 🚧 部分実装 | Relayログ＋MCTS評価に加え、任意のLLM (OpenAI等) をスコアリングに組み込めるレイヤーを追加。Verdict連携/UI統合は継続中。 |
 | Human Review UI連携 | ✅ 実装済み | `/review/*` RESTとNext.jsダッシュボードを実装。証拠JSON整形表示・再実行・承認/差戻しが可能。 |
 | W&B MCPトレース連携 | 🚧 部分実装 | Sandbox Runner/Inspect WorkerからRun IDを共有し、ステージサマリ/Artifactを記録。Human Review連携ログは今後。 |
@@ -137,10 +137,10 @@ flowchart TD
 > ※実装や設計の更新を行った際は、必ず本READMEのステータステーブルと該当セクションを更新してください。
 
 ## 今後の優先タスク
-1. **Temporal/W&B連携の仕上げ**: Security Gateのカテゴリ統計や攻撃テンプレアーティファクトをW&B metadataにも掲載し、監査証跡を強化する。
-2. **Functional DSL + RAGTruth高度化**: Embedding距離ベースの判定や追加シナリオ生成ロジックを実装し、UI/Temporalへメトリクスを返す。
-3. **Judge Panel LLM統合の完了**: LLMジャッジ結果をHuman Review UIとW&Bに完全連携し、再実行時の設定保持や監査ログを整備する。
-4. **テスト＆ドキュメント整備**: AdvBench/Functional/Judgeの自動テストを拡充し、README/設計メモで完了条件を明文化する。
+1. **Functional DSL + RAGTruth高度化**: Embedding距離ベースの判定や追加シナリオ生成ロジックを実装し、UI/Temporalへメトリクスを返す。
+2. **Judge Panel LLM統合の仕上げ**: LLMジャッジ結果をHuman Review UI/W&B/Audit Ledgerに完全連携し、再実行時の設定保持や監査ログを整備する。
+3. **Security Gate監査情報のLedger連携**: W&Bへ流したカテゴリ統計をAudit Ledgerにも反映し、Temporal `publishToLedger` ワークフローと整合させる。
+4. **自動テスト＆ドキュメント整備**: AdvBench/Functional/Judgeの自動テストを拡充し、README・設計メモで完了条件と運用手順を明文化する。
 
 ## Contributor Guide
 完全なコントリビュータガイド、コーディング規約、PR要件は[`AGENTS.md`](AGENTS.md)を参照してください。

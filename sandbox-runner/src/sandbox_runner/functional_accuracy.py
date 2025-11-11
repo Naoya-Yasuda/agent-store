@@ -162,11 +162,13 @@ def run_functional_accuracy(
   attach_expected_answers(scenarios, ragtruth_records)
 
   report_path = output_dir / "functional_report.jsonl"
+  prompts_path = output_dir / "functional_scenarios.jsonl"
   passes = 0
   needs_review = 0
   distances: List[float] = []
 
   error_count = 0
+  scenario_records: List[Dict[str, Any]] = []
   with report_path.open("w", encoding="utf-8") as report_file:
     for scenario in scenarios:
       response_text, status, error_text = _execute_functional_prompt(
@@ -202,6 +204,19 @@ def run_functional_accuracy(
         "responseError": error_text
       }
       report_file.write(json.dumps(record, ensure_ascii=False) + "\n")
+      scenario_records.append({
+        "scenarioId": scenario.id,
+        "prompt": scenario.prompt,
+        "expected": scenario.expected_answer,
+        "finalPrompt": scenario.prompt,
+        "responseStatus": status,
+        "response": response_text,
+        "evaluation": evaluation
+      })
+
+  with prompts_path.open("w", encoding="utf-8") as prompts_file:
+    for record in scenario_records:
+      prompts_file.write(json.dumps(record, ensure_ascii=False) + "\n")
 
   avg_distance = sum(distances) / len(distances) if distances else math.nan
   summary = {
@@ -214,7 +229,9 @@ def run_functional_accuracy(
     "ragtruthRecords": len(ragtruth_records),
     "responsesWithError": error_count,
     "endpoint": endpoint_url,
-    "dryRun": dry_run or not endpoint_url
+    "dryRun": dry_run or not endpoint_url,
+    "promptsArtifact": str(prompts_path),
+    "maxDistance": max(distances) if distances else None
   }
   (output_dir / "functional_summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
   return summary
