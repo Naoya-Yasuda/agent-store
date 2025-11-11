@@ -1,4 +1,4 @@
-import { proxyActivities, setHandler, defineSignal, defineQuery } from '@temporalio/workflow';
+import { proxyActivities, setHandler, defineSignal, defineQuery, workflowInfo } from '@temporalio/workflow';
 import { TASK_QUEUE } from '../../temporal.config';
 
 export type LlmJudgeConfig = {
@@ -20,6 +20,8 @@ type SecurityGateResult = {
   summary?: Record<string, unknown>;
   wandb?: WandbRunInfo;
   failReasons?: string[];
+  ledgerEntryPath?: string;
+  ledgerDigest?: string;
 };
 
 type FunctionalAccuracyResult = {
@@ -47,7 +49,7 @@ type JudgePanelResult = {
 
 type Activities = {
   preCheckSubmission: (args: { submissionId: string }) => Promise<{ passed: boolean; agentId: string; agentRevisionId: string; warnings: string[] }>;
-  runSecurityGate: (args: { submissionId: string; agentId: string; agentRevisionId: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string } }) => Promise<SecurityGateResult>;
+  runSecurityGate: (args: { submissionId: string; agentId: string; agentRevisionId: string; workflowId: string; workflowRunId: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string } }) => Promise<SecurityGateResult>;
   runFunctionalAccuracy: (args: { submissionId: string; agentId: string; agentRevisionId: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string } }) => Promise<FunctionalAccuracyResult>;
   runJudgePanel: (args: { submissionId: string; agentId: string; agentRevisionId: string; promptVersion: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string }; llmJudge?: LlmJudgeConfig }) => Promise<JudgePanelResult>;
   notifyHumanReview: (args: { submissionId: string; agentId: string; agentRevisionId: string; reason: string; attachments?: string[] }) => Promise<'approved' | 'rejected'>;
@@ -108,6 +110,7 @@ const retryStageSignal = defineSignal<[StageName, string]>('signalRetryStage');
 const progressQuery = defineQuery<WorkflowProgress>('queryProgress');
 
 export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promise<void> {
+  const info = workflowInfo();
   const stageOrder: StageName[] = ['precheck', 'security', 'functional', 'judge', 'human', 'publish'];
   const stageProgress = stageOrder.reduce<Record<StageName, StageProgress>>((acc, stage) => {
     acc[stage] = { status: 'pending', attempts: 0, lastUpdatedSeq: 0 };
@@ -126,7 +129,9 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
     agentCardPath: input.agentCardPath,
     relay: input.relay,
     wandbRun: input.wandbRun,
-    llmJudge: input.llmJudge
+    llmJudge: input.llmJudge,
+    workflowId: info.workflowId,
+    workflowRunId: info.runId
   };
 
   function mergeWandbRun(current?: WandbRunInfo, next?: WandbRunInfo): WandbRunInfo | undefined {
@@ -239,6 +244,8 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
       submissionId: context.submissionId,
       agentId: context.agentId,
       agentRevisionId: context.agentRevisionId,
+      workflowId: context.workflowId,
+      workflowRunId: context.workflowRunId,
       wandbRun: context.wandbRun,
       agentCardPath: context.agentCardPath,
       relay: context.relay
@@ -253,7 +260,8 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
           summary: { stage: 'security', type: 'summary', agentRevisionId: context.agentRevisionId },
           metadata: { stage: 'security', type: 'metadata', agentRevisionId: context.agentRevisionId },
           prompts: { stage: 'security', type: 'prompts', agentRevisionId: context.agentRevisionId }
-        }
+        },
+        ledger: security.ledgerEntryPath ? { entryPath: security.ledgerEntryPath, digest: security.ledgerDigest } : undefined
       }
     });
     if (!security.passed) {

@@ -1,7 +1,10 @@
 import path from 'path';
 import { promises as fs } from 'fs';
 import { spawn } from 'child_process';
+import { createHash } from 'crypto';
 import { WandbRunInfo, LlmJudgeConfig } from '../workflows/reviewPipeline.workflow';
+import { publishToLedger, AuditLedgerEntry } from '../lib/auditLedger';
+import { NAMESPACE } from '../../temporal.config';
 
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..', '..');
 const SANDBOX_ARTIFACTS_DIR = path.join(PROJECT_ROOT, 'sandbox-runner', 'artifacts');
@@ -74,7 +77,7 @@ export async function preCheckSubmission(args: { submissionId: string }): Promis
   };
 }
 
-export async function runSecurityGate(args: { submissionId: string; agentId: string; agentRevisionId: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string } }): Promise<{ passed: boolean; artifactsPath: string; summaryPath: string; reportPath: string; promptsPath: string; metadataPath: string; summary?: Record<string, unknown>; wandb?: WandbRunInfo; failReasons?: string[] }> {
+export async function runSecurityGate(args: { submissionId: string; agentId: string; agentRevisionId: string; workflowId: string; workflowRunId: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string } }): Promise<{ passed: boolean; artifactsPath: string; summaryPath: string; reportPath: string; promptsPath: string; metadataPath: string; summary?: Record<string, unknown>; wandb?: WandbRunInfo; failReasons?: string[]; ledgerEntryPath?: string; ledgerDigest?: string }> {
   console.log(`[activities] runSecurityGate submission=${args.submissionId}`);
   const artifactsPath = await ensureSandboxArtifacts(args.agentRevisionId);
   const cliArgs = [
@@ -106,6 +109,17 @@ export async function runSecurityGate(args: { submissionId: string; agentId: str
   const wandb = extractWandbFromMetadata(metadata) ?? args.wandbRun;
   const needsReview = (summary as any).needsReview ?? (summary as any).needs_review;
   const passed = typeof needsReview === 'number' ? needsReview === 0 : !(summary as any).error;
+  const ledgerInfo = await recordSecurityLedger({
+    workflowId: args.workflowId,
+    workflowRunId: args.workflowRunId,
+    submissionId: args.submissionId,
+    agentId: args.agentId,
+    agentRevisionId: args.agentRevisionId,
+    summaryPath,
+    reportPath,
+    promptsPath,
+    summary
+  });
   return {
     passed,
     artifactsPath,
@@ -115,6 +129,8 @@ export async function runSecurityGate(args: { submissionId: string; agentId: str
     metadataPath,
     summary,
     wandb,
+    ledgerEntryPath: ledgerInfo.entryPath,
+    ledgerDigest: ledgerInfo.digest,
     failReasons: (summary as any).error
       ? [(summary as any).error]
       : needsReview && needsReview > 0
@@ -295,5 +311,58 @@ function appendJudgeLlmArgs(cliArgs: string[], llm?: LlmJudgeConfig): void {
   }
   if (llm.dryRun) {
     cliArgs.push('--judge-llm-dry-run');
+  }
+}
+
+export async function hashFile(filePath: string): Promise<string> {
+  const buffer = await fs.readFile(filePath);
+  return createHash('sha256').update(buffer).digest('hex');
+}
+
+export async function recordSecurityLedger(args: {
+  workflowId: string;
+  workflowRunId: string;
+  submissionId: string;
+  agentId: string;
+  agentRevisionId: string;
+  summaryPath: string;
+  reportPath: string;
+  promptsPath: string;
+  summary: Record<string, unknown>;
+}): Promise<{ entryPath?: string; digest?: string }> {
+  try {
+    const summaryDigest = await hashFile(args.summaryPath);
+    const payload = {
+      stage: 'security',
+      submissionId: args.submissionId,
+      agentId: args.agentId,
+      agentRevisionId: args.agentRevisionId,
+      summaryPath: args.summaryPath,
+      summaryDigest,
+      reportPath: args.reportPath,
+      promptsPath: args.promptsPath,
+      categories: args.summary.categories,
+      generatedAt: args.summary.generatedAt ?? Date.now()
+    };
+    const payloadPath = path.join(path.dirname(args.summaryPath), 'security_ledger_entry.json');
+    await fs.writeFile(payloadPath, JSON.stringify(payload, null, 2), 'utf8');
+    const ledgerDigest = await hashFile(payloadPath);
+    const auditEntry: AuditLedgerEntry = {
+      workflowId: args.workflowId,
+      runId: args.workflowRunId ?? null,
+      namespace: NAMESPACE,
+      historyDigestSha256: ledgerDigest,
+      exportedAt: new Date().toISOString(),
+      sourceFile: payloadPath
+    };
+    const entryPath = await publishToLedger(auditEntry, {
+      outputDir: process.env.SECURITY_LEDGER_DIR,
+      httpEndpoint: process.env.SECURITY_LEDGER_ENDPOINT,
+      httpToken: process.env.SECURITY_LEDGER_TOKEN
+    });
+    return { entryPath, digest: ledgerDigest };
+  } catch (err) {
+    console.warn('[activities] failed to record security ledger entry', err);
+    return {};
   }
 }

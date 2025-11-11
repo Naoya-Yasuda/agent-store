@@ -89,6 +89,7 @@ flowchart TD
     --security-attempts 5 --output-dir sandbox-runner/artifacts
   ```
   を実行してください。`--security-endpoint` を指定すると実エージェントに対して攻撃プロンプトを送出できます（未指定の場合は`not_executed`として記録）。`--agent-card path/to/card.json` を渡すとユースケース語彙を組み合わせた攻撃テンプレートが生成され、`security/security_prompts.jsonl` に保存されます。
+  - Ledger連携を試す場合は `SECURITY_LEDGER_ENDPOINT` / `SECURITY_LEDGER_TOKEN` / `SECURITY_LEDGER_DIR` を環境変数として設定すると、Security Gateのサマリハッシュが `audit-ledger/` に書き出され、必要に応じてHTTPエンドポイントへPOSTされます（詳細は [security-gate-ledger-plan.md](docs/design/security-gate-ledger-plan.md) を参照）。
 - Functional Accuracy（機能正確性）を試す場合は、AgentCard JSONとRAGTruthディレクトリを指定します。サンプルは`sandbox-runner/resources/ragtruth/sample.jsonl`にあります。DSLシナリオごとに回答を実行し、単語一致ベースの評価に加えてEmbedding距離（ベクトル類似度）も計算し、`functional_summary.json` に `embeddingAverageDistance` などのメトリクスを出力します。
   ```bash
   python3.13 -m sandbox_runner.cli \
@@ -121,7 +122,7 @@ flowchart TD
 - `api/`: Submission / Catalog APIルート・サービス。
 - `sandbox-runner/`: Google ADKベースの攻撃/審査エージェントを起動し、AdvBenchテンプレやDSLシナリオを実行してpolicy/fairness成果物を生成するCLI。Functional DSLとRAGTruthの運用方針は [docs/design/functional-dsl-plan.md](docs/design/functional-dsl-plan.md) にまとめています。
 - `prototype/inspect-worker/`: AISI Inspectワークフローと連携し、Judgeエージェントの結果をリプレイ。
-- `docs/`: 設計メモと研究検討資料。Functional DSL/RAGTruth運用は [docs/design/functional-dsl-plan.md](docs/design/functional-dsl-plan.md)、Audit Ledger連携は [docs/design/sandbox-runner-implementation-plan.md](docs/design/sandbox-runner-implementation-plan.md) や Temporal設計資料を参照。
+- `docs/`: 設計メモと研究検討資料。Functional DSL/RAGTruth運用は [docs/design/functional-dsl-plan.md](docs/design/functional-dsl-plan.md)、Security Gate監査連携は [docs/design/security-gate-ledger-plan.md](docs/design/security-gate-ledger-plan.md) と [docs/design/sandbox-runner-implementation-plan.md](docs/design/sandbox-runner-implementation-plan.md) を参照。
 
 ## 実装ステータス (2025-11-11時点)
 | 機能領域 | 状態 | メモ |
@@ -129,7 +130,7 @@ flowchart TD
 | Submission API（提出〜スナップショット保存） | ✅ 実装済み | JSON Schema/署名/Manifest検証とDB保存を完了。Temporal連携イベントも送出。 |
 | Temporalワークフロー（PreCheck→Publish） | ✅ 実装済み | `runSecurityGate`/`runFunctionalAccuracy`/`runJudgePanel` が実CLIを叩き、`queryProgress`へW&B/アーティファクト情報を返却。 |
 | Sandbox RunnerのAdvBench統合 | ✅ 実装済み | AgentCard語彙を差し込んだ攻撃テンプレ生成・Relay実行・カテゴリ別統計・W&B/Temporal連携まで完了。 |
-| Functional DSL + RAGTruth突合 | 🚧 部分実装 | AgentCardシナリオ生成 + Relay実行 + `functional_scenarios.jsonl` 出力まで対応。Embeddingベクトル評価は未着手。 |
+| Functional DSL + RAGTruth突合 | ✅ 実装済み | AgentCardシナリオ生成 → Relay実行 → RAGTruth照合に加え、Embedding距離メトリクスを算出しTemporal/UI/W&Bへ返却。 |
 | Judge Panel (MCTS-Judge) | 🚧 部分実装 | Relayログ＋MCTS評価に加え、任意のLLM (OpenAI等) をスコアリングに組み込めるレイヤーを追加。Verdict連携/UI統合は継続中。 |
 | Human Review UI連携 | ✅ 実装済み | `/review/*` RESTとNext.jsダッシュボードを実装。証拠JSON整形表示・再実行・承認/差戻しが可能。 |
 | W&B MCPトレース連携 | 🚧 部分実装 | Sandbox Runner/Inspect WorkerからRun IDを共有し、ステージサマリ/Artifactを記録。Human Review連携ログは今後。 |
