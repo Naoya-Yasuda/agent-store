@@ -119,7 +119,7 @@ flowchart TD
 
 ## Key Components
 - `api/`: Submission / Catalog APIルート・サービス。
-- `sandbox-runner/`: Google ADKベースの攻撃/審査エージェントを起動し、AdvBenchテンプレやDSLシナリオを実行してpolicy/fairness成果物を生成するCLI。
+- `sandbox-runner/`: Google ADKベースの攻撃/審査エージェントを起動し、AdvBenchテンプレやDSLシナリオを実行してpolicy/fairness成果物を生成するCLI。Functional DSLとRAGTruthの運用方針は [docs/design/functional-dsl-plan.md](docs/design/functional-dsl-plan.md) にまとめています。
 - `prototype/inspect-worker/`: AISI Inspectワークフローと連携し、Judgeエージェントの結果をリプレイ。
 - `docs/`: 設計メモと研究検討資料。
 
