@@ -136,9 +136,9 @@ flowchart TD
 > ※実装や設計の更新を行った際は、必ず本READMEのステータステーブルと該当セクションを更新してください。
 
 ## 今後の優先タスク
-1. **W&B MCP Run ID伝播**: Submission APIで発行したRun IDをTemporal→Sandbox Runner→Inspect Worker→Human Review UIまで引き回し、各ステージのログ・Artifactsを同じダッシュボードで追跡できるようにする（ローカル/Private Cloud版W&Bでも同一構成を想定）。
-2. **Human Review UI / API**: `queryProgress`/`signalRetryStage`を叩けるREST APIを追加し、進捗バーと証拠ビューを備えたレビュワー画面を実装。Judge/Functional/SecurityレポートとW&Bリンクを確認しつつ承認/差戻し操作が可能な状態を目指す。
-3. **Temporal側のJudge/Human実行**: `prototype/temporal-review-workflow` の `runJudgePanel` / `notifyHumanReview` アクティビティをInspect Worker CLI・UIと接続し、モックから実装へ差し替える。
+1. **Temporalアクティビティの本格実装 (完了/2025-11-11)**: Security/Functional/Judge各ステージで`sandbox_runner.cli`とInspect Worker CLIを実行し、Relay情報とW&B Run IDを引き回して実際の成果物を生成する。`runSecurityGate`/`runFunctionalAccuracy`/`runJudgePanel`はいずれもステージサマリとアーティファクトヒントをTemporal `queryProgress`に返すようになった。
+2. **Human Review UI強化 (完了/2025-11-11)**: Next.js製ダッシュボードが `/review/progress` と `/review/artifacts` を利用し、証拠JSON整形表示・再実行リクエスト・承認/差戻しフォーム・操作履歴テーブルを提供する。
+3. **Inspect Worker Relay強化 (完了/2025-11-11)**: Judge PanelがRelay HTTP呼び出しの詳細ログ（レスポンス/エラー/禁止語フラグ）を`relay_logs.jsonl`として保存し、W&Bアーティファクトにも添付。Human Review UIからも同じログをダウンロードできる。
 
 ## Contributor Guide
 完全なコントリビュータガイド、コーディング規約、PR要件は[`AGENTS.md`](AGENTS.md)を参照してください。

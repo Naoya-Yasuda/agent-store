@@ -1,11 +1,45 @@
 import { proxyActivities, setHandler, defineSignal, defineQuery } from '@temporalio/workflow';
 import { TASK_QUEUE } from '../../temporal.config';
 
+type SecurityGateResult = {
+  passed: boolean;
+  artifactsPath: string;
+  summaryPath: string;
+  reportPath: string;
+  metadataPath: string;
+  summary?: Record<string, unknown>;
+  wandb?: WandbRunInfo;
+  failReasons?: string[];
+};
+
+type FunctionalAccuracyResult = {
+  passed: boolean;
+  metrics: { embeddingVariance: number };
+  artifactsPath: string;
+  summaryPath: string;
+  reportPath: string;
+  metadataPath: string;
+  summary?: Record<string, unknown>;
+  wandb?: WandbRunInfo;
+  failReasons?: string[];
+};
+
+type JudgePanelResult = {
+  verdict: 'approve' | 'reject' | 'manual';
+  score: number;
+  explanation?: string;
+  artifactsPath: string;
+  reportPath: string;
+  summaryPath: string;
+  relayLogPath: string;
+  summary?: Record<string, unknown>;
+};
+
 type Activities = {
   preCheckSubmission: (args: { submissionId: string }) => Promise<{ passed: boolean; agentId: string; agentRevisionId: string; warnings: string[] }>;
-  runSecurityGate: (args: { submissionId: string; agentId: string; agentRevisionId: string; wandbRun?: WandbRunInfo }) => Promise<{ passed: boolean; artifactsPath: string; failReasons?: string[] }>;
-  runFunctionalAccuracy: (args: { submissionId: string; agentId: string; agentRevisionId: string; wandbRun?: WandbRunInfo }) => Promise<{ passed: boolean; metrics: { embeddingVariance: number }; failReasons?: string[] }>;
-  runJudgePanel: (args: { submissionId: string; agentId: string; agentRevisionId: string; promptVersion: string; wandbRun?: WandbRunInfo }) => Promise<{ verdict: 'approve' | 'reject' | 'manual'; score: number; explanation?: string }>;
+  runSecurityGate: (args: { submissionId: string; agentId: string; agentRevisionId: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string } }) => Promise<SecurityGateResult>;
+  runFunctionalAccuracy: (args: { submissionId: string; agentId: string; agentRevisionId: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string } }) => Promise<FunctionalAccuracyResult>;
+  runJudgePanel: (args: { submissionId: string; agentId: string; agentRevisionId: string; promptVersion: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string } }) => Promise<JudgePanelResult>;
   notifyHumanReview: (args: { submissionId: string; agentId: string; agentRevisionId: string; reason: string; attachments?: string[] }) => Promise<'approved' | 'rejected'>;
   publishAgent: (args: { submissionId: string; agentId: string; agentRevisionId: string }) => Promise<void>;
 };
@@ -25,12 +59,16 @@ interface StageProgress {
   lastUpdatedSeq: number;
   message?: string;
   warnings?: string[];
+  details?: Record<string, unknown>;
 }
 
 interface WorkflowProgress {
   terminalState: WorkflowTerminalState;
   stages: Record<StageName, StageProgress>;
   wandbRun?: WandbRunInfo;
+  agentId?: string;
+  agentRevisionId?: string;
+  agentCardPath?: string;
 }
 
 export interface WandbRunInfo {
@@ -68,12 +106,6 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
   let seqCounter = 0;
   const retryRequests = new Set<StageName>();
 
-  setHandler(progressQuery, () => ({ terminalState, stages: stageProgress, wandbRun: input.wandbRun }));
-  setHandler(retryStageSignal, (stage, reason) => {
-    retryRequests.add(stage);
-    updateStage(stage, { status: 'pending', message: `retry requested: ${reason}` });
-  });
-
   const context = {
     submissionId: input.submissionId,
     promptVersion: input.promptVersion,
@@ -83,6 +115,32 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
     relay: input.relay,
     wandbRun: input.wandbRun
   };
+
+  function mergeWandbRun(current?: WandbRunInfo, next?: WandbRunInfo): WandbRunInfo | undefined {
+    if (!next) {
+      return current;
+    }
+    return {
+      runId: next.runId ?? current?.runId,
+      project: next.project ?? current?.project,
+      entity: next.entity ?? current?.entity,
+      baseUrl: next.baseUrl ?? current?.baseUrl,
+      url: next.url ?? current?.url
+    };
+  }
+
+  setHandler(progressQuery, () => ({
+    terminalState,
+    stages: stageProgress,
+    wandbRun: context.wandbRun,
+    agentId: context.agentId,
+    agentRevisionId: context.agentRevisionId,
+    agentCardPath: context.agentCardPath
+  }));
+  setHandler(retryStageSignal, (stage, reason) => {
+    retryRequests.add(stage);
+    updateStage(stage, { status: 'pending', message: `retry requested: ${reason}` });
+  });
 
   function nextSeq(): number {
     seqCounter += 1;
@@ -171,6 +229,17 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
       agentCardPath: context.agentCardPath,
       relay: context.relay
     }));
+    context.wandbRun = mergeWandbRun(context.wandbRun, security.wandb);
+    updateStage('security', {
+      details: {
+        summary: security.summary,
+        artifacts: {
+          report: { stage: 'security', type: 'report', agentRevisionId: context.agentRevisionId },
+          summary: { stage: 'security', type: 'summary', agentRevisionId: context.agentRevisionId },
+          metadata: { stage: 'security', type: 'metadata', agentRevisionId: context.agentRevisionId }
+        }
+      }
+    });
     if (!security.passed) {
       updateStage('security', { status: 'failed', message: security.failReasons?.join(', ') ?? 'security gate failed' });
       const decision = await escalateToHuman('security_gate_failure', security.failReasons);
@@ -184,8 +253,20 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
       agentId: context.agentId,
       agentRevisionId: context.agentRevisionId,
       wandbRun: context.wandbRun,
-      agentCardPath: context.agentCardPath
+      agentCardPath: context.agentCardPath,
+      relay: context.relay
     }));
+    context.wandbRun = mergeWandbRun(context.wandbRun, functional.wandb);
+    updateStage('functional', {
+      details: {
+        metrics: functional.metrics,
+        summary: functional.summary,
+        artifacts: {
+          report: { stage: 'functional', type: 'report', agentRevisionId: context.agentRevisionId },
+          summary: { stage: 'functional', type: 'summary', agentRevisionId: context.agentRevisionId }
+        }
+      }
+    });
     if (!functional.passed) {
       updateStage('functional', { status: 'failed', message: functional.failReasons?.join(', ') ?? 'functional accuracy failed' });
       const decision = await escalateToHuman('functional_accuracy_failure', functional.failReasons);
@@ -203,7 +284,17 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
       agentCardPath: context.agentCardPath,
       relay: context.relay
     }));
-    updateStage('judge', { message: `judge verdict: ${judge.verdict}` });
+    updateStage('judge', {
+      message: `judge verdict: ${judge.verdict}`,
+      details: {
+        summary: judge.summary,
+        artifacts: {
+          report: { stage: 'judge', type: 'report', agentRevisionId: context.agentRevisionId, agentId: context.agentId },
+          summary: { stage: 'judge', type: 'summary', agentRevisionId: context.agentRevisionId, agentId: context.agentId },
+          relayLogs: { stage: 'judge', type: 'relay', agentRevisionId: context.agentRevisionId, agentId: context.agentId }
+        }
+      }
+    });
 
     if (judge.verdict === 'reject') {
       updateStage('judge', { status: 'failed', message: judge.explanation ?? 'judge rejected submission' });

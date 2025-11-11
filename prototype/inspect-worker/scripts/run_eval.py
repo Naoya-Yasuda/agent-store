@@ -43,9 +43,7 @@ def parse_args() -> argparse.Namespace:
         default=os.environ.get("JUDGE_DRY_RUN", "false").lower() == "true",
         help="Do not call the real agent during Judge Panel execution",
     )
-    parser.add_argument("--relay-endpoint")
-    parser.add_argument("--relay-token")
-    parser.add_argument("--wandb-run-id")
+    parser.add_argument("--wandb-run-id", help="Reuse an existing W&B Run ID for Inspect outputs")
     parser.add_argument("--wandb-project", default=os.environ.get("WANDB_PROJECT", "agent-store-sandbox"))
     parser.add_argument("--wandb-entity", default=os.environ.get("WANDB_ENTITY", "local"))
     parser.add_argument("--wandb-base-url", default=os.environ.get("WANDB_BASE_URL", "https://wandb.ai"))
@@ -59,7 +57,7 @@ def main() -> None:
     output_path.mkdir(parents=True, exist_ok=True)
 
     wandb_config = WandbConfig(
-        enabled=bool(args.wandb_enabled and args.wandb_run_id),
+        enabled=bool(args.wandb_enabled),
         project=args.wandb_project,
         entity=args.wandb_entity,
         run_id=args.wandb_run_id or f"inspect-{args.agent_id}-{args.revision}",
@@ -467,8 +465,27 @@ def _run_judge_panel(
                 "rationale": verdict.rationale,
                 "judgeNotes": verdict.judge_notes,
                 "relayEndpoint": execution.relay_endpoint if execution else None,
+                "responseStatus": execution.status if execution else None,
+                "responseError": execution.error if execution else None,
+                "httpStatus": execution.http_status if execution else None,
+                "flags": verdict.flags,
             }
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    relay_log_path = judge_dir / "relay_logs.jsonl"
+    with relay_log_path.open("w", encoding="utf-8") as relay_log:
+        for execution in executions:
+            relay_log.write(json.dumps({
+                "questionId": execution.question_id,
+                "prompt": execution.prompt,
+                "response": execution.response,
+                "status": execution.status,
+                "error": execution.error,
+                "latencyMs": execution.latency_ms,
+                "httpStatus": execution.http_status,
+                "relayEndpoint": execution.relay_endpoint,
+                "flags": execution.flags,
+            }, ensure_ascii=False) + "\n")
 
     summary = {
         "questions": len(verdicts),
@@ -476,6 +493,8 @@ def _run_judge_panel(
         "manual": sum(1 for v in verdicts if v.verdict == "manual"),
         "rejected": sum(1 for v in verdicts if v.verdict == "reject"),
         "notes": "Judge Panel PoC",
+        "flagged": sum(1 for exec in executions if exec.flags),
+        "relayErrors": sum(1 for exec in executions if exec.status == "error"),
     }
     summary_path = judge_dir / "judge_summary.json"
     summary_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -483,6 +502,7 @@ def _run_judge_panel(
     if wandb_config:
         log_artifact(wandb_config, report_path, name=f"judge-report-{wandb_config.run_id}")
         log_artifact(wandb_config, summary_path, name=f"judge-summary-{wandb_config.run_id}")
+        log_artifact(wandb_config, relay_log_path, name=f"judge-relay-{wandb_config.run_id}")
     return summary
 
 

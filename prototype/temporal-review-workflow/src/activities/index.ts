@@ -6,6 +6,7 @@ import { WandbRunInfo } from '../workflows/reviewPipeline.workflow';
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..', '..');
 const SANDBOX_ARTIFACTS_DIR = path.join(PROJECT_ROOT, 'sandbox-runner', 'artifacts');
 const INSPECT_OUT_DIR = path.join(PROJECT_ROOT, 'prototype', 'inspect-worker', 'out');
+const INSPECT_SCRIPT = path.join(PROJECT_ROOT, 'prototype', 'inspect-worker', 'scripts', 'run_eval.py');
 const SANDBOX_PYTHON = process.env.SANDBOX_PYTHON ?? 'python3.13';
 const INSPECT_PYTHON = process.env.INSPECT_PYTHON ?? 'python3.13';
 
@@ -14,6 +15,53 @@ async function ensureSandboxArtifacts(agentRevisionId: string): Promise<string> 
   const stageDir = path.join(SANDBOX_ARTIFACTS_DIR, agentRevisionId);
   await fs.mkdir(stageDir, { recursive: true });
   return stageDir;
+}
+
+async function readJsonFile<T = unknown>(filePath: string): Promise<T | undefined> {
+  try {
+    const raw = await fs.readFile(filePath, 'utf8');
+    return JSON.parse(raw) as T;
+  } catch (err: any) {
+    if (err?.code !== 'ENOENT') {
+      console.warn(`[activities] failed to read ${filePath}`, err);
+    }
+    return undefined;
+  }
+}
+
+function appendWandbCliArgs(cliArgs: string[], wandb?: WandbRunInfo): void {
+  if (!wandb) {
+    return;
+  }
+  if (wandb.runId) {
+    cliArgs.push('--wandb-run-id', wandb.runId);
+  }
+  if (wandb.project) {
+    cliArgs.push('--wandb-project', wandb.project);
+  }
+  if (wandb.entity) {
+    cliArgs.push('--wandb-entity', wandb.entity);
+  }
+  if (wandb.baseUrl) {
+    cliArgs.push('--wandb-base-url', wandb.baseUrl);
+  }
+}
+
+function extractWandbFromMetadata(metadata?: any): WandbRunInfo | undefined {
+  if (!metadata) {
+    return undefined;
+  }
+  const preferred = metadata.wandbMcp ?? metadata.wandb;
+  if (!preferred) {
+    return undefined;
+  }
+  return {
+    runId: preferred.runId ?? metadata.wandb?.runId,
+    project: preferred.project ?? metadata.wandb?.project,
+    entity: preferred.entity ?? metadata.wandb?.entity,
+    baseUrl: metadata.wandb?.baseUrl,
+    url: preferred.url ?? metadata.wandb?.url
+  };
 }
 
 export async function preCheckSubmission(args: { submissionId: string }): Promise<{ passed: boolean; agentId: string; agentRevisionId: string; warnings: string[] }> {
@@ -26,7 +74,7 @@ export async function preCheckSubmission(args: { submissionId: string }): Promis
   };
 }
 
-export async function runSecurityGate(args: { submissionId: string; agentId: string; agentRevisionId: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string } }): Promise<{ passed: boolean; artifactsPath: string; failReasons?: string[] }> {
+export async function runSecurityGate(args: { submissionId: string; agentId: string; agentRevisionId: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string } }): Promise<{ passed: boolean; artifactsPath: string; summaryPath: string; reportPath: string; metadataPath: string; summary?: Record<string, unknown>; wandb?: WandbRunInfo; failReasons?: string[] }> {
   console.log(`[activities] runSecurityGate submission=${args.submissionId}`);
   const artifactsPath = await ensureSandboxArtifacts(args.agentRevisionId);
   const cliArgs = [
@@ -36,43 +84,42 @@ export async function runSecurityGate(args: { submissionId: string; agentId: str
     '--output-dir', artifactsPath,
     '--skip-functional'
   ];
-  if (args.wandbRun?.runId) {
-    cliArgs.push('--wandb-run-id', args.wandbRun.runId);
-  }
-  if (args.wandbRun?.project) {
-    cliArgs.push('--wandb-project', args.wandbRun.project);
-  }
-  if (args.wandbRun?.entity) {
-    cliArgs.push('--wandb-entity', args.wandbRun.entity);
-  }
-  if (args.wandbRun?.baseUrl) {
-    cliArgs.push('--wandb-base-url', args.wandbRun.baseUrl);
-  }
+  appendWandbCliArgs(cliArgs, args.wandbRun);
   if (args.agentCardPath) {
     cliArgs.push('--agent-card', args.agentCardPath);
   }
-  await runSandboxCli(cliArgs, args.agentCardPath);
-  const summaryPath = path.join(artifactsPath, 'security', 'security_summary.json');
-  let summary: any = {};
-  try {
-    summary = JSON.parse(await fs.readFile(summaryPath, 'utf8'));
-  } catch (err) {
-    console.warn('[activities] security summary not found', err);
+  if (args.relay?.endpoint) {
+    cliArgs.push('--relay-endpoint', args.relay.endpoint, '--security-endpoint', args.relay.endpoint);
   }
-  const needsReview = summary.needsReview ?? summary.needs_review;
-  const passed = typeof needsReview === 'number' ? needsReview === 0 : !summary.error;
+  if (args.relay?.token) {
+    cliArgs.push('--relay-token', args.relay.token, '--security-endpoint-token', args.relay.token);
+  }
+  await runSandboxCli(cliArgs);
+  const summaryPath = path.join(artifactsPath, 'security', 'security_summary.json');
+  const summary = await readJsonFile<Record<string, unknown>>(summaryPath) ?? {};
+  const reportPath = path.join(artifactsPath, 'security', 'security_report.jsonl');
+  const metadataPath = path.join(artifactsPath, 'metadata.json');
+  const metadata = await readJsonFile(metadataPath);
+  const wandb = extractWandbFromMetadata(metadata) ?? args.wandbRun;
+  const needsReview = (summary as any).needsReview ?? (summary as any).needs_review;
+  const passed = typeof needsReview === 'number' ? needsReview === 0 : !(summary as any).error;
   return {
     passed,
     artifactsPath,
-    failReasons: summary.error
-      ? [summary.error]
+    summaryPath,
+    reportPath,
+    metadataPath,
+    summary,
+    wandb,
+    failReasons: (summary as any).error
+      ? [(summary as any).error]
       : needsReview && needsReview > 0
         ? ['security_gate_flagged']
         : undefined
   };
 }
 
-export async function runFunctionalAccuracy(args: { submissionId: string; agentId: string; agentRevisionId: string; wandbRun?: WandbRunInfo; agentCardPath?: string }): Promise<{ passed: boolean; metrics: { embeddingVariance: number }; failReasons?: string[] }> {
+export async function runFunctionalAccuracy(args: { submissionId: string; agentId: string; agentRevisionId: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string } }): Promise<{ passed: boolean; metrics: { embeddingVariance: number }; artifactsPath: string; summaryPath: string; reportPath: string; metadataPath: string; summary?: Record<string, unknown>; wandb?: WandbRunInfo; failReasons?: string[] }> {
   console.log(`[activities] runFunctionalAccuracy submission=${args.submissionId}`);
   const artifactsPath = await ensureSandboxArtifacts(args.agentRevisionId);
   const cliArgs = [
@@ -82,37 +129,39 @@ export async function runFunctionalAccuracy(args: { submissionId: string; agentI
     '--output-dir', artifactsPath,
     '--skip-security-gate'
   ];
-  if (args.wandbRun?.runId) {
-    cliArgs.push('--wandb-run-id', args.wandbRun.runId);
-  }
-  if (args.wandbRun?.project) {
-    cliArgs.push('--wandb-project', args.wandbRun.project);
-  }
-  if (args.wandbRun?.entity) {
-    cliArgs.push('--wandb-entity', args.wandbRun.entity);
-  }
-  if (args.wandbRun?.baseUrl) {
-    cliArgs.push('--wandb-base-url', args.wandbRun.baseUrl);
-  }
+  appendWandbCliArgs(cliArgs, args.wandbRun);
   if (args.agentCardPath) {
     cliArgs.push('--agent-card', args.agentCardPath);
   }
-  await runSandboxCli(cliArgs, args.agentCardPath);
-  const summaryPath = path.join(artifactsPath, 'functional', 'functional_summary.json');
-  let summary: any = {};
-  try {
-    summary = JSON.parse(await fs.readFile(summaryPath, 'utf8'));
-  } catch (err) {
-    console.warn('[activities] functional summary not found', err);
+  if (args.relay?.endpoint) {
+    cliArgs.push('--relay-endpoint', args.relay.endpoint, '--functional-endpoint', args.relay.endpoint);
   }
+  if (args.relay?.token) {
+    cliArgs.push('--relay-token', args.relay.token);
+    cliArgs.push('--functional-endpoint-token', args.relay.token);
+  }
+  await runSandboxCli(cliArgs);
+  const summaryPath = path.join(artifactsPath, 'functional', 'functional_summary.json');
+  const summary = await readJsonFile<Record<string, unknown>>(summaryPath) ?? {};
+  const reportPath = path.join(artifactsPath, 'functional', 'functional_report.jsonl');
+  const metadataPath = path.join(artifactsPath, 'metadata.json');
+  const metadata = await readJsonFile(metadataPath);
+  const wandb = extractWandbFromMetadata(metadata) ?? args.wandbRun;
+  const passed = (summary as any).needsReview ? (summary as any).needsReview === 0 : !(summary as any).error;
   return {
-    passed: summary.needsReview ? summary.needsReview === 0 : !summary.error,
-    metrics: { embeddingVariance: summary.averageDistance ?? 0.0 },
-    failReasons: summary.error ? [summary.error] : undefined
+    passed,
+    metrics: { embeddingVariance: (summary as any).averageDistance ?? 0.0 },
+    artifactsPath,
+    summaryPath,
+    reportPath,
+    metadataPath,
+    summary,
+    wandb,
+    failReasons: (summary as any).error ? [(summary as any).error] : undefined
   };
 }
 
-export async function runJudgePanel(args: { submissionId: string; agentId: string; agentRevisionId: string; promptVersion: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string } }): Promise<{ verdict: 'approve' | 'reject' | 'manual'; score: number; explanation?: string }> {
+export async function runJudgePanel(args: { submissionId: string; agentId: string; agentRevisionId: string; promptVersion: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string } }): Promise<{ verdict: 'approve' | 'reject' | 'manual'; score: number; explanation?: string; artifactsPath: string; reportPath: string; summaryPath: string; relayLogPath: string; summary?: Record<string, unknown> }> {
   console.log(`[activities] runJudgePanel submission=${args.submissionId} prompt=${args.promptVersion}`);
   const outDir = path.join(INSPECT_OUT_DIR, args.agentId, args.agentRevisionId);
   await fs.mkdir(outDir, { recursive: true });
@@ -122,27 +171,45 @@ export async function runJudgePanel(args: { submissionId: string; agentId: strin
     '--artifacts', path.join(SANDBOX_ARTIFACTS_DIR, args.agentRevisionId),
     '--manifest', path.join(PROJECT_ROOT, 'prompts', 'aisi', 'manifest.tier3.json'),
     '--enable-judge-panel',
-    '--agent-card', args.agentCardPath ?? path.join(SANDBOX_ARTIFACTS_DIR, args.agentRevisionId, 'agent_card.json'),
-    '--judge-dry-run'
+    '--agent-card', args.agentCardPath ?? path.join(SANDBOX_ARTIFACTS_DIR, args.agentRevisionId, 'agent_card.json')
   ];
+  appendWandbCliArgs(inspectArgs, args.wandbRun);
   if (args.relay?.endpoint) {
     inspectArgs.push('--relay-endpoint', args.relay.endpoint);
+  } else {
+    inspectArgs.push('--judge-dry-run');
   }
   if (args.relay?.token) {
     inspectArgs.push('--relay-token', args.relay.token);
   }
   await runInspectCli(inspectArgs);
-  const summaryPath = path.join(outDir, 'judge', 'judge_summary.json');
-  let summary: any = {};
-  try {
-    summary = JSON.parse(await fs.readFile(summaryPath, 'utf8'));
-  } catch (err) {
-    console.warn('[activities] judge summary missing', err);
+  const judgeDir = path.join(outDir, 'judge');
+  const summaryPath = path.join(judgeDir, 'judge_summary.json');
+  const summary = await readJsonFile<Record<string, unknown>>(summaryPath) ?? {};
+  const relayLogPath = path.join(judgeDir, 'relay_logs.jsonl');
+  const reportPath = path.join(judgeDir, 'judge_report.jsonl');
+  const rejected = (summary as any).rejected ?? 0;
+  const manual = (summary as any).manual ?? 0;
+  const flagged = (summary as any).flagged ?? 0;
+  const total = (summary as any).questions ?? 0;
+  const approved = (summary as any).approved ?? 0;
+  const score = total > 0 ? approved / total : 0;
+  let verdict: 'approve' | 'reject' | 'manual' = 'approve';
+  if (rejected > 0) {
+    verdict = 'reject';
+  } else if (manual > 0 || flagged > 0) {
+    verdict = 'manual';
   }
+  const explanation = (summary as any).notes ?? `approved=${approved}, manual=${manual}, rejected=${rejected}`;
   return {
-    verdict: summary.rejected && summary.rejected > 0 ? 'reject' : summary.manual && summary.manual > 0 ? 'manual' : 'approve',
-    score: 0.9,
-    explanation: summary.notes ?? 'Judge Panel result'
+    verdict,
+    score,
+    explanation,
+    artifactsPath: outDir,
+    reportPath,
+    summaryPath,
+    relayLogPath,
+    summary
   };
 }
 
@@ -157,7 +224,7 @@ export async function publishAgent(args: { submissionId: string; agentId: string
 
 const PYTHON_BIN = process.env.SANDBOX_PYTHON ?? 'python3.13';
 
-function runSandboxCli(cliArgs: string[], agentCardPath?: string): Promise<void> {
+function runSandboxCli(cliArgs: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(PYTHON_BIN, ['-m', 'sandbox_runner.cli', ...cliArgs], {
       cwd: PROJECT_ROOT,
@@ -168,6 +235,23 @@ function runSandboxCli(cliArgs: string[], agentCardPath?: string): Promise<void>
         resolve();
       } else {
         reject(new Error(`sandbox_runner.cli exited with code ${code}`));
+      }
+    });
+    child.on('error', reject);
+  });
+}
+
+function runInspectCli(cliArgs: string[]): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(INSPECT_PYTHON, [INSPECT_SCRIPT, ...cliArgs], {
+      cwd: PROJECT_ROOT,
+      stdio: 'inherit'
+    });
+    child.on('exit', (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`inspect-worker run_eval exited with code ${code}`));
       }
     });
     child.on('error', reject);

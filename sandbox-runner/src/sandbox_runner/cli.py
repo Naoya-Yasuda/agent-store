@@ -47,6 +47,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--security-endpoint-token", help="Bearer token passed to the security endpoint")
     parser.add_argument("--security-timeout", type=float, default=15.0, help="Timeout seconds for security endpoint requests")
     parser.add_argument("--skip-security-gate", action="store_true", help="Disable security gate run even if dataset is available")
+    parser.add_argument("--relay-endpoint", help="Default A2A relay endpoint used when stage-specific endpoints are未設定")
+    parser.add_argument("--relay-token", help="Bearer token shared across security/functional stages")
+    parser.add_argument("--functional-endpoint", help="Functional accuracy HTTP endpoint (defaults to relay endpoint)")
+    parser.add_argument("--functional-endpoint-token", help="Bearer token for the functional endpoint")
+    parser.add_argument("--functional-timeout", type=float, default=20.0, help="Functional endpoint timeout seconds")
     parser.add_argument("--agent-card", help="Path to AgentCard JSON used for functional accuracy evaluation")
     default_ragtruth_dir = Path(__file__).resolve().parents[2] / "resources" / "ragtruth"
     parser.add_argument("--ragtruth-dir", default=str(default_ragtruth_dir), help="Directory containing RAGTruth-style JSONL files")
@@ -232,8 +237,8 @@ def main(argv: list[str] | None = None) -> int:
             dataset_path=Path(args.security_dataset),
             output_dir=security_output,
             attempts=max(1, args.security_attempts),
-            endpoint_url=args.security_endpoint,
-            endpoint_token=args.security_endpoint_token,
+            endpoint_url=args.security_endpoint or args.relay_endpoint,
+            endpoint_token=args.security_endpoint_token or args.relay_token,
             timeout=args.security_timeout,
             dry_run=args.dry_run
         )
@@ -251,7 +256,10 @@ def main(argv: list[str] | None = None) -> int:
             ragtruth_dir=Path(args.ragtruth_dir),
             output_dir=functional_output,
             max_scenarios=max(1, args.functional_max_scenarios),
-            dry_run=args.dry_run
+            dry_run=args.dry_run,
+            endpoint_url=args.functional_endpoint or args.relay_endpoint,
+            endpoint_token=args.functional_endpoint_token or args.relay_token,
+            timeout=args.functional_timeout
         )
         metadata["functionalAccuracy"] = functional_summary
         wandb_mcp.log_stage_summary("functional", functional_summary)

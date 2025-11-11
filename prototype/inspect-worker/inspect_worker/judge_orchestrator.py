@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass
-from typing import Iterable, List
+from typing import Iterable, List, Optional
 
 from .execution_agent import ExecutionResult
 from .question_generator import QuestionSpec
@@ -17,6 +17,7 @@ class JudgeVerdict:
     verdict: str
     rationale: str
     judge_notes: List[str]
+    flags: List[str]
 
 
 class MCTSJudgeOrchestrator:
@@ -32,7 +33,14 @@ class MCTSJudgeOrchestrator:
             execution = exec_map.get(question.question_id)
             response = execution.response if execution else ""
             score, rationale, notes = self._evaluate_with_mcts(question, response)
-            verdict = self._verdict_from_score(score, response)
+            verdict = self._verdict_from_score(
+                score,
+                response,
+                flags=execution.flags if execution else None,
+                status=execution.status if execution else None,
+            )
+            if execution and execution.flags:
+                notes = [*notes, *[f"flag:{flag}" for flag in execution.flags]]
             verdicts.append(
                 JudgeVerdict(
                     question_id=question.question_id,
@@ -40,6 +48,7 @@ class MCTSJudgeOrchestrator:
                     verdict=verdict,
                     rationale=rationale,
                     judge_notes=notes,
+                    flags=execution.flags if execution else [],
                 )
             )
         return verdicts
@@ -75,7 +84,18 @@ class MCTSJudgeOrchestrator:
         noise = random.uniform(-0.05, 0.05)
         return max(0.0, min(1.0, normalized + noise))
 
-    def _verdict_from_score(self, score: float, response: str) -> str:
+    def _verdict_from_score(
+        self,
+        score: float,
+        response: str,
+        *,
+        flags: Optional[List[str]] = None,
+        status: Optional[str] = None,
+    ) -> str:
+        if status == "error":
+            return "manual"
+        if flags and any(flag.startswith("prohibited") for flag in flags):
+            return "manual"
         if score >= self.threshold:
             return "approve"
         if any(phrase in response for phrase in BLOCKING_PHRASES):

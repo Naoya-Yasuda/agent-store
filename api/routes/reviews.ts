@@ -136,28 +136,43 @@ router.post('/review/decision', async (req: Request, res: Response) => {
 
 router.get('/review/artifacts/:agentRevisionId', async (req: Request, res: Response) => {
   const { stage = 'security', type = 'report', agentId } = req.query;
-  const baseDir = path.resolve(__dirname, '..', '..', 'sandbox-runner', 'artifacts', req.params.agentRevisionId as string);
+  const revision = req.params.agentRevisionId as string;
+  const baseDir = path.resolve(__dirname, '..', '..', 'sandbox-runner', 'artifacts', revision);
+  const judgeBase = path.join(__dirname, '..', '..', 'prototype', 'inspect-worker', 'out', String(agentId ?? 'unknown'), revision, 'judge');
+  if (String(stage) === 'judge' && !agentId) {
+    return res.status(400).json({ error: 'agent_id_required' });
+  }
   const mapping: Record<string, Record<string, string>> = {
     security: {
       report: path.join(baseDir, 'security', 'security_report.jsonl'),
-      summary: path.join(baseDir, 'security', 'security_summary.json')
+      summary: path.join(baseDir, 'security', 'security_summary.json'),
+      metadata: path.join(baseDir, 'metadata.json')
     },
     functional: {
       report: path.join(baseDir, 'functional', 'functional_report.jsonl'),
-      summary: path.join(baseDir, 'functional', 'functional_summary.json')
+      summary: path.join(baseDir, 'functional', 'functional_summary.json'),
+      metadata: path.join(baseDir, 'metadata.json')
     },
     judge: {
-      report: path.join(__dirname, '..', '..', 'prototype', 'inspect-worker', 'out', String(agentId ?? 'unknown'), req.params.agentRevisionId as string, 'judge', 'judge_report.jsonl'),
-      summary: path.join(__dirname, '..', '..', 'prototype', 'inspect-worker', 'out', String(agentId ?? 'unknown'), req.params.agentRevisionId as string, 'judge', 'judge_summary.json')
+      report: path.join(judgeBase, 'judge_report.jsonl'),
+      summary: path.join(judgeBase, 'judge_summary.json'),
+      relay: path.join(judgeBase, 'relay_logs.jsonl')
     }
   };
-  const stageMap = mapping[String(stage)] || mapping.security;
-  const filePath = stageMap[String(type)] || Object.values(stageMap)[0];
+  const stageKey = String(stage);
+  const stageMap = mapping[stageKey] || mapping.security;
+  const fileKey = String(type);
+  const filePath = stageMap[fileKey] ?? stageMap.report;
   try {
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ error: 'artifact_not_found' });
     }
-    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    const ext = path.extname(filePath);
+    if (ext === '.jsonl') {
+      res.setHeader('Content-Type', 'application/jsonl; charset=utf-8');
+    } else {
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    }
     fs.createReadStream(filePath).pipe(res);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'unknown_error';

@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
+from .security_gate import invoke_endpoint
+
 
 @dataclass
 class Scenario:
@@ -82,9 +84,9 @@ def attach_expected_answers(scenarios: List[Scenario], ragtruth: List[Dict[str, 
     scenario.expected_answer = answer or ""
 
 
-def simple_similarity(a: str, b: str) -> float:
-  a_tokens = set(a.lower().split())
-  b_tokens = set(b.lower().split())
+def simple_similarity(a: str, b: Optional[str]) -> float:
+  a_tokens = set((a or '').lower().split())
+  b_tokens = set((b or '').lower().split())
   if not a_tokens and not b_tokens:
     return 1.0
   if not a_tokens or not b_tokens:
@@ -94,7 +96,15 @@ def simple_similarity(a: str, b: str) -> float:
   return intersection / union
 
 
-def evaluate_response(expected: str, response: str, threshold: float = 0.4) -> Dict[str, Any]:
+def evaluate_response(expected: str, response: Optional[str], threshold: float = 0.4) -> Dict[str, Any]:
+  if response is None or not response.strip():
+    return {
+      "similarity": 0.0,
+      "distance": 1.0,
+      "verdict": "needs_review",
+      "threshold": threshold,
+      "reason": "empty_response"
+    }
   similarity = simple_similarity(expected, response)
   distance = 1 - similarity
   verdict = "pass" if distance <= threshold else "needs_review"
@@ -106,6 +116,23 @@ def evaluate_response(expected: str, response: str, threshold: float = 0.4) -> D
   }
 
 
+def _execute_functional_prompt(
+  prompt: str,
+  *,
+  endpoint_url: Optional[str],
+  endpoint_token: Optional[str],
+  timeout: float,
+  dry_run: bool
+) -> tuple[Optional[str], str, Optional[str]]:
+  if dry_run or not endpoint_url:
+    return (f"(dry-run) {prompt}", "dry_run", None)
+  try:
+    response_text = invoke_endpoint(endpoint_url, prompt, timeout=timeout, token=endpoint_token)
+  except Exception as exc:  # pragma: no cover - network errors depend on environment
+    return (None, "error", str(exc)[:300])
+  return (response_text, "ok", None)
+
+
 def run_functional_accuracy(
   *,
   agent_id: str,
@@ -114,7 +141,10 @@ def run_functional_accuracy(
   ragtruth_dir: Path,
   output_dir: Path,
   max_scenarios: int,
-  dry_run: bool
+  dry_run: bool,
+  endpoint_url: Optional[str],
+  endpoint_token: Optional[str],
+  timeout: float
 ) -> Dict[str, Any]:
   output_dir.mkdir(parents=True, exist_ok=True)
   if not agent_card_path.exists():
@@ -136,13 +166,24 @@ def run_functional_accuracy(
   needs_review = 0
   distances: List[float] = []
 
+  error_count = 0
   with report_path.open("w", encoding="utf-8") as report_file:
     for scenario in scenarios:
-      if dry_run:
-        response_text = f"(dry-run) {scenario.use_case} の説明"
-      else:
-        response_text = f"{scenario.use_case} の実行結果"  # TODO: integrate real agent call
+      response_text, status, error_text = _execute_functional_prompt(
+        scenario.prompt,
+        endpoint_url=endpoint_url,
+        endpoint_token=endpoint_token,
+        timeout=timeout,
+        dry_run=dry_run or not endpoint_url
+      )
+      if status == "error":
+        error_count += 1
       evaluation = evaluate_response(scenario.expected_answer, response_text)
+      if status == "error":
+        evaluation["reason"] = "endpoint_error"
+        evaluation["verdict"] = "needs_review"
+      elif status == "dry_run":
+        evaluation.setdefault("reason", "dry_run")
       if evaluation["verdict"] == "pass":
         passes += 1
       else:
@@ -156,7 +197,9 @@ def run_functional_accuracy(
         "expected": scenario.expected_answer,
         "response": response_text,
         "evaluation": evaluation,
-        "timestamp": int(time.time())
+        "timestamp": int(time.time()),
+        "responseStatus": status,
+        "responseError": error_text
       }
       report_file.write(json.dumps(record, ensure_ascii=False) + "\n")
 
@@ -168,7 +211,10 @@ def run_functional_accuracy(
     "passes": passes,
     "needsReview": needs_review,
     "averageDistance": round(avg_distance, 4) if not math.isnan(avg_distance) else None,
-    "ragtruthRecords": len(ragtruth_records)
+    "ragtruthRecords": len(ragtruth_records),
+    "responsesWithError": error_count,
+    "endpoint": endpoint_url,
+    "dryRun": dry_run or not endpoint_url
   }
   (output_dir / "functional_summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
   return summary
