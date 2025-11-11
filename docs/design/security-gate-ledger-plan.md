@@ -8,19 +8,21 @@
 | フィールド | 説明 |
 | --- | --- |
 | `workflowId` / `runId` | Temporal WorkflowのID・Run ID。既存Ledgerスキーマに合わせる。|
-| `stage` | `security` / `judge` などステージ名。|
-| `summaryDigest` | `security_summary.json` のSHA256。実ファイルはArtifactsに残し、Ledgerにはハッシュのみ保持。|
-| `categories` | `blocked` / `needsReview` / `endpoint_error` などの件数。|
-| `promptsArtifact` | `security_prompts.jsonl` のパス or ハッシュ。機微な内容の場合はハッシュのみにする。|
+| `stage` | `security` / `functional` / `judge` などステージ名。|
+| `summaryDigest` | 各ステージの `*_summary.json` のSHA256。実ファイルはArtifactsに残し、Ledgerにはハッシュのみ保持。|
+| `reportDigest` | `security_report.jsonl` / `functional_report.jsonl` / `judge_report.jsonl` のSHA256。|
+| `promptsPath` / `promptsDigest` | `security_prompts.jsonl` / `functional_scenarios.jsonl` のパスとハッシュ。|
+| `metrics` | ステージ固有メトリクス（Securityカテゴリ件数、Functionalの平均距離、Judgeのverdict件数など）。|
 | `timestamp` | サマリ生成時刻 (`generatedAt`) 。|
 
-Judge Panelの場合は、`judge_summary.json` / `judge_report.jsonl` / `relay_logs.jsonl` のハッシュ、`llmVerdict` 件数、LLM設定（provider/model/temperature/dryRun）を含める。
+Functional Accuracyの場合は、RAGTruth突合の `functional_summary.json` / `functional_report.jsonl` / `functional_scenarios.jsonl` を対象に、Embedding距離や `needsReview` 件数をLedgerに残す。Judge Panelの場合は `judge_summary.json` / `judge_report.jsonl` / `relay_logs.jsonl` のハッシュ、`llmVerdict` 件数、LLM設定（provider/model/temperature/dryRun）を含める。
 
 ## 3. 実装ポイント
 1. **Sandbox Runner**
    - 既存の `security_summary.json` に `categories`, `promptsArtifact`, `endpointFailures`, `timeoutFailures` を記録済み。Ledger用にはSHA256を計算し、Temporalへ返す値に含める。
 2. **Temporal Activities**
    - `runSecurityGate` の戻り値に `ledgerEntry` 的なフィールド（summary path + digest）を追加し、Workflowが完了したタイミングでAudit LedgerへPOSTするアクティビティを挟む。
+   - Functional Accuracyも `runFunctionalAccuracy` 内で `recordFunctionalLedger` を呼び、`functional_summary.json` / `functional_report.jsonl` / `functional_scenarios.jsonl` のハッシュとEmbedding距離などをLedgerに出力する。
    - Judge Panelも同一パターンで `runJudgePanel` から `recordJudgeLedger` を呼び、`judge_summary.json` / `judge_report.jsonl` / `relay_logs.jsonl` のハッシュとLLM設定・判定件数をLedgerへ書き込む。
 3. **Auditライブラリ**
    - 既存の `publishToLedger` ヘルパーを再利用し、`securityLedgerEntry.json` を自動生成。オプションでHTTP送信。
@@ -28,7 +30,13 @@ Judge Panelの場合は、`judge_summary.json` / `judge_report.jsonl` / `relay_l
    - LedgerエントリのURL/ハッシュをWorkflow Progressに含め、Human Review UIやW&B Runから辿れるようにする。
    - Judgeステージも同様にLedger情報を進捗detailsに含め、UIでリンク表示する。
 
-## 4. Judge Panelへの拡張
+## 4. Functional / Judge 拡張
+### Functional Accuracy
+1. RAGTruthシナリオ (`functional_scenarios.jsonl`) と `functional_report.jsonl` をArtifactsに保持し、Ledgerにはハッシュと相対パスのみ保存する。
+2. Ledgerエントリには `metrics` として平均距離・Embedding距離・`needsReview` 件数を格納し、再実行時に比較できるようにする。
+3. Ledger出力先は `FUNCTIONAL_LEDGER_DIR` / `FUNCTIONAL_LEDGER_ENDPOINT` / `FUNCTIONAL_LEDGER_TOKEN` を優先し、未設定の場合はSecurityの環境変数を再利用する。
+
+### Judge Panel
 1. Attackテンプレ同様に、Judgeの `judge_report.jsonl` / `relay_logs.jsonl` をArtifactsに保持し、Ledgerにはハッシュのみ保存。実応答やLLM説明は審査専用データのためフルで残して問題ない。
 2. Ledgerエントリには `llmConfig`（enabled, provider, model, temperature, dryRun）と `llmVerdictCounts` を含める。これにより再現性と監査性を保証する。
 3. Human Review UIの再実行フォームは前回のLLM設定をデフォルトで引き継ぎ、必要に応じて上書きできるようにする（設定を毎回入力させない）。
@@ -47,6 +55,7 @@ Judge Panelの場合は、`judge_summary.json` / `judge_report.jsonl` / `relay_l
 
 ## 7. 実装状況 (2025-11-11)
 - Security Gate: `recordSecurityLedger` が `security_ledger_entry.json` を生成し、`SECURITY_LEDGER_*` に基づいてLedgerへ保存/POSTする。Vitest (`src/__tests__/ledger.test.ts`) でハッシュ生成とファイル出力をカバー済み。
+- Functional Accuracy: `recordFunctionalLedger` が `functional_summary.json` / `functional_report.jsonl` / `functional_scenarios.jsonl` のハッシュとEmbedding距離メトリクスを `functional_ledger_entry.json` に書き出し、`FUNCTIONAL_LEDGER_*`（未設定時はSecurity用変数を再利用）でLedgerへ転送。Workflow progressとHuman Review UIのFunctionalステージ details にLedgerダイジェストを表示。
 - Judge Panel: Inspect Worker CLI実行後に `recordJudgeLedger` が summary/report/relayログのSHA256とLLM設定（`llmJudge`）、判定件数（approved/manual/rejected）、Relayエラー件数をまとめたpayloadを `judge_ledger_entry.json` として書き出し、`JUDGE_LEDGER_*`（未設定時はSecurity用変数を再利用）でLedgerへ転送する。
-- Workflow: `reviewPipeline.workflow.ts` の Judge ステージ details に Ledgerパス/ダイジェストを含め、Human Review UIとW&Bから参照できるようにした。
-- Pending: Functionalステージ用Ledgerスキーマ、Ledger API障害時のリトライ/警告UI出力、Human Review UIでのLedgerリンク表示。
+- Workflow: `reviewPipeline.workflow.ts` のステージ details に Ledgerパス/ダイジェストを含め、Human Review UIとW&Bから参照できるようにした。
+- Pending: Ledger API障害時のリトライ/警告UI出力。

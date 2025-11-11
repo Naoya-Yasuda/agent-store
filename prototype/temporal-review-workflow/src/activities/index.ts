@@ -149,7 +149,7 @@ export async function runSecurityGate(args: { submissionId: string; agentId: str
   };
 }
 
-export async function runFunctionalAccuracy(args: { submissionId: string; agentId: string; agentRevisionId: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string } }): Promise<{ passed: boolean; metrics: { averageDistance?: number; embeddingAverageDistance?: number; embeddingMaxDistance?: number }; artifactsPath: string; summaryPath: string; reportPath: string; promptsPath: string; metadataPath: string; summary?: Record<string, unknown>; wandb?: WandbRunInfo; failReasons?: string[] }> {
+export async function runFunctionalAccuracy(args: { submissionId: string; agentId: string; agentRevisionId: string; workflowId: string; workflowRunId: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string } }): Promise<{ passed: boolean; metrics: { averageDistance?: number; embeddingAverageDistance?: number; embeddingMaxDistance?: number }; artifactsPath: string; summaryPath: string; reportPath: string; promptsPath: string; metadataPath: string; summary?: Record<string, unknown>; wandb?: WandbRunInfo; failReasons?: string[]; ledgerEntryPath?: string; ledgerDigest?: string }> {
   console.log(`[activities] runFunctionalAccuracy submission=${args.submissionId}`);
   const artifactsPath = await ensureSandboxArtifacts(args.agentRevisionId);
   const cliArgs = [
@@ -181,6 +181,26 @@ export async function runFunctionalAccuracy(args: { submissionId: string; agentI
   const metadata = await readJsonFile(metadataPath);
   const wandb = extractWandbFromMetadata(metadata) ?? args.wandbRun;
   const passed = (summary as any).needsReview ? (summary as any).needsReview === 0 : !(summary as any).error;
+  const ledgerInfo = await recordFunctionalLedger({
+    workflowId: args.workflowId,
+    workflowRunId: args.workflowRunId,
+    submissionId: args.submissionId,
+    agentId: args.agentId,
+    agentRevisionId: args.agentRevisionId,
+    summaryPath,
+    reportPath,
+    promptsPath,
+    summary
+  });
+  await upsertStageMetadata(args.agentRevisionId, 'functional', {
+    summary,
+    metrics: {
+      averageDistance: (summary as any).averageDistance,
+      embeddingAverageDistance: (summary as any).embeddingAverageDistance,
+      embeddingMaxDistance: (summary as any).embeddingMaxDistance
+    },
+    ledger: ledgerInfo.entryPath ? { entryPath: ledgerInfo.entryPath, digest: ledgerInfo.digest } : undefined
+  });
   return {
     passed,
     metrics: {
@@ -195,7 +215,9 @@ export async function runFunctionalAccuracy(args: { submissionId: string; agentI
     metadataPath,
     summary,
     wandb,
-    failReasons: (summary as any).error ? [(summary as any).error] : undefined
+    failReasons: (summary as any).error ? [(summary as any).error] : undefined,
+    ledgerEntryPath: ledgerInfo.entryPath,
+    ledgerDigest: ledgerInfo.digest
   };
 }
 
@@ -352,6 +374,18 @@ export async function hashFile(filePath: string): Promise<string> {
   return createHash('sha256').update(buffer).digest('hex');
 }
 
+async function tryHashFile(filePath?: string): Promise<string | undefined> {
+  if (!filePath) {
+    return undefined;
+  }
+  try {
+    return await hashFile(filePath);
+  } catch (err) {
+    console.warn(`[activities] failed to hash file ${filePath}`, err);
+    return undefined;
+  }
+}
+
 export async function recordSecurityLedger(args: {
   workflowId: string;
   workflowRunId: string;
@@ -396,6 +430,65 @@ export async function recordSecurityLedger(args: {
     return { entryPath, digest: ledgerDigest };
   } catch (err) {
     console.warn('[activities] failed to record security ledger entry', err);
+    return {};
+  }
+}
+
+export async function recordFunctionalLedger(args: {
+  workflowId: string;
+  workflowRunId: string;
+  submissionId: string;
+  agentId: string;
+  agentRevisionId: string;
+  summaryPath: string;
+  reportPath: string;
+  promptsPath: string;
+  summary: Record<string, unknown>;
+}): Promise<{ entryPath?: string; digest?: string }> {
+  try {
+    const summaryDigest = await hashFile(args.summaryPath);
+    const reportDigest = await hashFile(args.reportPath);
+    const promptsDigest = await tryHashFile(args.promptsPath);
+    const payload = {
+      stage: 'functional',
+      submissionId: args.submissionId,
+      agentId: args.agentId,
+      agentRevisionId: args.agentRevisionId,
+      summaryPath: args.summaryPath,
+      summaryDigest,
+      reportPath: args.reportPath,
+      reportDigest,
+      promptsPath: args.promptsPath,
+      promptsDigest,
+      metrics: {
+        averageDistance: (args.summary as any)?.averageDistance,
+        embeddingAverageDistance: (args.summary as any)?.embeddingAverageDistance,
+        embeddingMaxDistance: (args.summary as any)?.embeddingMaxDistance,
+        successRate: (args.summary as any)?.successRate
+      },
+      needsReview: (args.summary as any)?.needsReview,
+      ragtruth: (args.summary as any)?.ragTruthArtifact ?? (args.summary as any)?.ragtruthArtifact,
+      generatedAt: (args.summary as any)?.generatedAt ?? Date.now()
+    };
+    const payloadPath = path.join(path.dirname(args.summaryPath), 'functional_ledger_entry.json');
+    await fs.writeFile(payloadPath, JSON.stringify(payload, null, 2), 'utf8');
+    const ledgerDigest = await hashFile(payloadPath);
+    const auditEntry: AuditLedgerEntry = {
+      workflowId: args.workflowId,
+      runId: args.workflowRunId ?? null,
+      namespace: NAMESPACE,
+      historyDigestSha256: ledgerDigest,
+      exportedAt: new Date().toISOString(),
+      sourceFile: payloadPath
+    };
+    const entryPath = await publishToLedger(auditEntry, {
+      outputDir: process.env.FUNCTIONAL_LEDGER_DIR ?? process.env.SECURITY_LEDGER_DIR,
+      httpEndpoint: process.env.FUNCTIONAL_LEDGER_ENDPOINT ?? process.env.SECURITY_LEDGER_ENDPOINT,
+      httpToken: process.env.FUNCTIONAL_LEDGER_TOKEN ?? process.env.SECURITY_LEDGER_TOKEN
+    });
+    return { entryPath, digest: ledgerDigest };
+  } catch (err) {
+    console.warn('[activities] failed to record functional ledger entry', err);
     return {};
   }
 }

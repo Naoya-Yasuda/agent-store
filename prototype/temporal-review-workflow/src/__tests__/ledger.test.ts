@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
-import { recordSecurityLedger, recordJudgeLedger, recordStageEvent } from '../activities/index';
+import { recordSecurityLedger, recordJudgeLedger, recordFunctionalLedger, recordStageEvent } from '../activities/index';
 import { getLedgerEntryFile } from '../../../../api/services/reviewService';
 
 vi.mock('../../../../api/temporal/client', () => ({
@@ -26,6 +26,9 @@ afterEach(async () => {
   delete process.env.JUDGE_LEDGER_DIR;
   delete process.env.JUDGE_LEDGER_ENDPOINT;
   delete process.env.JUDGE_LEDGER_TOKEN;
+  delete process.env.FUNCTIONAL_LEDGER_DIR;
+  delete process.env.FUNCTIONAL_LEDGER_ENDPOINT;
+  delete process.env.FUNCTIONAL_LEDGER_TOKEN;
   while (tmpDirs.length) {
     const dir = tmpDirs.pop();
     if (dir) {
@@ -130,6 +133,46 @@ describe('recordJudgeLedger', () => {
     const ledgerContent = JSON.parse(await fs.readFile(result.entryPath!, 'utf8'));
     expect(ledgerContent.workflowId).toBe('wf-judge');
     expect(ledgerContent.historyDigestSha256).toBe(result.digest);
+    const files = await fs.readdir(ledgerDir);
+    expect(files.length).toBeGreaterThan(0);
+  });
+});
+
+describe('recordFunctionalLedger', () => {
+  it('creates a ledger entry with functional metrics', async () => {
+    const workDir = await createTempDir('functional-ledger-');
+    const summaryPath = path.join(workDir, 'functional_summary.json');
+    const reportPath = path.join(workDir, 'functional_report.jsonl');
+    const promptsPath = path.join(workDir, 'functional_scenarios.jsonl');
+    const ledgerDir = path.join(workDir, 'functional-ledger');
+
+    await fs.writeFile(summaryPath, JSON.stringify({ averageDistance: 0.2, embeddingAverageDistance: 0.1, needsReview: 0, generatedAt: 456 }), 'utf8');
+    await fs.writeFile(reportPath, 'functional report', 'utf8');
+    await fs.writeFile(promptsPath, 'scenario', 'utf8');
+
+    process.env.FUNCTIONAL_LEDGER_DIR = ledgerDir;
+    delete process.env.FUNCTIONAL_LEDGER_ENDPOINT;
+    delete process.env.FUNCTIONAL_LEDGER_TOKEN;
+
+    const result = await recordFunctionalLedger({
+      workflowId: 'wf-functional',
+      workflowRunId: 'run-functional',
+      submissionId: 'submission-functional',
+      agentId: 'agent-functional',
+      agentRevisionId: 'rev-functional',
+      summaryPath,
+      reportPath,
+      promptsPath,
+      summary: { averageDistance: 0.2, embeddingAverageDistance: 0.1, generatedAt: 456 }
+    });
+
+    expect(result.digest).toBeTruthy();
+    expect(result.entryPath).toBeTruthy();
+    const ledgerContent = JSON.parse(await fs.readFile(result.entryPath!, 'utf8'));
+    expect(ledgerContent.workflowId).toBe('wf-functional');
+    const payload = JSON.parse(await fs.readFile(path.join(workDir, 'functional_ledger_entry.json'), 'utf8'));
+    expect(payload.stage).toBe('functional');
+    expect(payload.metrics.averageDistance).toBe(0.2);
     const files = await fs.readdir(ledgerDir);
     expect(files.length).toBeGreaterThan(0);
   });

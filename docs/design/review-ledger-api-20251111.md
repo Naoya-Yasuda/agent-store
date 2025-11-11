@@ -29,6 +29,16 @@
       "downloadUrl": "/review/ledger/download?submissionId=subm-2025-001&stage=security"
     },
     {
+      "stage": "functional",
+      "entryPath": "/var/audit-ledger/functional/functional_ledger_entry.json",
+      "digest": "3a29cafe...",
+      "workflowId": "review-pipeline-subm-2025-001",
+      "workflowRunId": "a1b2c3",
+      "generatedAt": "2025-11-11T08:05:00Z",
+      "sourceFile": "sandbox-runner/artifacts/subm-2025-001/functional/functional_ledger_entry.json",
+      "downloadUrl": "/review/ledger/download?submissionId=subm-2025-001&stage=functional"
+    },
+    {
       "stage": "judge",
       "entryPath": "https://ledger.example.com/api/entries/abc123",
       "digest": "7d41cf20...",

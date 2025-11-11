@@ -26,7 +26,7 @@ type SecurityGateResult = {
 
 type FunctionalAccuracyResult = {
   passed: boolean;
-  metrics: { embeddingVariance: number };
+  metrics: { averageDistance?: number; embeddingAverageDistance?: number; embeddingMaxDistance?: number };
   artifactsPath: string;
   summaryPath: string;
   reportPath: string;
@@ -34,6 +34,8 @@ type FunctionalAccuracyResult = {
   summary?: Record<string, unknown>;
   wandb?: WandbRunInfo;
   failReasons?: string[];
+  ledgerEntryPath?: string;
+  ledgerDigest?: string;
 };
 
 type JudgePanelResult = {
@@ -52,7 +54,7 @@ type JudgePanelResult = {
 type Activities = {
   preCheckSubmission: (args: { submissionId: string }) => Promise<{ passed: boolean; agentId: string; agentRevisionId: string; warnings: string[] }>;
   runSecurityGate: (args: { submissionId: string; agentId: string; agentRevisionId: string; workflowId: string; workflowRunId: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string } }) => Promise<SecurityGateResult>;
-  runFunctionalAccuracy: (args: { submissionId: string; agentId: string; agentRevisionId: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string } }) => Promise<FunctionalAccuracyResult>;
+  runFunctionalAccuracy: (args: { submissionId: string; agentId: string; agentRevisionId: string; workflowId: string; workflowRunId: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string } }) => Promise<FunctionalAccuracyResult>;
   runJudgePanel: (args: { submissionId: string; agentId: string; agentRevisionId: string; promptVersion: string; workflowId: string; workflowRunId: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string }; llmJudge?: LlmJudgeConfig }) => Promise<JudgePanelResult>;
   notifyHumanReview: (args: { submissionId: string; agentId: string; agentRevisionId: string; reason: string; attachments?: string[] }) => Promise<'approved' | 'rejected'>;
   recordStageEvent: (args: { agentRevisionId: string; stage: StageName; event: string; data?: Record<string, unknown>; timestamp?: string }) => Promise<void>;
@@ -374,6 +376,8 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
       submissionId: context.submissionId,
       agentId: context.agentId,
       agentRevisionId: context.agentRevisionId,
+      workflowId: context.workflowId,
+      workflowRunId: context.workflowRunId,
       wandbRun: context.wandbRun,
       agentCardPath: context.agentCardPath,
       relay: context.relay
@@ -387,7 +391,8 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
           report: { stage: 'functional', type: 'report', agentRevisionId: context.agentRevisionId },
           summary: { stage: 'functional', type: 'summary', agentRevisionId: context.agentRevisionId },
           prompts: { stage: 'functional', type: 'prompts', agentRevisionId: context.agentRevisionId }
-        }
+        },
+        ledger: functional.ledgerEntryPath ? { entryPath: functional.ledgerEntryPath, digest: functional.ledgerDigest } : undefined
       }
     });
     if (!functional.passed) {
