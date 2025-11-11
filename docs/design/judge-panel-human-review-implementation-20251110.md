@@ -65,7 +65,7 @@
 - Human Review UIのユーザー管理（RBAC）と監査ログ連携。
 
 ## 7. 次ステップ (2025-11-11)
-1. Human Review UI: Ledgerリンク表示と決裁ログ（承認/差戻しメモ、受信時刻など）の可視化、再実行フォームでのLLM設定デフォルト表示を仕上げる。
-2. W&Bメタデータ: `wandbMcp.stages.judge` にRelayエラー詳細やLLM呼び出し回数を追加し、Sandbox Runner→Inspect Worker→Temporalの三者で差異が無いようにする。
-3. Inspect Worker Relay層: HTTPエラーリトライ、禁止語検出、レスポンスログ圧縮を追加し、Ledger/W&B/UIで参照できる統一スキーマを整備する。
-4. Temporal/Vitest: Judgeステージ向け回帰テスト（LLM設定伝播、Ledger失敗時の警告、Human Review再実行シグナル）を拡充する。
+1. **LLM Override Validation**: Judge再実行フォームから送られたLLM設定がTemporal→Inspect Workerまで到達することをVitest/E2Eで確認し、READMEに利用手順・注意点を追記。数値入力（temperature/maxTokens）の範囲・フォーマットをUIでバリデーションする。
+2. **W&B Event Logging**: `sandbox_runner.log_wandb_event` をJudge manual判定やLLM override通知にも適用し、W&Bダッシュボードのタイムラインに全処理イベント（再実行・決裁）を記録する。
+3. **Relay UX改善**: Relayログ検索フィルタの追加、禁止語ヒット専用ビュー、JSONLダウンロードボタンなどHuman Review UIでの検証体験を改善する。
+4. **回帰テスト拡充**: Temporal/VitestでLLM override／W&Bイベントをモック検証。UIはReact Testing Library等でフォームバリデーションやエラー表示をテストする。

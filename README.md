@@ -110,6 +110,7 @@ flowchart TD
   ```
   を実行すると `out/<agent>/<revision>/judge/judge_report.jsonl` と `judge_summary.json` が生成されます。`--relay-endpoint` を指定すればA2A Relay経由で実エージェントに質問できます。Relay呼び出しは最大3回まで自動リトライし、HTTPエラー履歴・レスポンススニペット・禁止語検知（パスワード/APIキー/SSN/秘密鍵等）を `judge_report.jsonl` と `relay_logs.jsonl` に書き出します。
 - Human Review UIは `GET /review/ui/:submissionId` で確認できます。ステージ状況、W&Bダッシュボードリンク、再実行フォーム、承認/差戻しボタンが表示されます（バックエンド: `api/routes/reviews.ts`）。Judge セクションでは `llmScore` / `llmVerdict` のカード表示と Relay JSONL ログの整形プレビューを確認でき、CLI版ビューとNext.jsダッシュボードのどちらからでもLLM設定を再確認できます。Security/JudgeステージのLedger（監査台帳）リンクも同じビューで参照可能で、UIから送信した承認/差戻しは Temporal の `signalHumanDecision` を通じて Human ステージへ即時反映されます（実装メモ: [docs/design/judge-panel-human-review-implementation-20251110.md](docs/design/judge-panel-human-review-implementation-20251110.md)）。LedgerリストだけをJSONで取得したい場合は `GET /review/ledger/:submissionId` を利用してください（詳細: [review-ledger-api-20251111.md](docs/design/review-ledger-api-20251111.md)）。
+- Human Review UIは `GET /review/ui/:submissionId` で確認できます。ステージ状況、W&Bダッシュボードリンク、再実行フォーム、承認/差戻しボタンが表示されます（バックエンド: `api/routes/reviews.ts`）。Judge セクションでは `llmScore` / `llmVerdict` のカード表示と Relay JSONL ログの整形プレビューを確認でき、CLI版ビューとNext.jsダッシュボードのどちらからでもLLM設定を再確認できます。Judge再実行時はフォームの「LLM設定を上書きする」にチェックを入れることで、`model` / `provider` / `temperature(0〜2)` / `maxOutputTokens(>0整数)` / `dryRun(true|false|inherit)` を指定できます。入力値はクライアント側で検証され、エラーの場合は送信されません。Security/JudgeステージのLedger（監査台帳）リンクも同じビューで参照可能で、UIから送信した承認/差戻しは Temporal の `signalHumanDecision` を通じて Human ステージへ即時反映されます。Ledger一覧だけをJSONで取得したい場合は `GET /review/ledger/:submissionId`（詳細: [review-ledger-api-20251111.md](docs/design/review-ledger-api-20251111.md)）を利用してください。
 - Next.js版のHuman Reviewダッシュボード（`review-ui/`）も用意しています。`cd review-ui && npm install && npm run dev`で起動し、`http://localhost:3000`からAPI経由で進捗・W&Bリンク・証拠ダウンロードを確認できます。
 
 ## W&B MCP 連携
@@ -138,10 +139,10 @@ flowchart TD
 > ※実装や設計の更新を行った際は、必ず本READMEのステータステーブルと該当セクションを更新してください。
 
 ## 今後の優先タスク
-1. **Human Review UI強化**: Judge再実行フォームでLLM設定を上書き可能にし、Relayログ検索/フィルタ機能、Ledger JSONダウンロードボタンを追加する（参照: [docs/design/judge-panel-human-review-implementation-20251110.md](docs/design/judge-panel-human-review-implementation-20251110.md)).
-2. **Ledger API拡張**: `GET /review/ledger/:submissionId` に `workflowRunId` / `generatedAt` / `stage` 別ダウンロードURLを追加し、READMEと [review-ledger-api-20251111.md](docs/design/review-ledger-api-20251111.md) を最新化する。
-3. **W&Bイベント拡張**: `sandbox_runner.log_wandb_event` を利用して Security/Judge の再実行シグナルやエラーもRunタイムラインへ投稿し、UIの操作ログと同期させる。
-4. **回帰テスト拡充**: Temporal/VitestでHuman決裁イベント・Ledger APIレスポンスをモック検証し、UI側はNext.jsテスト or StorybookでRelayフィルタ/LLM上書きフォームの挙動を確認する。
+1. **LLM Override Validation**: Judge再実行フォームとTemporal/Inspect Worker間のLLM設定伝播をVitest/E2Eで検証し、READMEに利用手順と入力バリデーション（温度0〜2など）を追記する。
+2. **Ledger API拡張**: `/review/ledger/:id` レスポンスへ `workflowId`/`workflowRunId`/`generatedAt`/`sourceFile` を含め、ローカルLedgerを `/review/ledger/download` から取得できるよう整備し、[review-ledger-api-20251111.md](docs/design/review-ledger-api-20251111.md) を更新する。
+3. **W&Bイベント一般化**: `sandbox_runner.log_wandb_event` をSecurity/Functional/Judgeの再実行・失敗イベントにも適用し、W&Bダッシュボードのタイムラインで審査履歴を再現できるようにする。
+4. **回帰テスト＆UIバリデーション**: Temporal/Vitestで上記イベント投稿やLedgerダウンロードをモック検証し、Human Review UIのLLM上書きフォーム/Relay検索にReact Testing Library等のテストを追加する。
 
 ## Contributor Guide
 完全なコントリビュータガイド、コーディング規約、PR要件は[`AGENTS.md`](AGENTS.md)を参照してください。
