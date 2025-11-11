@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { buildLlmOverride } from '../src/lib/judgeOverride';
+import { buildLlmOverride, LlmOverrideResult } from '../src/lib/judgeOverride';
 
 type StageName = 'precheck' | 'security' | 'functional' | 'judge' | 'human' | 'publish';
 
@@ -74,6 +74,7 @@ type LedgerEntrySummary = {
   workflowRunId?: string;
   generatedAt?: string;
   downloadUrl?: string;
+  sourceFile?: string;
 };
 
 const stageOrder: StageName[] = ['precheck', 'security', 'functional', 'judge', 'human', 'publish'];
@@ -106,7 +107,6 @@ export default function ReviewDashboard() {
   const [retryLlmMaxTokens, setRetryLlmMaxTokens] = useState('');
   const [retryLlmBaseUrl, setRetryLlmBaseUrl] = useState('');
   const [retryLlmDryRun, setRetryLlmDryRun] = useState<boolean | 'inherit'>('inherit');
-  const [llmOverrideErrors, setLlmOverrideErrors] = useState<string[]>([]);
   const [retryStatus, setRetryStatus] = useState<string | null>(null);
   const [decisionNotes, setDecisionNotes] = useState('');
   const [decisionStatus, setDecisionStatus] = useState<string | null>(null);
@@ -116,6 +116,36 @@ export default function ReviewDashboard() {
   const [relaySearchTerm, setRelaySearchTerm] = useState('');
   const [ledgerEntries, setLedgerEntries] = useState<LedgerEntrySummary[]>([]);
   const [ledgerError, setLedgerError] = useState<string | null>(null);
+  const [ledgerCopyStage, setLedgerCopyStage] = useState<StageName | null>(null);
+  const [ledgerCopyError, setLedgerCopyError] = useState<string | null>(null);
+
+  const llmOverrideResult = useMemo<LlmOverrideResult>(() => {
+    if (!llmOverrideEnabled) {
+      return { override: undefined, errors: [], fieldErrors: {} };
+    }
+    return buildLlmOverride({
+      enabled: llmOverrideEnabled,
+      provider: retryLlmProvider,
+      model: retryLlmModel,
+      temperature: retryLlmTemperature,
+      maxTokens: retryLlmMaxTokens,
+      baseUrl: retryLlmBaseUrl,
+      dryRun: retryLlmDryRun
+    });
+  }, [llmOverrideEnabled, retryLlmProvider, retryLlmModel, retryLlmTemperature, retryLlmMaxTokens, retryLlmBaseUrl, retryLlmDryRun]);
+
+  const llmOverrideErrors = llmOverrideEnabled ? llmOverrideResult.errors : [];
+  const llmFieldErrors = llmOverrideEnabled ? llmOverrideResult.fieldErrors : {};
+  const llmOverridePayload = llmOverrideEnabled ? llmOverrideResult.override : undefined;
+  const isRetryDisabled = useMemo(() => {
+    if (!retryReason.trim()) {
+      return true;
+    }
+    if (retryStage === 'judge' && llmOverrideEnabled && !llmOverridePayload) {
+      return true;
+    }
+    return false;
+  }, [llmOverrideEnabled, llmOverridePayload, retryReason, retryStage]);
 
   const fetchProgress = useCallback(async () => {
     setLoading(true);
@@ -176,6 +206,28 @@ export default function ReviewDashboard() {
     return () => controller.abort();
   }, [progress, submissionId]);
 
+  const copyLedgerPath = useCallback(async (stage: StageName, value?: string) => {
+    if (!value) {
+      setLedgerCopyError('コピーするパスがありません');
+      return;
+    }
+    if (!navigator?.clipboard) {
+      setLedgerCopyError('このブラウザではコピー機能を利用できません');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(value);
+      setLedgerCopyStage(stage);
+      setLedgerCopyError(null);
+      setTimeout(() => {
+        setLedgerCopyStage((current) => (current === stage ? null : current));
+      }, 1500);
+    } catch (err) {
+      console.error('failed to copy ledger path', err);
+      setLedgerCopyError('クリップボードへのコピーに失敗しました');
+    }
+  }, []);
+
   useEffect(() => {
     if (!progress?.llmJudge) {
       setRetryLlmProvider('');
@@ -184,7 +236,6 @@ export default function ReviewDashboard() {
       setRetryLlmMaxTokens('');
       setRetryLlmBaseUrl('');
       setRetryLlmDryRun('inherit');
-      setLlmOverrideErrors([]);
       return;
     }
     const llm = progress.llmJudge;
@@ -194,7 +245,6 @@ export default function ReviewDashboard() {
     setRetryLlmMaxTokens(typeof llm.maxOutputTokens === 'number' ? String(llm.maxOutputTokens) : '');
     setRetryLlmBaseUrl(llm.baseUrl ?? '');
     setRetryLlmDryRun(typeof llm.dryRun === 'boolean' ? llm.dryRun : 'inherit');
-    setLlmOverrideErrors([]);
   }, [progress?.llmJudge]);
 
   useEffect(() => {
@@ -270,43 +320,22 @@ export default function ReviewDashboard() {
     }
   }, [buildArtifactUrl]);
 
-  const buildJudgeOverride = () => {
-    if (!llmOverrideEnabled) {
-      setLlmOverrideErrors([]);
-      return undefined;
-    }
-    const { override, errors } = buildLlmOverride({
-      enabled: llmOverrideEnabled,
-      provider: retryLlmProvider,
-      model: retryLlmModel,
-      temperature: retryLlmTemperature,
-      maxTokens: retryLlmMaxTokens,
-      baseUrl: retryLlmBaseUrl,
-      dryRun: retryLlmDryRun
-    });
-    setLlmOverrideErrors(errors);
-    if (errors.length > 0) {
-      return undefined;
-    }
-    return override;
-  };
-
   const handleRetry = async () => {
-    if (!retryReason.trim()) {
+    const trimmedReason = retryReason.trim();
+    if (!trimmedReason) {
       setRetryStatus('理由を入力してください');
       return;
     }
     setRetryStatus('送信中...');
     try {
-      const body: Record<string, unknown> = { submissionId, stage: retryStage, reason: retryReason };
+      const body: Record<string, unknown> = { submissionId, stage: retryStage, reason: trimmedReason };
       if (retryStage === 'judge') {
-        const override = buildJudgeOverride();
-        if (!override && llmOverrideEnabled) {
+        if (llmOverrideEnabled && !llmOverridePayload) {
           setRetryStatus('LLM設定のエラーを修正してください');
           return;
         }
-        if (override) {
-          body.llmOverride = override;
+        if (llmOverridePayload) {
+          body.llmOverride = llmOverridePayload;
         }
       }
       const res = await fetch('/review/retry', {
@@ -438,14 +467,22 @@ export default function ReviewDashboard() {
         )}
         {relayData.length > 0 && (
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, gap: 8, flexWrap: 'wrap' }}>
               <div style={{ fontWeight: 600 }}>Relay ログ</div>
-              <input
-                value={relaySearchTerm}
-                onChange={(e) => setRelaySearchTerm(e.target.value)}
-                placeholder="質問ID/ステータス/レスポンス検索"
-                style={{ border: '1px solid #d0d7de', borderRadius: 6, padding: '4px 8px', minWidth: 200 }}
-              />
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input
+                  type="search"
+                  value={relaySearchTerm}
+                  onChange={(e) => setRelaySearchTerm(e.target.value)}
+                  placeholder="質問ID/ステータス/レスポンス検索"
+                  style={{ border: '1px solid #d0d7de', borderRadius: 6, padding: '4px 8px', minWidth: 220 }}
+                />
+                {relaySearchTerm && (
+                  <button type="button" onClick={() => setRelaySearchTerm('')}>
+                    クリア
+                  </button>
+                )}
+              </div>
             </div>
             <div style={{ fontSize: 12, color: '#57606a', marginBottom: 4 }}>該当: {filteredRelay.length} / {relayData.length}</div>
             <div style={{ maxHeight: 240, overflow: 'auto', border: '1px solid #d0d7de', borderRadius: 8 }}>
@@ -549,18 +586,34 @@ export default function ReviewDashboard() {
       <section style={{ display: 'grid', gap: 8 }}>
         <h2 style={{ margin: 0 }}>Ledger 記録</h2>
         {ledgerError && <span style={{ color: '#d1242f' }}>{ledgerError}</span>}
+        {ledgerCopyError && <span style={{ color: '#d1242f' }}>{ledgerCopyError}</span>}
         <div style={{ display: 'grid', gap: 12 }}>
           {ledgerEntries.map((entry) => (
             <div key={`ledger-${entry.stage}`} style={{ border: '1px solid #d0d7de', borderRadius: 8, padding: 12 }}>
               <div style={{ fontWeight: 600, marginBottom: 4 }}>{stageLabels[entry.stage]}</div>
               <div>Entry: {formatEntryPath(entry.entryPath)}</div>
               <div>Digest: {entry.digest ? <code style={{ fontSize: 12 }}>{entry.digest}</code> : 'N/A'}</div>
+              <div>Workflow ID: {entry.workflowId ?? 'unknown'}</div>
               <div>Workflow Run: {entry.workflowRunId ?? 'unknown'}</div>
               <div>Generated: {entry.generatedAt ?? 'unknown'}</div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 6 }}>
+                <span>Source: {entry.sourceFile ? <code style={{ fontSize: 12 }}>{entry.sourceFile}</code> : 'N/A'}</span>
+                {entry.sourceFile && (
+                  <button onClick={() => copyLedgerPath(entry.stage, entry.sourceFile)}>
+                    パスをコピー
+                  </button>
+                )}
+                {ledgerCopyStage === entry.stage && <span style={{ color: '#1a7f37', fontSize: 12 }}>コピーしました</span>}
+              </div>
               {entry.downloadUrl && (
-                <button style={{ marginTop: 8 }} onClick={() => window.open(entry.downloadUrl, '_blank')}>
-                  ダウンロード
-                </button>
+                <a
+                  style={{ marginTop: 8, display: 'inline-block' }}
+                  href={entry.downloadUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Ledgerをダウンロード
+                </a>
               )}
             </div>
           ))}
@@ -600,6 +653,15 @@ export default function ReviewDashboard() {
       </div>
     );
   };
+
+  const llmInputStyle = (hasError?: string) => ({
+    border: `1px solid ${hasError ? '#d1242f' : '#d0d7de'}`,
+    borderRadius: 6,
+    padding: '4px 8px',
+    width: '100%'
+  });
+
+  const errorTextStyle = { fontSize: 12, color: '#d1242f' } as const;
 
   return (
     <main style={{ fontFamily: 'system-ui, sans-serif', padding: 24, display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -701,7 +763,6 @@ export default function ReviewDashboard() {
             理由
             <input value={retryReason} onChange={(e) => setRetryReason(e.target.value)} style={{ width: '100%' }} />
           </label>
-          <button onClick={handleRetry}>再実行を依頼</button>
         </div>
         {retryStage === 'judge' && (
           <div style={{ border: '1px solid #d0d7de', borderRadius: 8, padding: 12, background: '#fff', display: 'grid', gap: 8 }}>
@@ -710,12 +771,70 @@ export default function ReviewDashboard() {
               LLM設定を上書きする
             </label>
             {llmOverrideEnabled && (
-              <div style={{ display: 'grid', gap: 6 }}>
-                <label>プロバイダ<input value={retryLlmProvider} onChange={(e) => setRetryLlmProvider(e.target.value)} /></label>
-                <label>モデル<input value={retryLlmModel} onChange={(e) => setRetryLlmModel(e.target.value)} /></label>
-                <label>温度<input value={retryLlmTemperature} onChange={(e) => setRetryLlmTemperature(e.target.value)} placeholder="例: 0.2" /></label>
-                <label>Max Tokens<input value={retryLlmMaxTokens} onChange={(e) => setRetryLlmMaxTokens(e.target.value)} placeholder="例: 512" /></label>
-                <label>Base URL<input value={retryLlmBaseUrl} onChange={(e) => setRetryLlmBaseUrl(e.target.value)} placeholder="https://..." /></label>
+              <div style={{ display: 'grid', gap: 8 }}>
+                <label style={{ display: 'grid', gap: 4 }}>
+                  プロバイダ
+                  <input
+                    value={retryLlmProvider}
+                    onChange={(e) => setRetryLlmProvider(e.target.value)}
+                    required
+                    aria-invalid={Boolean(llmFieldErrors?.provider)}
+                    style={llmInputStyle(llmFieldErrors?.provider)}
+                  />
+                  {llmFieldErrors?.provider && <span style={errorTextStyle}>{llmFieldErrors.provider}</span>}
+                </label>
+                <label style={{ display: 'grid', gap: 4 }}>
+                  モデル
+                  <input
+                    value={retryLlmModel}
+                    onChange={(e) => setRetryLlmModel(e.target.value)}
+                    required
+                    aria-invalid={Boolean(llmFieldErrors?.model)}
+                    style={llmInputStyle(llmFieldErrors?.model)}
+                  />
+                  {llmFieldErrors?.model && <span style={errorTextStyle}>{llmFieldErrors.model}</span>}
+                </label>
+                <label style={{ display: 'grid', gap: 4 }}>
+                  温度 (0.0〜2.0)
+                  <input
+                    type="number"
+                    min={0}
+                    max={2}
+                    step={0.1}
+                    value={retryLlmTemperature}
+                    onChange={(e) => setRetryLlmTemperature(e.target.value)}
+                    placeholder="例: 0.2"
+                    aria-invalid={Boolean(llmFieldErrors?.temperature)}
+                    style={llmInputStyle(llmFieldErrors?.temperature)}
+                  />
+                  {llmFieldErrors?.temperature && <span style={errorTextStyle}>{llmFieldErrors.temperature}</span>}
+                </label>
+                <label style={{ display: 'grid', gap: 4 }}>
+                  Max Tokens (1〜8192)
+                  <input
+                    type="number"
+                    min={1}
+                    max={8192}
+                    value={retryLlmMaxTokens}
+                    onChange={(e) => setRetryLlmMaxTokens(e.target.value)}
+                    placeholder="例: 512"
+                    aria-invalid={Boolean(llmFieldErrors?.maxTokens)}
+                    style={llmInputStyle(llmFieldErrors?.maxTokens)}
+                  />
+                  {llmFieldErrors?.maxTokens && <span style={errorTextStyle}>{llmFieldErrors.maxTokens}</span>}
+                </label>
+                <label style={{ display: 'grid', gap: 4 }}>
+                  Base URL
+                  <input
+                    type="url"
+                    value={retryLlmBaseUrl}
+                    onChange={(e) => setRetryLlmBaseUrl(e.target.value)}
+                    placeholder="https://api.example.com"
+                    aria-invalid={Boolean(llmFieldErrors?.baseUrl)}
+                    style={llmInputStyle(llmFieldErrors?.baseUrl)}
+                  />
+                  {llmFieldErrors?.baseUrl && <span style={errorTextStyle}>{llmFieldErrors.baseUrl}</span>}
+                </label>
                 <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   Dry Run
                   <select value={retryLlmDryRun === 'inherit' ? 'inherit' : retryLlmDryRun ? 'true' : 'false'} onChange={(e) => {
@@ -740,7 +859,10 @@ export default function ReviewDashboard() {
             )}
           </div>
         )}
-        {retryStatus && <span>{retryStatus}</span>}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button onClick={handleRetry} disabled={isRetryDisabled}>再実行を依頼</button>
+          {retryStatus && <span>{retryStatus}</span>}
+        </div>
       </section>
 
       <section style={{ display: 'grid', gap: 12 }}>
