@@ -515,6 +515,7 @@ def _run_judge_panel(
                 "prompt": execution.prompt if execution else "",
                 "response": execution.response if execution else "",
                 "latencyMs": execution.latency_ms if execution else None,
+                "responseSnippet": execution.response_snippet if execution else None,
                 "score": verdict.score,
                 "verdict": verdict.verdict,
                 "rationale": verdict.rationale,
@@ -523,6 +524,8 @@ def _run_judge_panel(
                 "responseStatus": execution.status if execution else None,
                 "responseError": execution.error if execution else None,
                 "httpStatus": execution.http_status if execution else None,
+                "relayAttempts": execution.attempts if execution else None,
+                "relayRetryErrors": execution.retry_errors if execution else None,
                 "flags": verdict.flags,
                 "llmScore": verdict.llm_score,
                 "llmVerdict": verdict.llm_verdict,
@@ -537,12 +540,15 @@ def _run_judge_panel(
                 "questionId": execution.question_id,
                 "prompt": execution.prompt,
                 "response": execution.response,
+                "responseSnippet": execution.response_snippet,
                 "status": execution.status,
                 "error": execution.error,
                 "latencyMs": execution.latency_ms,
                 "httpStatus": execution.http_status,
                 "relayEndpoint": execution.relay_endpoint,
                 "flags": execution.flags,
+                "attempts": execution.attempts,
+                "retryErrors": execution.retry_errors,
             }, ensure_ascii=False) + "\n")
 
     summary = {
@@ -553,6 +559,7 @@ def _run_judge_panel(
         "notes": "Judge Panel PoC",
         "flagged": sum(1 for exec in executions if exec.flags),
         "relayErrors": sum(1 for exec in executions if exec.status == "error"),
+        "relayRetries": sum(max(exec.attempts - 1, 0) for exec in executions),
         "llmJudge": llm_summary,
     }
     summary_path = judge_dir / "judge_summary.json"
@@ -569,6 +576,8 @@ def _run_judge_panel(
             "judge/rejected": float(summary["rejected"]),
             "judge/flagged": float(summary.get("flagged") or 0),
             "judge/llm_calls": float(llm_summary.get("calls") or 0),
+            "judge/relay_errors": float(summary.get("relayErrors") or 0),
+            "judge/relay_retries": float(summary.get("relayRetries") or 0),
         })
     return summary
 

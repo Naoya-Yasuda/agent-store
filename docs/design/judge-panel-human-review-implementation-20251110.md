@@ -19,6 +19,7 @@
    - 実装: `prototype/inspect-worker/src/question_generator.py` (新規) で Google ADK風プロンプトチェーンを構築。
 2. **Execution Agent**
    - 入力質問をA2A Relay経由で提出エージェントに送信（`sandbox_runner`で使うRelay情報と共通化）。
+   - 最大3回まで自動リトライし、HTTP 4xx/5xxやURLErrorをエラー履歴として収集。レスポンス全文とスニペット、禁止語（パスワード/APIキー/SSN/秘密鍵など）の検知結果を `relay_logs.jsonl` / `judge_report.jsonl` に保存する。
    - 呼び出しはasync/同期いずれも可だが、Temporal上はアクティビティとして分割してリトライ可能にする。
 3. **Panel Judge (MCTS)**
    - 少なくとも3つのLLM（例: Gemini 1.5 Pro, GPT-4o, Claude 3.5）を並列実行し、Verdict + Rationaleを収集。
