@@ -111,6 +111,7 @@ export interface ReviewPipelineInput {
 
 const retryStageSignal = defineSignal<[StageName, string]>('signalRetryStage');
 const humanDecisionSignal = defineSignal<['approved' | 'rejected', string?]>('signalHumanDecision');
+const updateLlmJudgeSignal = defineSignal<[LlmJudgeConfig]>('signalUpdateLlmJudge');
 const progressQuery = defineQuery<WorkflowProgress>('queryProgress');
 
 export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promise<void> {
@@ -173,6 +174,16 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
         ...(stageProgress.human.details ?? {}),
         decision,
         decisionNotes: notes
+      }
+    });
+  });
+  setHandler(updateLlmJudgeSignal, (config) => {
+    context.llmJudge = config;
+    updateStage('judge', {
+      message: 'llm config override received',
+      details: {
+        ...(stageProgress.judge.details ?? {}),
+        llmJudge: config
       }
     });
   });

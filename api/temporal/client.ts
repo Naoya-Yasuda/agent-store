@@ -1,5 +1,5 @@
 import { Connection, WorkflowClient } from '@temporalio/client';
-import { reviewPipelineWorkflow, ReviewPipelineInput, WandbRunInfo } from '../../prototype/temporal-review-workflow/src/workflows/reviewPipeline.workflow';
+import { reviewPipelineWorkflow, ReviewPipelineInput, WandbRunInfo, LlmJudgeConfig } from '../../prototype/temporal-review-workflow/src/workflows/reviewPipeline.workflow';
 import { NAMESPACE } from '../../prototype/temporal-review-workflow/temporal.config';
 
 let workflowClient: WorkflowClient | undefined;
@@ -34,6 +34,12 @@ export async function sendHumanDecision(submissionId: string, decision: 'approve
   const client = await getWorkflowClient();
   const handle = client.getHandle(`review-pipeline-${submissionId}`);
   await handle.signal('signalHumanDecision', decision, notes);
+}
+
+export async function sendJudgeLlmOverride(submissionId: string, override: LlmJudgeConfig): Promise<void> {
+  const client = await getWorkflowClient();
+  const handle = client.getHandle(`review-pipeline-${submissionId}`);
+  await handle.signal('signalUpdateLlmJudge', override);
 }
 
 export async function startReviewWorkflow(input: ReviewPipelineInput): Promise<void> {

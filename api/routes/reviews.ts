@@ -1,7 +1,8 @@
 import { Router, Request, Response } from 'express';
 import path from 'path';
 import fs from 'fs';
-import { getWorkflowProgress, getLedgerSummary, requestHumanDecision, requestStageRetry } from '../services/reviewService';
+import { getWorkflowProgress, getLedgerSummary, getLedgerEntryFile, requestHumanDecision, requestStageRetry } from '../services/reviewService';
+import { StageName } from '../types/reviewTypes';
 
 const router = Router();
 
@@ -272,12 +273,14 @@ router.get('/review/ui/:submissionId', async (req: Request, res: Response) => {
 });
 
 router.post('/review/retry', async (req: Request, res: Response) => {
-  const { submissionId, stage, reason } = req.body ?? {};
+  const { submissionId, stage, reason, llmOverride } = req.body ?? {};
   if (!submissionId || !stage || !reason) {
     return res.status(400).json({ error: 'missing_fields' });
   }
   try {
-    await requestStageRetry(submissionId, stage, reason);
+    const normalizedStage = stage as StageName;
+    const override = normalizeLlmOverride(llmOverride);
+    await requestStageRetry(submissionId, normalizedStage, reason, { llmOverride: override });
     res.status(202).json({ status: 'retry_requested' });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'unknown_error';
@@ -302,15 +305,48 @@ router.post('/review/decision', async (req: Request, res: Response) => {
 router.get('/review/ledger/:submissionId', async (req: Request, res: Response) => {
   try {
     const entries = await getLedgerSummary(req.params.submissionId);
-    if (!entries.length) {
-      return res.status(404).json({ error: 'ledger_not_found' });
-    }
     res.json({ submissionId: req.params.submissionId, entries });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'unknown_error';
     res.status(500).json({ error: 'ledger_fetch_failed', message });
   }
 });
+
+router.get('/review/ledger/download', async (req: Request, res: Response) => {
+  const submissionId = req.query.submissionId as string | undefined;
+  const stage = req.query.stage as string | undefined;
+  if (!submissionId || !stage) {
+    return res.status(400).json({ error: 'missing_params' });
+  }
+  try {
+    const filePath = await getLedgerEntryFile(submissionId, stage as StageName);
+    if (!filePath) {
+      return res.status(404).json({ error: 'ledger_file_not_found' });
+    }
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename=${stage}-ledger.json`);
+    fs.createReadStream(filePath).pipe(res);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'unknown_error';
+    res.status(500).json({ error: 'ledger_download_failed', message });
+  }
+});
+
+function normalizeLlmOverride(input: unknown): LlmJudgeOverride | undefined {
+  if (!input || typeof input !== 'object') {
+    return undefined;
+  }
+  const source = input as Record<string, unknown>;
+  const override: LlmJudgeOverride = {};
+  if (typeof source.model === 'string') override.model = source.model;
+  if (typeof source.provider === 'string') override.provider = source.provider;
+  if (typeof source.baseUrl === 'string') override.baseUrl = source.baseUrl;
+  if (typeof source.enabled === 'boolean') override.enabled = source.enabled;
+  if (typeof source.dryRun === 'boolean') override.dryRun = source.dryRun;
+  if (typeof source.temperature === 'number') override.temperature = source.temperature;
+  if (typeof source.maxOutputTokens === 'number') override.maxOutputTokens = source.maxOutputTokens;
+  return Object.keys(override).length ? override : undefined;
+}
 
 router.get('/review/artifacts/:agentRevisionId', async (req: Request, res: Response) => {
   const { stage = 'security', type = 'report', agentId } = req.query;

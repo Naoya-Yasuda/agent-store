@@ -65,6 +65,16 @@ type ArtifactState = {
   raw?: string;
 };
 
+type LedgerEntrySummary = {
+  stage: StageName;
+  entryPath?: string;
+  digest?: string;
+  workflowId?: string;
+  workflowRunId?: string;
+  generatedAt?: string;
+  downloadUrl?: string;
+};
+
 const stageOrder: StageName[] = ['precheck', 'security', 'functional', 'judge', 'human', 'publish'];
 const stageLabels: Record<StageName, string> = {
   precheck: 'PreCheck',
@@ -88,12 +98,22 @@ export default function ReviewDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [retryStage, setRetryStage] = useState<StageName>('security');
   const [retryReason, setRetryReason] = useState('');
+  const [llmOverrideEnabled, setLlmOverrideEnabled] = useState(false);
+  const [retryLlmProvider, setRetryLlmProvider] = useState('');
+  const [retryLlmModel, setRetryLlmModel] = useState('');
+  const [retryLlmTemperature, setRetryLlmTemperature] = useState('');
+  const [retryLlmMaxTokens, setRetryLlmMaxTokens] = useState('');
+  const [retryLlmBaseUrl, setRetryLlmBaseUrl] = useState('');
+  const [retryLlmDryRun, setRetryLlmDryRun] = useState<boolean | 'inherit'>('inherit');
   const [retryStatus, setRetryStatus] = useState<string | null>(null);
   const [decisionNotes, setDecisionNotes] = useState('');
   const [decisionStatus, setDecisionStatus] = useState<string | null>(null);
   const [selectedEvidenceStage, setSelectedEvidenceStage] = useState<StageName>('security');
   const [selectedArtifactType, setSelectedArtifactType] = useState('summary');
   const [artifactStates, setArtifactStates] = useState<Record<string, ArtifactState>>({});
+  const [relaySearchTerm, setRelaySearchTerm] = useState('');
+  const [ledgerEntries, setLedgerEntries] = useState<LedgerEntrySummary[]>([]);
+  const [ledgerError, setLedgerError] = useState<string | null>(null);
 
   const fetchProgress = useCallback(async () => {
     setLoading(true);
@@ -106,6 +126,8 @@ export default function ReviewDashboard() {
       const data: ProgressResponse = await res.json();
       setProgress(data);
       setRetryStage('security');
+      setLedgerEntries([]);
+      setLedgerError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'unknown_error');
     } finally {
@@ -116,6 +138,60 @@ export default function ReviewDashboard() {
   useEffect(() => {
     fetchProgress();
   }, [fetchProgress]);
+
+  useEffect(() => {
+    if (retryStage !== 'judge') {
+      setLlmOverrideEnabled(false);
+    }
+  }, [retryStage]);
+
+  useEffect(() => {
+    if (!progress) {
+      setLedgerEntries([]);
+      return;
+    }
+    const controller = new AbortController();
+    (async () => {
+      try {
+        const res = await fetch(`/review/ledger/${submissionId}`, { signal: controller.signal });
+        if (res.status === 404) {
+          setLedgerEntries([]);
+          setLedgerError(null);
+          return;
+        }
+        if (!res.ok) {
+          throw new Error(await res.text());
+        }
+        const payload = await res.json();
+        setLedgerEntries(payload.entries ?? []);
+        setLedgerError(null);
+      } catch (err) {
+        if (!(err instanceof DOMException && err.name === 'AbortError')) {
+          setLedgerError(err instanceof Error ? err.message : 'ledger_fetch_failed');
+        }
+      }
+    })();
+    return () => controller.abort();
+  }, [progress, submissionId]);
+
+  useEffect(() => {
+    if (!progress?.llmJudge) {
+      setRetryLlmProvider('');
+      setRetryLlmModel('');
+      setRetryLlmTemperature('');
+      setRetryLlmMaxTokens('');
+      setRetryLlmBaseUrl('');
+      setRetryLlmDryRun('inherit');
+      return;
+    }
+    const llm = progress.llmJudge;
+    setRetryLlmProvider(llm.provider ?? '');
+    setRetryLlmModel(llm.model ?? '');
+    setRetryLlmTemperature(typeof llm.temperature === 'number' ? String(llm.temperature) : '');
+    setRetryLlmMaxTokens(typeof llm.maxOutputTokens === 'number' ? String(llm.maxOutputTokens) : '');
+    setRetryLlmBaseUrl(llm.baseUrl ?? '');
+    setRetryLlmDryRun(typeof llm.dryRun === 'boolean' ? llm.dryRun : 'inherit');
+  }, [progress?.llmJudge]);
 
   useEffect(() => {
     const option = evidenceStageOptions.find((opt) => opt.stage === selectedEvidenceStage);
@@ -190,6 +266,23 @@ export default function ReviewDashboard() {
     }
   }, [buildArtifactUrl]);
 
+  const buildJudgeOverride = () => {
+    if (!llmOverrideEnabled) {
+      return undefined;
+    }
+    const override: Record<string, unknown> = {};
+    if (retryLlmProvider) override.provider = retryLlmProvider;
+    if (retryLlmModel) override.model = retryLlmModel;
+    if (retryLlmBaseUrl) override.baseUrl = retryLlmBaseUrl;
+    const temp = Number(retryLlmTemperature);
+    if (!Number.isNaN(temp)) override.temperature = temp;
+    const maxTokens = Number(retryLlmMaxTokens);
+    if (!Number.isNaN(maxTokens)) override.maxOutputTokens = maxTokens;
+    if (retryLlmDryRun !== 'inherit') override.dryRun = retryLlmDryRun;
+    override.enabled = true;
+    return Object.keys(override).length ? override : undefined;
+  };
+
   const handleRetry = async () => {
     if (!retryReason.trim()) {
       setRetryStatus('理由を入力してください');
@@ -197,10 +290,17 @@ export default function ReviewDashboard() {
     }
     setRetryStatus('送信中...');
     try {
+      const body: Record<string, unknown> = { submissionId, stage: retryStage, reason: retryReason };
+      if (retryStage === 'judge') {
+        const override = buildJudgeOverride();
+        if (override) {
+          body.llmOverride = override;
+        }
+      }
       const res = await fetch('/review/retry', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ submissionId, stage: retryStage, reason: retryReason })
+        body: JSON.stringify(body)
       });
       const payload = await res.json();
       setRetryStatus(res.ok ? '再実行を依頼しました' : payload.error ?? '失敗しました');
@@ -273,6 +373,10 @@ export default function ReviewDashboard() {
     const llm = judgeDetails?.llmJudge ?? progress.llmJudge;
     const reportData = (artifactStates['judge:report']?.data as any[]) ?? [];
     const relayData = (artifactStates['judge:relay']?.data as any[]) ?? [];
+    const relayTerm = relaySearchTerm.trim().toLowerCase();
+    const filteredRelay = relayTerm
+      ? relayData.filter((item) => JSON.stringify(item).toLowerCase().includes(relayTerm))
+      : relayData;
 
     return (
       <section style={{ display: 'grid', gap: 12 }}>
@@ -322,9 +426,18 @@ export default function ReviewDashboard() {
         )}
         {relayData.length > 0 && (
           <div>
-            <div style={{ fontWeight: 600, marginBottom: 4 }}>Relay ログ</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <div style={{ fontWeight: 600 }}>Relay ログ</div>
+              <input
+                value={relaySearchTerm}
+                onChange={(e) => setRelaySearchTerm(e.target.value)}
+                placeholder="質問ID/ステータス/レスポンス検索"
+                style={{ border: '1px solid #d0d7de', borderRadius: 6, padding: '4px 8px', minWidth: 200 }}
+              />
+            </div>
+            <div style={{ fontSize: 12, color: '#57606a', marginBottom: 4 }}>該当: {filteredRelay.length} / {relayData.length}</div>
             <div style={{ maxHeight: 240, overflow: 'auto', border: '1px solid #d0d7de', borderRadius: 8 }}>
-              {relayData.map((item) => (
+              {filteredRelay.map((item) => (
                 <div key={`${item.questionId}-${item.latencyMs ?? 0}`} style={{ padding: 8, borderBottom: '1px solid #eaeef2' }}>
                   <div style={{ fontWeight: 600 }}>{item.questionId} ({item.status})</div>
                   <div style={{ fontSize: 12, color: '#57606a' }}>latency: {Math.round(item.latencyMs ?? 0)} ms / http: {item.httpStatus ?? 'n/a'}</div>
@@ -408,23 +521,9 @@ export default function ReviewDashboard() {
   const evidenceOptions = useMemo(() => evidenceStageOptions.filter((opt) => progress?.stages?.[opt.stage]), [progress]);
 
   const renderLedgerSection = () => {
-    if (!progress) {
+    if (!ledgerEntries.length && !ledgerError) {
       return null;
     }
-    const ledgerEntries = stageOrder
-      .map((stage) => {
-        const ledger = progress.stages[stage]?.details?.ledger;
-        if (!ledger?.entryPath && !ledger?.digest) {
-          return null;
-        }
-        return { stage, ledger };
-      })
-      .filter(Boolean) as { stage: StageName; ledger: { entryPath?: string; digest?: string } }[];
-
-    if (!ledgerEntries.length) {
-      return null;
-    }
-
     const formatEntryPath = (entryPath?: string) => {
       if (!entryPath) {
         return 'N/A';
@@ -434,18 +533,26 @@ export default function ReviewDashboard() {
       }
       return <code style={{ fontSize: 12 }}>{entryPath}</code>;
     };
-
     return (
       <section style={{ display: 'grid', gap: 8 }}>
         <h2 style={{ margin: 0 }}>Ledger 記録</h2>
+        {ledgerError && <span style={{ color: '#d1242f' }}>{ledgerError}</span>}
         <div style={{ display: 'grid', gap: 12 }}>
-          {ledgerEntries.map(({ stage, ledger }) => (
-            <div key={`ledger-${stage}`} style={{ border: '1px solid #d0d7de', borderRadius: 8, padding: 12 }}>
-              <div style={{ fontWeight: 600, marginBottom: 4 }}>{stageLabels[stage]}</div>
-              <div>Entry: {formatEntryPath(ledger.entryPath)}</div>
-              <div>Digest: {ledger.digest ? <code style={{ fontSize: 12 }}>{ledger.digest}</code> : 'N/A'}</div>
+          {ledgerEntries.map((entry) => (
+            <div key={`ledger-${entry.stage}`} style={{ border: '1px solid #d0d7de', borderRadius: 8, padding: 12 }}>
+              <div style={{ fontWeight: 600, marginBottom: 4 }}>{stageLabels[entry.stage]}</div>
+              <div>Entry: {formatEntryPath(entry.entryPath)}</div>
+              <div>Digest: {entry.digest ? <code style={{ fontSize: 12 }}>{entry.digest}</code> : 'N/A'}</div>
+              <div>Workflow Run: {entry.workflowRunId ?? 'unknown'}</div>
+              <div>Generated: {entry.generatedAt ?? 'unknown'}</div>
+              {entry.downloadUrl && (
+                <button style={{ marginTop: 8 }} onClick={() => window.open(entry.downloadUrl, '_blank')}>
+                  ダウンロード
+                </button>
+              )}
             </div>
           ))}
+          {!ledgerEntries.length && !ledgerError && <span>Ledger情報はまだありません。</span>}
         </div>
       </section>
     );
@@ -584,15 +691,34 @@ export default function ReviewDashboard() {
           </label>
           <button onClick={handleRetry}>再実行を依頼</button>
         </div>
-        {retryStage === 'judge' && progress?.llmJudge && (
-          <div style={{ border: '1px solid #d0d7de', borderRadius: 8, padding: 12, background: '#fff' }}>
-            <div style={{ fontWeight: 600, marginBottom: 4 }}>Judge再実行時に引き継がれるLLM設定</div>
-            <div style={{ fontSize: 13 }}>モデル: {progress.llmJudge.model ?? 'N/A'}</div>
-            <div style={{ fontSize: 13 }}>プロバイダ: {progress.llmJudge.provider ?? 'N/A'}</div>
-            <div style={{ fontSize: 13 }}>温度: {progress.llmJudge.temperature ?? '-'}</div>
-            <div style={{ fontSize: 13 }}>Max Tokens: {progress.llmJudge.maxOutputTokens ?? '-'}</div>
-            <div style={{ fontSize: 13 }}>Dry Run: {progress.llmJudge.dryRun ? 'true' : 'false'}</div>
-            <small style={{ color: '#57606a' }}>この設定はTemporal Workflowに保存されているため、再実行時に自動で適用されます。</small>
+        {retryStage === 'judge' && (
+          <div style={{ border: '1px solid #d0d7de', borderRadius: 8, padding: 12, background: '#fff', display: 'grid', gap: 8 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input type="checkbox" checked={llmOverrideEnabled} onChange={(e) => setLlmOverrideEnabled(e.target.checked)} />
+              LLM設定を上書きする
+            </label>
+            {llmOverrideEnabled && (
+              <div style={{ display: 'grid', gap: 6 }}>
+                <label>プロバイダ<input value={retryLlmProvider} onChange={(e) => setRetryLlmProvider(e.target.value)} /></label>
+                <label>モデル<input value={retryLlmModel} onChange={(e) => setRetryLlmModel(e.target.value)} /></label>
+                <label>温度<input value={retryLlmTemperature} onChange={(e) => setRetryLlmTemperature(e.target.value)} placeholder="例: 0.2" /></label>
+                <label>Max Tokens<input value={retryLlmMaxTokens} onChange={(e) => setRetryLlmMaxTokens(e.target.value)} placeholder="例: 512" /></label>
+                <label>Base URL<input value={retryLlmBaseUrl} onChange={(e) => setRetryLlmBaseUrl(e.target.value)} placeholder="https://..." /></label>
+                <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  Dry Run
+                  <select value={retryLlmDryRun === 'inherit' ? 'inherit' : retryLlmDryRun ? 'true' : 'false'} onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === 'inherit') setRetryLlmDryRun('inherit');
+                    else setRetryLlmDryRun(val === 'true');
+                  }}>
+                    <option value="inherit">現在の設定に従う</option>
+                    <option value="true">true</option>
+                    <option value="false">false</option>
+                  </select>
+                </label>
+                <small style={{ color: '#57606a' }}>空欄の項目は既存設定が使用されます。</small>
+              </div>
+            )}
           </div>
         )}
         {retryStatus && <span>{retryStatus}</span>}

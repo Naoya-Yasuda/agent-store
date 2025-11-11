@@ -138,10 +138,10 @@ flowchart TD
 > ※実装や設計の更新を行った際は、必ず本READMEのステータステーブルと該当セクションを更新してください。
 
 ## 今後の優先タスク
-1. **Judge Panel UI & Relay可視化強化**: Human Review UI（Next.js/HTMLビュー）で `llmScore`/`llmVerdict` カード表示、RelayログJSONL整形表示、再実行フォームのLLM設定デフォルト化を実装する（参照: [docs/design/judge-panel-human-review-implementation-20251110.md](docs/design/judge-panel-human-review-implementation-20251110.md)).
-2. **LLMメタデータのW&B/Temporal同期**: `queryProgress` で得たLLM設定とスコアをSandbox Runner・Inspect Worker双方のW&Bメタデータ（`wandbMcp`）に書き込み、審査証跡を一元化する（参照: [docs/design/security-gate-ledger-plan.md](docs/design/security-gate-ledger-plan.md)).
-3. **Inspect Worker Relay実行＆判定ロジック強化**: Relay HTTPエラー処理、レスポンスログ保存、禁止語検知、LLMエラー報告を拡張し、Ledger/W&B/READMEの要件に沿ってJudge結果を詳細化する。
-4. **Temporal/Judgeテスト拡充**: `prototype/temporal-review-workflow` のVitestでJudge LedgerやLLM設定伝播の回帰テストを追加し、ドキュメントの完了条件に沿って検証ログをREADMEへ反映する。
+1. **Human Review UI強化**: Judge再実行フォームでLLM設定を上書き可能にし、Relayログ検索/フィルタ機能、Ledger JSONダウンロードボタンを追加する（参照: [docs/design/judge-panel-human-review-implementation-20251110.md](docs/design/judge-panel-human-review-implementation-20251110.md)).
+2. **Ledger API拡張**: `GET /review/ledger/:submissionId` に `workflowRunId` / `generatedAt` / `stage` 別ダウンロードURLを追加し、READMEと [review-ledger-api-20251111.md](docs/design/review-ledger-api-20251111.md) を最新化する。
+3. **W&Bイベント拡張**: `sandbox_runner.log_wandb_event` を利用して Security/Judge の再実行シグナルやエラーもRunタイムラインへ投稿し、UIの操作ログと同期させる。
+4. **回帰テスト拡充**: Temporal/VitestでHuman決裁イベント・Ledger APIレスポンスをモック検証し、UI側はNext.jsテスト or StorybookでRelayフィルタ/LLM上書きフォームの挙動を確認する。
 
 ## Contributor Guide
 完全なコントリビュータガイド、コーディング規約、PR要件は[`AGENTS.md`](AGENTS.md)を参照してください。
