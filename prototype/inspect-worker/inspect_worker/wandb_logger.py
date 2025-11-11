@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional
 
 
 @dataclass
@@ -57,3 +57,13 @@ def export_metadata(config: Optional[WandbConfig]):
         "entity": config.entity,
         "url": url
     }
+
+
+def log_metrics(config: WandbConfig, metrics: Dict[str, float]) -> None:
+    if not config.enabled or not metrics:
+        return
+    try:
+        import wandb  # type: ignore
+    except ImportError:  # pragma: no cover
+        return
+    wandb.log(metrics)  # type: ignore[attr-defined]

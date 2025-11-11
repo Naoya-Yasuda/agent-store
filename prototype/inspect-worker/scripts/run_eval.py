@@ -15,7 +15,7 @@ if str(PACKAGE_ROOT) not in sys.path:
 
 from inspect_worker import MCTSJudgeOrchestrator, dispatch_questions, generate_questions
 from inspect_worker.llm_judge import LLMJudge, LLMJudgeConfig
-from inspect_worker.wandb_logger import WandbConfig, init_wandb, log_artifact
+from inspect_worker.wandb_logger import WandbConfig, init_wandb, log_artifact, log_metrics
 
 ROOT = Path(__file__).resolve().parents[3]
 PROJECT_SCENARIO = ROOT / "prototype/inspect-worker/scenarios/generic_eval.yaml"
@@ -135,6 +135,13 @@ def main() -> None:
 
     details_path = output_path / "details.json"
     details_path.write_text(json.dumps(eval_results, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    log_metrics(wandb_config, {
+        "functional/score": float(compliance_ratio),
+        "functional/passed": float(passed),
+        "functional/total": float(total),
+        "functional/avg_latency_ms": float(summary.get("avgLatencyMs") or 0.0),
+    })
 
     llm_config = None
     if args.judge_llm_enabled:
@@ -555,6 +562,14 @@ def _run_judge_panel(
         log_artifact(wandb_config, report_path, name=f"judge-report-{wandb_config.run_id}")
         log_artifact(wandb_config, summary_path, name=f"judge-summary-{wandb_config.run_id}")
         log_artifact(wandb_config, relay_log_path, name=f"judge-relay-{wandb_config.run_id}")
+        log_metrics(wandb_config, {
+            "judge/questions": float(summary["questions"]),
+            "judge/approved": float(summary["approved"]),
+            "judge/manual": float(summary["manual"]),
+            "judge/rejected": float(summary["rejected"]),
+            "judge/flagged": float(summary.get("flagged") or 0),
+            "judge/llm_calls": float(llm_summary.get("calls") or 0),
+        })
     return summary
 
 
