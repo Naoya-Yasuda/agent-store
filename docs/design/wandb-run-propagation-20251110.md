@@ -23,7 +23,8 @@
    - CLIに `--wandb-run-id` などのパラメータを追加し、Judge Panel / Inspect結果を同じRunにアタッチする（`wandb_mcp`の軽量版をInspect側にも導入する）。
 5. Human Review UI / REST
    - 実装済み: `queryProgress`レスポンスにRun URLとステージ詳細を含め、UIでW&Bダッシュボードリンクを表示。Ledgerのみ必要な場合は `GET /review/ledger/:submissionId` でJSON取得。
-   - TODO: Run ID自動払い出し（Submission省略時）とHuman Review操作ログをW&Bにタイムラインとして投稿。
+   - SubmissionでRun IDが省略された場合は `submission-<uuid>` を自動払い出し、`wandb_run` カラムとTemporal入力へ伝播する。
+   - Human Review決裁時は `recordHumanDecisionMetadata` が `sandbox_runner.log_wandb_event` を介して `wandb.log` に `human/decision` 指標・ノートを投稿し、Runのタイムラインに表示される。
 6. Temporal Activities（2025-11-11 完了）
    - `runSecurityGate` / `runJudgePanel` / `recordHumanDecisionMetadata` で `sandbox-runner/artifacts/<revision>/metadata.json` の `wandbMcp.stages` を更新し、サマリ・Ledgerダイジェスト・LLM設定・Human決裁メモをRunに同期する。
 
@@ -32,9 +33,9 @@
 2. Temporal Workflow入力 (`ReviewPipelineInput`) に `wandbRun` セクションを追加し、`progressQuery` でも返す。（済）
 3. Sandbox Runner CLIへ `--wandb-run-id` 等の引数追加・`init_wandb_run` の上書きロジック実装。（済）
 4. Inspect WorkerにW&Bラッパーを導入し、Judge成果物をRunにアタッチ。（済）
-5. Human Review REST API/UIにRun URL＋Ledger表示＋決裁ログ連携を追加。次フェーズではRun ID自動払い出しと操作履歴アップロードを行う。
+5. Human Review REST API/UIにRun URL＋Ledger表示＋決裁ログ連携を追加し、自動Run ID払い出し＆Human決裁イベント投稿まで完了。
 
 ## 5. 今後のフォローアップ
-- SubmissionでRun ID省略時にTemporal側でUUIDを払い出し、`metadata.json` / W&B Run双方へ記録する。
-- Human Review決裁時にW&Bへカスタムイベント（例: `human/decision`) を送信し、UIと同じ情報をダッシュボードの履歴でも確認できるようにする。
 - `/review/ledger` のレスポンスに `workflowRunId` / `generatedAt` を含め、複数回の審査が行われた場合でもLedgerを切り分けられるようにする。
+- Submission APIでRun ID自動払い出し時に、W&B APIキー有無やプロジェクト存在確認を行い、失敗時のフォールバック戦略（例: ローカルRunに記録）の明文化。
+- Human Review以外のイベント（例: `judge/manual_retry`, `security/escalation`）についても `sandbox_runner.log_wandb_event` を再利用し、Runタイムラインを完全な監査ログに昇格させる。

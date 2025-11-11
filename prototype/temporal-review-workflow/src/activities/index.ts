@@ -463,6 +463,7 @@ export async function recordHumanDecisionMetadata(args: { agentRevisionId: strin
     notes: args.notes,
     timestamp: args.decidedAt ?? new Date().toISOString()
   });
+  await logWandbHumanDecision(args.agentRevisionId, args.decision, args.notes);
 }
 
 async function upsertStageMetadata(agentRevisionId: string, stage: string, update: Record<string, unknown>): Promise<void> {
@@ -505,4 +506,54 @@ async function appendWandbEvent(agentRevisionId: string, event: Record<string, u
       console.warn('[activities] failed to append wandb event', err);
     }
   }
+}
+
+async function logWandbHumanDecision(agentRevisionId: string, decision: 'approved' | 'rejected', notes?: string): Promise<void> {
+  try {
+    const metadataPath = path.join(SANDBOX_ARTIFACTS_DIR, agentRevisionId, 'metadata.json');
+    const metadata = await readJsonFile(metadataPath);
+    const wandb = extractWandbFromMetadata(metadata);
+    if (!wandb?.runId || !wandb?.project || !wandb?.entity) {
+      return;
+    }
+    const payload: Record<string, unknown> = {
+      'human/decision': decision === 'approved' ? 1 : 0,
+      'human/decision_state': decision
+    };
+    if (notes) {
+      payload['human/decision_notes'] = notes;
+    }
+    await logWandbEvent(wandb, payload);
+  } catch (err) {
+    console.warn('[activities] failed to log human decision to W&B', err);
+  }
+}
+
+function logWandbEvent(wandb: WandbRunInfo, event: Record<string, unknown>): Promise<void> {
+  return new Promise((resolve) => {
+    if (!wandb.runId || !wandb.project || !wandb.entity) {
+      return resolve();
+    }
+    const env = {
+      ...process.env,
+      ...(wandb.baseUrl ? { WANDB_BASE_URL: wandb.baseUrl } : {})
+    };
+    const args = [
+      '-m',
+      'sandbox_runner.log_wandb_event',
+      '--run-id', wandb.runId,
+      '--project', wandb.project,
+      '--entity', wandb.entity,
+      '--event', JSON.stringify(event)
+    ];
+    if (wandb.baseUrl) {
+      args.push('--base-url', wandb.baseUrl);
+    }
+    const child = spawn(PYTHON_BIN, args, {
+      cwd: PROJECT_ROOT,
+      env
+    });
+    child.on('exit', () => resolve());
+    child.on('error', () => resolve());
+  });
 }
