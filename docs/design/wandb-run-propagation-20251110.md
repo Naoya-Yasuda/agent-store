@@ -23,6 +23,8 @@
 5. Human Review UI
    - `queryProgress`レスポンスにRun URLを含め、レビュワーがRunダッシュボード（Security/Functional/Judgeログ）へ遷移できるリンクを表示。
    - `signalRetryStage`/承認操作時にRun IDを添えて監査ログへ記録。
+6. Temporal Activities（2025-11-11 反映済み）
+   - `runJudgePanel` 完了時に `sandbox-runner/artifacts/<revision>/metadata.json` の `judgePanel` と `wandbMcp.stages.judge` を更新し、`queryProgress`のLLM情報とW&Bメタデータを揃える。
 
 ## 4. 実装ステップ
 1. Submission APIへRun情報フィールド追加。DB/イベントスキーマを更新。

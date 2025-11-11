@@ -8,8 +8,9 @@
 ## 2. 現状整理
 - Sandbox Runner は `response_samples.jsonl` と Security Gate/Functional Accuracy のレポートを生成済み。Inspect Worker側の `scripts/run_eval.py` も質問生成→Relay実行→MCTS-Judge→LLM判定の実装が入り、`judge_report.jsonl` / `judge_summary.json` / `relay_logs.jsonl` を安定的に出力できるようになった。
 - Temporal ワークフロー (`prototype/temporal-review-workflow/src/workflows/reviewPipeline.workflow.ts`) は `runJudgePanel` アクティビティでInspect Worker CLIを実行し、Ledger記録（`recordJudgeLedger`）まで自動化。Human Review ステージは引き続きモックで、UI経由の承認/差戻し、再実行リクエストの反映は未実装。
-- UI はNext.js版/HTML版ともに最低限の進捗ビューのみ。Judgeレポートの `llmScore`/`llmVerdict`、RelayログJSONL、Ledgerリンクは未表示のため、レビュワーは`prototype/inspect-worker/out/<agent>/<revision>/judge/`を直接参照している。
+- UI はNext.js版/HTML版ともに最低限の進捗ビューのみだったが、2025-11-11 時点で Judge セクションに `llmScore`/`llmVerdict` カード表示と Relay JSONL ログの整形プレビューを追加済み。Ledgerリンクや再実行フォームからのLLM設定保持は追加済みだが、Human Review決裁APIとの完全連携は未実装。
 - 2025-11-11 時点で、LLM-as-a-Judge レイヤーは追加済みで、`judge_report.jsonl` にLLMスコアや判定理由を保存し、W&Bにも主要メトリクスを送信する。審査証跡（LLM設定・verdict内訳）をW&Bメタデータへ反映する処理と、UIでの可視化はこれから着手する。
+  - Temporalアクティビティから `sandbox-runner/artifacts/<rev>/metadata.json` の `judgePanel` / `wandbMcp.stages.judge` を更新し、`queryProgress`で返るLLM情報とW&Bのメタデータを同期済み。
 
 ## 3. Inspect Worker（Judge Panel）要件
 1. **Question Generator**
@@ -63,7 +64,7 @@
 - Human Review UIのユーザー管理（RBAC）と監査ログ連携。
 
 ## 7. 次ステップ (2025-11-11)
-1. Human Review UIを拡張し、Judgeレポートの `llmScore`/`llmVerdict` カード、RelayログJSONL整形ビュー、Ledgerリンク、LLM設定を保持した再実行フォームを追加する。
-2. W&Bメタデータ（`wandbMcp.metadata`）にJudge LLM設定・verdict内訳・Relayエラー数を同期し、Temporal `queryProgress` とダッシュボードで同じ情報を参照できるようにする。
-3. Inspect WorkerのRelay実行レイヤーにHTTPエラーリトライ、禁止語検知、レスポンスログのディスク書き込み/圧縮、LLM判定エラーの詳細ログ化を追加し、Ledger/W&B/UIから参照できる構造体を定義する。
-4. Temporal/VitestでJudgeステージ向けの回帰テスト（LLM設定の伝播、Ledger生成の成功/失敗ハンドリング、Human Review再実行信号）を追加する。
+1. Human Review UI: Ledgerリンク表示とHuman Review決裁API連携（承認/差戻しでTemporalへ状態反映）を仕上げ、操作ログにLLM設定の変更履歴を残す。
+2. W&Bメタデータ: `wandbMcp.stages.judge` にRelayエラー詳細やLLM呼び出し回数を追加し、Sandbox Runner→Inspect Worker→Temporalの三者で差異が無いようにする。
+3. Inspect Worker Relay層: HTTPエラーリトライ、禁止語検出、レスポンスログ圧縮を追加し、Ledger/W&B/UIで参照できる統一スキーマを整備する。
+4. Temporal/Vitest: Judgeステージ向け回帰テスト（LLM設定伝播、Ledger失敗時の警告、Human Review再実行シグナル）を拡充する。

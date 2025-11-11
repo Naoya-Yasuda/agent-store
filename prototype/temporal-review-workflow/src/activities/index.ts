@@ -242,6 +242,12 @@ export async function runJudgePanel(args: { submissionId: string; agentId: strin
     summary
   });
 
+  await syncJudgeMetadata({
+    agentRevisionId: args.agentRevisionId,
+    judgeSummary: summary,
+    llmJudge: args.llmJudge
+  });
+
   return {
     verdict,
     score,
@@ -436,5 +442,40 @@ export async function recordJudgeLedger(args: {
   } catch (err) {
     console.warn('[activities] failed to record judge ledger entry', err);
     return {};
+  }
+}
+
+async function syncJudgeMetadata(args: { agentRevisionId: string; judgeSummary?: Record<string, unknown>; llmJudge?: LlmJudgeConfig }): Promise<void> {
+  try {
+    const metadataPath = path.join(SANDBOX_ARTIFACTS_DIR, args.agentRevisionId, 'metadata.json');
+    const raw = await fs.readFile(metadataPath, 'utf8');
+    const metadata = JSON.parse(raw);
+    const summaryLlm = (args.judgeSummary as any)?.llmJudge;
+    const judgePanel = {
+      ...(metadata.judgePanel ?? {}),
+      summary: args.judgeSummary,
+      updatedAt: Date.now(),
+      llmJudge: {
+        ...(metadata.judgePanel?.llmJudge ?? {}),
+        ...(summaryLlm ?? {}),
+        ...(args.llmJudge ?? {})
+      }
+    };
+    metadata.judgePanel = judgePanel;
+    const existingWandb = metadata.wandbMcp ?? {};
+    const stages = { ...(existingWandb.stages ?? {}) };
+    stages.judge = {
+      ...(args.judgeSummary ?? {}),
+      llmJudge: judgePanel.llmJudge
+    };
+    metadata.wandbMcp = {
+      ...existingWandb,
+      stages
+    };
+    await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2), 'utf8');
+  } catch (err: any) {
+    if (err?.code !== 'ENOENT') {
+      console.warn('[activities] failed to sync judge metadata', err);
+    }
   }
 }

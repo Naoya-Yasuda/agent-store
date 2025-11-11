@@ -120,15 +120,29 @@ export default function ReviewDashboard() {
     }
   }, [selectedEvidenceStage, selectedArtifactType]);
 
-  const buildArtifactUrl = (descriptor: ArtifactDescriptor) => {
+  useEffect(() => {
+    if (!progress?.stages?.judge?.details?.artifacts) {
+      return;
+    }
+    const judgeArtifacts = progress.stages.judge.details.artifacts;
+    (['summary', 'report', 'relay'] as const).forEach((artifactKey) => {
+      const descriptor = judgeArtifacts[artifactKey];
+      const cacheKey = `judge:${artifactKey}`;
+      if (descriptor && !artifactStates[cacheKey]) {
+        loadArtifact(descriptor, cacheKey);
+      }
+    });
+  }, [artifactStates, loadArtifact, progress]);
+
+  const buildArtifactUrl = useCallback((descriptor: ArtifactDescriptor) => {
     const params = new URLSearchParams({ stage: descriptor.stage, type: descriptor.type });
     if (descriptor.agentId) {
       params.set('agentId', descriptor.agentId);
     }
     return `/review/artifacts/${descriptor.agentRevisionId}?${params.toString()}`;
-  };
+  }, []);
 
-  const loadArtifact = async (descriptor: ArtifactDescriptor | undefined, cacheKey: string) => {
+  const loadArtifact = useCallback(async (descriptor: ArtifactDescriptor | undefined, cacheKey: string) => {
     if (!descriptor) {
       setArtifactStates((prev) => ({
         ...prev,
@@ -170,7 +184,7 @@ export default function ReviewDashboard() {
         [cacheKey]: { loading: false, error: err instanceof Error ? err.message : 'fetch_failed' }
       }));
     }
-  };
+  }, [buildArtifactUrl]);
 
   const handleRetry = async () => {
     if (!retryReason.trim()) {
@@ -280,30 +294,25 @@ export default function ReviewDashboard() {
         </div>
         {reportData.length > 0 && (
           <div>
-            <div style={{ fontWeight: 600, marginBottom: 4 }}>質問別LLM判定</div>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr>
-                    <th>Question</th>
-                    <th>Verdict</th>
-                    <th>LLM Verdict</th>
-                    <th>LLM Score</th>
-                    <th>Flags</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {reportData.map((item) => (
-                    <tr key={item.questionId}>
-                      <td>{item.questionId}</td>
-                      <td>{item.verdict}</td>
-                      <td>{item.llmVerdict ?? 'N/A'}</td>
-                      <td>{item.llmScore ?? '-'}</td>
-                      <td>{(item.flags ?? []).join(', ')}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div style={{ fontWeight: 600, marginBottom: 4 }}>質問別LLM判定カード</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+              {reportData.slice(0, 12).map((item) => (
+                <div key={item.questionId} style={{ border: '1px solid #d0d7de', borderRadius: 10, padding: 12, background: '#fff' }}>
+                  <div style={{ fontWeight: 600 }}>{item.questionId}</div>
+                  <div style={{ fontSize: 13, color: '#475467' }}>Verdict: {item.verdict}</div>
+                  <div style={{ fontSize: 13, color: '#475467' }}>LLM Verdict: {item.llmVerdict ?? 'N/A'}</div>
+                  <div style={{ marginTop: 4, fontWeight: 600 }}>LLM Score: {typeof item.llmScore === 'number' ? item.llmScore.toFixed(2) : item.llmScore ?? '-'}</div>
+                  {(item.flags ?? []).length > 0 && (
+                    <div style={{ marginTop: 4, fontSize: 12 }}>Flags: {(item.flags ?? []).join(', ')}</div>
+                  )}
+                  {item.llmRationale && (
+                    <details style={{ marginTop: 8 }}>
+                      <summary>LLM理由</summary>
+                      <pre style={{ whiteSpace: 'pre-wrap', background: '#0f172a', color: '#e2e8f0', padding: 8, borderRadius: 6 }}>{item.llmRationale}</pre>
+                    </details>
+                  )}
+                </div>
+              ))}
             </div>
           </div>
         )}
@@ -316,7 +325,7 @@ export default function ReviewDashboard() {
                   <div style={{ fontWeight: 600 }}>{item.questionId} ({item.status})</div>
                   <div style={{ fontSize: 12, color: '#57606a' }}>latency: {Math.round(item.latencyMs ?? 0)} ms / http: {item.httpStatus ?? 'n/a'}</div>
                   {item.error && <div style={{ color: '#d1242f' }}>{item.error}</div>}
-                  {item.response && <pre style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{item.response}</pre>}
+                  <pre style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{JSON.stringify(item, null, 2)}</pre>
                 </div>
               ))}
             </div>
