@@ -1,4 +1,6 @@
 import { Router, Request, Response } from 'express';
+import path from 'path';
+import fs from 'fs';
 import { getWorkflowProgress, requestHumanDecision, requestStageRetry } from '../services/reviewService';
 
 const router = Router();
@@ -129,6 +131,37 @@ router.post('/review/decision', async (req: Request, res: Response) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : 'unknown_error';
     res.status(500).json({ error: 'decision_failed', message });
+  }
+});
+
+router.get('/review/artifacts/:agentRevisionId', async (req: Request, res: Response) => {
+  const { stage = 'security', type = 'report', agentId } = req.query;
+  const baseDir = path.resolve(__dirname, '..', '..', 'sandbox-runner', 'artifacts', req.params.agentRevisionId as string);
+  const mapping: Record<string, Record<string, string>> = {
+    security: {
+      report: path.join(baseDir, 'security', 'security_report.jsonl'),
+      summary: path.join(baseDir, 'security', 'security_summary.json')
+    },
+    functional: {
+      report: path.join(baseDir, 'functional', 'functional_report.jsonl'),
+      summary: path.join(baseDir, 'functional', 'functional_summary.json')
+    },
+    judge: {
+      report: path.join(__dirname, '..', '..', 'prototype', 'inspect-worker', 'out', String(agentId ?? 'unknown'), req.params.agentRevisionId as string, 'judge', 'judge_report.jsonl'),
+      summary: path.join(__dirname, '..', '..', 'prototype', 'inspect-worker', 'out', String(agentId ?? 'unknown'), req.params.agentRevisionId as string, 'judge', 'judge_summary.json')
+    }
+  };
+  const stageMap = mapping[String(stage)] || mapping.security;
+  const filePath = stageMap[String(type)] || Object.values(stageMap)[0];
+  try {
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'artifact_not_found' });
+    }
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    fs.createReadStream(filePath).pipe(res);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'unknown_error';
+    res.status(500).json({ error: 'artifact_fetch_failed', message });
   }
 });
 

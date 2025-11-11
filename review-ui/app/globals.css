@@ -1,0 +1,19 @@
+html, body {
+  padding: 0;
+  margin: 0;
+  background: #f6f8fa;
+  color: #0f1419;
+}
+
+a {
+  color: #0969da;
+}
+
+button {
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  background: #0a7cff;
+  color: #fff;
+  cursor: pointer;
+}

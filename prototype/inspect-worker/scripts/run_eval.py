@@ -14,6 +14,7 @@ if str(PACKAGE_ROOT) not in sys.path:
     sys.path.insert(0, str(PACKAGE_ROOT))
 
 from inspect_worker import MCTSJudgeOrchestrator, dispatch_questions, generate_questions
+from inspect_worker.wandb_logger import WandbConfig, init_wandb, log_artifact
 
 ROOT = Path(__file__).resolve().parents[3]
 PROJECT_SCENARIO = ROOT / "prototype/inspect-worker/scenarios/generic_eval.yaml"
@@ -44,6 +45,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--relay-endpoint")
     parser.add_argument("--relay-token")
+    parser.add_argument("--wandb-run-id")
+    parser.add_argument("--wandb-project", default=os.environ.get("WANDB_PROJECT", "agent-store-sandbox"))
+    parser.add_argument("--wandb-entity", default=os.environ.get("WANDB_ENTITY", "local"))
+    parser.add_argument("--wandb-base-url", default=os.environ.get("WANDB_BASE_URL", "https://wandb.ai"))
+    parser.add_argument("--wandb-enabled", default=os.environ.get("WANDB_DISABLED", "false").lower() != "true", type=lambda v: str(v).lower() == 'true')
     return parser.parse_args()
 
 
@@ -51,6 +57,15 @@ def main() -> None:
     args = parse_args()
     output_path = OUTPUT_DIR / args.agent_id / args.revision
     output_path.mkdir(parents=True, exist_ok=True)
+
+    wandb_config = WandbConfig(
+        enabled=bool(args.wandb_enabled and args.wandb_run_id),
+        project=args.wandb_project,
+        entity=args.wandb_entity,
+        run_id=args.wandb_run_id or f"inspect-{args.agent_id}-{args.revision}",
+        base_url=args.wandb_base_url,
+    )
+    wandb_run = init_wandb(wandb_config) if wandb_config.enabled else None
 
     artifacts_dir = Path(args.artifacts)
     response_samples_file = artifacts_dir / "response_samples.jsonl"
@@ -114,10 +129,13 @@ def main() -> None:
             max_questions=args.judge_max_questions,
             timeout=args.judge_timeout,
             dry_run=args.judge_dry_run,
+            wandb_config=wandb_config if wandb_config.enabled else None,
         )
         summary["judgePanel"] = judge_summary
 
     (output_path / "summary.json").write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
+    if wandb_run:
+        wandb_run.finish()
 
 
 def _load_questions(base_dir: Path, files: List[str]) -> Dict[str, Dict[str, Any]]:
@@ -418,6 +436,7 @@ def _run_judge_panel(
     max_questions: int,
     timeout: float,
     dry_run: bool,
+    wandb_config: WandbConfig | None,
 ) -> Dict[str, Any]:
     judge_dir = output_path / "judge"
     judge_dir.mkdir(parents=True, exist_ok=True)
@@ -438,12 +457,12 @@ def _run_judge_panel(
     with report_path.open("w", encoding="utf-8") as f:
         for verdict in verdicts:
             execution = next((item for item in executions if item.question_id == verdict.question_id), None)
-            record = {
-                "questionId": verdict.question_id,
-                "prompt": execution.prompt if execution else "",
-                "response": execution.response if execution else "",
-                "latencyMs": execution.latency_ms if execution else None,
-                "score": verdict.score,
+    record = {
+        "questionId": verdict.question_id,
+        "prompt": execution.prompt if execution else "",
+        "response": execution.response if execution else "",
+        "latencyMs": execution.latency_ms if execution else None,
+        "score": verdict.score,
                 "verdict": verdict.verdict,
                 "rationale": verdict.rationale,
                 "judgeNotes": verdict.judge_notes,
@@ -457,7 +476,12 @@ def _run_judge_panel(
         "rejected": sum(1 for v in verdicts if v.verdict == "reject"),
         "notes": "Judge Panel PoC",
     }
-    (judge_dir / "judge_summary.json").write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
+    summary_path = judge_dir / "judge_summary.json"
+    summary_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    if wandb_config:
+        log_artifact(wandb_config, report_path, name=f"judge-report-{wandb_config.run_id}")
+        log_artifact(wandb_config, summary_path, name=f"judge-summary-{wandb_config.run_id}")
     return summary
 
 
