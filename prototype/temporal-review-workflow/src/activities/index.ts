@@ -220,7 +220,7 @@ export async function runJudgePanel(args: { submissionId: string; agentId: strin
   if (args.relay?.token) {
     inspectArgs.push('--relay-token', args.relay.token);
   }
-  appendJudgeLlmArgs(inspectArgs, args.llmJudge);
+  inspectArgs.push(...buildJudgeLlmArgs(args.llmJudge));
   await runInspectCli(inspectArgs);
   const judgeDir = path.join(outDir, 'judge');
   const summaryPath = path.join(judgeDir, 'judge_summary.json');
@@ -318,31 +318,33 @@ function runInspectCli(cliArgs: string[]): Promise<void> {
   });
 }
 
-function appendJudgeLlmArgs(cliArgs: string[], llm?: LlmJudgeConfig): void {
+export function buildJudgeLlmArgs(llm?: LlmJudgeConfig): string[] {
   if (!llm) {
-    return;
+    return [];
   }
+  const args: string[] = [];
   if (llm.enabled) {
-    cliArgs.push('--judge-llm-enabled');
+    args.push('--judge-llm-enabled');
     if (llm.provider) {
-      cliArgs.push('--judge-llm-provider', llm.provider);
+      args.push('--judge-llm-provider', llm.provider);
     }
     if (llm.model) {
-      cliArgs.push('--judge-llm-model', llm.model);
+      args.push('--judge-llm-model', llm.model);
     }
     if (typeof llm.temperature === 'number') {
-      cliArgs.push('--judge-llm-temperature', llm.temperature.toString());
+      args.push('--judge-llm-temperature', llm.temperature.toString());
     }
     if (typeof llm.maxOutputTokens === 'number') {
-      cliArgs.push('--judge-llm-max-output', llm.maxOutputTokens.toString());
+      args.push('--judge-llm-max-output', llm.maxOutputTokens.toString());
     }
     if (llm.baseUrl) {
-      cliArgs.push('--judge-llm-base-url', llm.baseUrl);
+      args.push('--judge-llm-base-url', llm.baseUrl);
     }
   }
   if (llm.dryRun) {
-    cliArgs.push('--judge-llm-dry-run');
+    args.push('--judge-llm-dry-run');
   }
+  return args;
 }
 
 export async function hashFile(filePath: string): Promise<string> {
