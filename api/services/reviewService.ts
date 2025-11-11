@@ -28,6 +28,13 @@ type LedgerEntry = {
   workflowRunId?: string;
   generatedAt?: string;
   downloadUrl?: string;
+  sourceFile?: string;
+};
+
+export type LedgerFileHandle = {
+  absolutePath: string;
+  relativePath: string;
+  exists: boolean;
 };
 
 export async function getLedgerSummary(submissionId: string): Promise<LedgerEntry[]> {
@@ -39,7 +46,7 @@ export async function getLedgerSummary(submissionId: string): Promise<LedgerEntr
   for (const [stage, info] of Object.entries(progress.stages ?? {}) as Array<[StageName, any]>) {
     const ledger = info?.details?.ledger;
     if (ledger?.entryPath || ledger?.digest) {
-      const metadata = await readLedgerMetadata(ledger.entryPath);
+      const { metadata, relativePath } = await readLedgerMetadata(ledger.entryPath);
       entries.push({
         stage,
         entryPath: ledger.entryPath,
@@ -47,6 +54,7 @@ export async function getLedgerSummary(submissionId: string): Promise<LedgerEntr
         workflowId: metadata?.workflowId,
         workflowRunId: metadata?.runId,
         generatedAt: metadata?.exportedAt ?? metadata?.generatedAt,
+        sourceFile: relativePath,
         downloadUrl: ledger.entryPath && !isRemotePath(ledger.entryPath)
           ? `/review/ledger/download?submissionId=${submissionId}&stage=${stage}`
           : ledger.entryPath
@@ -56,8 +64,8 @@ export async function getLedgerSummary(submissionId: string): Promise<LedgerEntr
   return entries;
 }
 
-export async function getLedgerEntryFile(submissionId: string, stage: StageName): Promise<string | undefined> {
-  const progress = await fetchProgress(submissionId);
+export async function getLedgerEntryFile(submissionId: string, stage: StageName, options?: { progress?: any }): Promise<LedgerFileHandle | undefined> {
+  const progress = options?.progress ?? await fetchProgress(submissionId);
   if (!progress) {
     return undefined;
   }
@@ -69,11 +77,12 @@ export async function getLedgerEntryFile(submissionId: string, stage: StageName)
   if (!resolved.startsWith(REPO_ROOT)) {
     return undefined;
   }
+  const relativePath = path.relative(REPO_ROOT, resolved);
   try {
     await fs.access(resolved);
-    return resolved;
+    return { absolutePath: resolved, relativePath, exists: true };
   } catch {
-    return undefined;
+    return { absolutePath: resolved, relativePath, exists: false };
   }
 }
 
@@ -81,18 +90,21 @@ function isRemotePath(entryPath?: string): boolean {
   return !!entryPath && /^https?:\/\//i.test(entryPath);
 }
 
-async function readLedgerMetadata(entryPath?: string): Promise<Record<string, any> | undefined> {
+async function readLedgerMetadata(entryPath?: string): Promise<{ metadata?: Record<string, any>; relativePath?: string }> {
   if (!entryPath || isRemotePath(entryPath)) {
-    return undefined;
+    return {};
   }
   const resolved = path.resolve(entryPath);
   if (!resolved.startsWith(REPO_ROOT)) {
-    return undefined;
+    return {};
   }
   try {
     const raw = await fs.readFile(resolved, 'utf8');
-    return JSON.parse(raw);
+    return {
+      metadata: JSON.parse(raw),
+      relativePath: path.relative(REPO_ROOT, resolved)
+    };
   } catch {
-    return undefined;
+    return {};
   }
 }

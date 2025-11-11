@@ -109,8 +109,8 @@ flowchart TD
     --judge-dry-run
   ```
   を実行すると `out/<agent>/<revision>/judge/judge_report.jsonl` と `judge_summary.json` が生成されます。`--relay-endpoint` を指定すればA2A Relay経由で実エージェントに質問できます。Relay呼び出しは最大3回まで自動リトライし、HTTPエラー履歴・レスポンススニペット・禁止語検知（パスワード/APIキー/SSN/秘密鍵等）を `judge_report.jsonl` と `relay_logs.jsonl` に書き出します。
-- Human Review UIは `GET /review/ui/:submissionId` で確認できます。ステージ状況、W&Bダッシュボードリンク、再実行フォーム、承認/差戻しボタンが表示されます（バックエンド: `api/routes/reviews.ts`）。Judge セクションでは `llmScore` / `llmVerdict` のカード表示と Relay JSONL ログの整形プレビューを確認でき、CLI版ビューとNext.jsダッシュボードのどちらからでもLLM設定を再確認できます。Security/JudgeステージのLedger（監査台帳）リンクも同じビューで参照可能で、UIから送信した承認/差戻しは Temporal の `signalHumanDecision` を通じて Human ステージへ即時反映されます（実装メモ: [docs/design/judge-panel-human-review-implementation-20251110.md](docs/design/judge-panel-human-review-implementation-20251110.md)）。LedgerリストだけをJSONで取得したい場合は `GET /review/ledger/:submissionId` を利用してください（詳細: [review-ledger-api-20251111.md](docs/design/review-ledger-api-20251111.md)）。
 - Human Review UIは `GET /review/ui/:submissionId` で確認できます。ステージ状況、W&Bダッシュボードリンク、再実行フォーム、承認/差戻しボタンが表示されます（バックエンド: `api/routes/reviews.ts`）。Judge セクションでは `llmScore` / `llmVerdict` のカード表示と Relay JSONL ログの整形プレビューを確認でき、CLI版ビューとNext.jsダッシュボードのどちらからでもLLM設定を再確認できます。Judge再実行時はフォームの「LLM設定を上書きする」にチェックを入れることで、`model` / `provider` / `temperature(0〜2)` / `maxOutputTokens(>0整数)` / `dryRun(true|false|inherit)` を指定できます。入力値はクライアント側で検証され、エラーの場合は送信されません。Security/JudgeステージのLedger（監査台帳）リンクも同じビューで参照可能で、UIから送信した承認/差戻しは Temporal の `signalHumanDecision` を通じて Human ステージへ即時反映されます。Ledger一覧だけをJSONで取得したい場合は `GET /review/ledger/:submissionId`（詳細: [review-ledger-api-20251111.md](docs/design/review-ledger-api-20251111.md)）を利用してください。
+- Human Review UIは `GET /review/ui/:submissionId` で確認できます。ステージ状況、W&Bダッシュボードリンク、再実行フォーム、承認/差戻しボタンが表示されます（バックエンド: `api/routes/reviews.ts`）。Judge セクションでは `llmScore` / `llmVerdict` のカード表示と Relay JSONL ログの整形プレビューを確認でき、CLI版ビューとNext.jsダッシュボードのどちらからでもLLM設定を再確認できます。Judge再実行時はフォームの「LLM設定を上書きする」にチェックを入れることで、`model` / `provider` / `temperature(0〜2)` / `maxOutputTokens(>0整数)` / `dryRun(true|false|inherit)` を指定できます。入力値はクライアント側で検証され、エラーの場合は送信されません。Security/JudgeステージのLedger（監査台帳）リンクおよび `/review/ledger/download` で取得できるローカル監査ファイル、W&B Runに投稿されたステージイベントタイムライン（Retry・エスカレーション・Manual判定）も同じビューから参照できます（詳細: [review-ledger-api-20251111.md](docs/design/review-ledger-api-20251111.md)、[judge-panel-human-review-implementation-20251110.md](docs/design/judge-panel-human-review-implementation-20251110.md)）。
 - Next.js版のHuman Reviewダッシュボード（`review-ui/`）も用意しています。`cd review-ui && npm install && npm run dev`で起動し、`http://localhost:3000`からAPI経由で進捗・W&Bリンク・証拠ダウンロードを確認できます。
 - Human Review UIの単体テストはVitest＋Testing Libraryを利用しています。`cd review-ui && npm run test` でフォームバリデーションやUIロジックの検証が実行できます。
 
@@ -141,9 +141,9 @@ flowchart TD
 
 ## 今後の優先タスク
 1. **LLM Override Validation**: Judge再実行フォームとTemporal/Inspect Worker間のLLM設定伝播をVitest/E2Eで検証し、READMEに利用手順と入力バリデーション（温度0〜2など）を追記する。
-2. **Ledger API拡張**: `/review/ledger/:id` レスポンスへ `workflowId`/`workflowRunId`/`generatedAt`/`sourceFile` を含め、ローカルLedgerを `/review/ledger/download` から取得できるよう整備し、[review-ledger-api-20251111.md](docs/design/review-ledger-api-20251111.md) を更新する。
-3. **W&Bイベント一般化**: `sandbox_runner.log_wandb_event` をSecurity/Functional/Judgeの再実行・失敗イベントにも適用し、W&Bダッシュボードのタイムラインで審査履歴を再現できるようにする。
-4. **回帰テスト＆UIバリデーション**: Temporal/Vitestで上記イベント投稿やLedgerダウンロードをモック検証し、Human Review UIのLLM上書きフォーム/Relay検索にReact Testing Library等のテストを追加する。
+2. **Human Review UIの操作性強化**: Next.jsダッシュボードへLLM上書きフォームの必須/数値バリデーション、Relayログ検索、Ledgerダウンロードボタン、Ledgerレスポンス表示（`sourceFile`/`workflowId`など）を追加し、[judge-panel-human-review-implementation-20251110.md](docs/design/judge-panel-human-review-implementation-20251110.md) に運用手順を追記する。
+3. **Functional Ledger/Replay設計**: Functional AccuracyステージにもLedgerエントリと`/review/ledger/download`対応を広げ、Security/Judgeと同一スキーマでRAGTruthエビデンスを追跡できるよう[security-gate-ledger-plan.md](docs/design/security-gate-ledger-plan.md)をアップデートする。
+4. **W&BイベントUI露出**: `recordStageEvent`で蓄積したRetry/エスカレーションログをHuman Review UIとW&Bメタデータに可視化（タイムライン/ヒートマップ）し、ステージ再実行理由やHuman決裁を即時把握できるようにする。
 
 ## Contributor Guide
 完全なコントリビュータガイド、コーディング規約、PR要件は[`AGENTS.md`](AGENTS.md)を参照してください。

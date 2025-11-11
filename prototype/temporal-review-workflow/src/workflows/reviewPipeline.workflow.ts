@@ -55,6 +55,7 @@ type Activities = {
   runFunctionalAccuracy: (args: { submissionId: string; agentId: string; agentRevisionId: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string } }) => Promise<FunctionalAccuracyResult>;
   runJudgePanel: (args: { submissionId: string; agentId: string; agentRevisionId: string; promptVersion: string; workflowId: string; workflowRunId: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string }; llmJudge?: LlmJudgeConfig }) => Promise<JudgePanelResult>;
   notifyHumanReview: (args: { submissionId: string; agentId: string; agentRevisionId: string; reason: string; attachments?: string[] }) => Promise<'approved' | 'rejected'>;
+  recordStageEvent: (args: { agentRevisionId: string; stage: StageName; event: string; data?: Record<string, unknown>; timestamp?: string }) => Promise<void>;
   recordHumanDecisionMetadata: (args: { agentRevisionId: string; decision: 'approved' | 'rejected'; notes?: string; decidedAt?: string }) => Promise<void>;
   publishAgent: (args: { submissionId: string; agentId: string; agentRevisionId: string }) => Promise<void>;
 };
@@ -64,7 +65,7 @@ const activities = proxyActivities<Activities>({
   startToCloseTimeout: '1 minute'
 });
 
-type StageName = 'precheck' | 'security' | 'functional' | 'judge' | 'human' | 'publish';
+export type StageName = 'precheck' | 'security' | 'functional' | 'judge' | 'human' | 'publish';
 type StageStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
 type WorkflowTerminalState = 'running' | 'published' | 'rejected';
 
@@ -125,6 +126,7 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
   let terminalState: WorkflowTerminalState = 'running';
   let seqCounter = 0;
   const retryRequests = new Set<StageName>();
+  const retryReasons = new Map<StageName, string>();
   let pendingHumanDecision: { decision: 'approved' | 'rejected'; notes?: string } | undefined;
 
   const context = {
@@ -164,6 +166,7 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
   }));
   setHandler(retryStageSignal, (stage, reason) => {
     retryRequests.add(stage);
+    retryReasons.set(stage, reason);
     updateStage(stage, { status: 'pending', message: `retry requested: ${reason}` });
   });
   setHandler(humanDecisionSignal, (decision, notes) => {
@@ -222,11 +225,33 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
         return result;
       }
       retryRequests.delete(stage);
+      const reason = retryReasons.get(stage);
+      retryReasons.delete(stage);
+      await emitStageEvent(stage, 'retry_requested', {
+        ...(reason ? { reason } : {}),
+        attempts: stageProgress[stage].attempts
+      });
       updateStage(stage, { status: 'pending', message: 'retry scheduled' });
     }
   }
 
-  async function escalateToHuman(reason: string, notes?: string[]): Promise<'approved' | 'rejected'> {
+  async function emitStageEvent(stage: StageName, event: string, data?: Record<string, unknown>): Promise<void> {
+    if (!context.agentRevisionId) {
+      return;
+    }
+    try {
+      await activities.recordStageEvent({
+        agentRevisionId: context.agentRevisionId,
+        stage,
+        event,
+        data
+      });
+    } catch (err) {
+      console.warn('[workflow] failed to record stage event', stage, event, err);
+    }
+  }
+
+  async function escalateToHuman(sourceStage: StageName, reason: string, notes?: string[]): Promise<'approved' | 'rejected'> {
     await runStageWithRetry('human', () =>
       activities.notifyHumanReview({
         submissionId: context.submissionId,
@@ -236,6 +261,10 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
         attachments: notes
       })
     );
+    await emitStageEvent(sourceStage, 'escalated_to_human', {
+      reason,
+      ...(notes ? { notes } : {})
+    });
     updateStage('human', {
       status: 'running',
       message: 'waiting for human decision',
@@ -243,6 +272,10 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
         reason,
         attachments: notes
       }
+    });
+    await emitStageEvent('human', 'decision_pending', {
+      sourceStage,
+      reason
     });
     const decisionPayload = await waitForHumanDecision();
     const decision = decisionPayload.decision;
@@ -328,7 +361,10 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
     });
     if (!security.passed) {
       updateStage('security', { status: 'failed', message: security.failReasons?.join(', ') ?? 'security gate failed' });
-      const decision = await escalateToHuman('security_gate_failure', security.failReasons);
+      await emitStageEvent('security', 'stage_failed', {
+        failReasons: security.failReasons
+      });
+      const decision = await escalateToHuman('security', 'security_gate_failure', security.failReasons);
       if (decision === 'rejected') {
         return;
       }
@@ -356,7 +392,10 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
     });
     if (!functional.passed) {
       updateStage('functional', { status: 'failed', message: functional.failReasons?.join(', ') ?? 'functional accuracy failed' });
-      const decision = await escalateToHuman('functional_accuracy_failure', functional.failReasons);
+      await emitStageEvent('functional', 'stage_failed', {
+        failReasons: functional.failReasons
+      });
+      const decision = await escalateToHuman('functional', 'functional_accuracy_failure', functional.failReasons);
       if (decision === 'rejected') {
         return;
       }
@@ -392,13 +431,21 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
     });
 
     if (judge.verdict === 'reject') {
+      await emitStageEvent('judge', 'verdict_rejected', {
+        score: judge.score,
+        explanation: judge.explanation
+      });
       updateStage('judge', { status: 'failed', message: judge.explanation ?? 'judge rejected submission' });
       terminalState = 'rejected';
       return;
     }
 
     if (judge.verdict === 'manual') {
-      const decision = await escalateToHuman('judge_manual_review', judge.explanation ? [judge.explanation] : undefined);
+      await emitStageEvent('judge', 'verdict_manual', {
+        score: judge.score,
+        explanation: judge.explanation
+      });
+      const decision = await escalateToHuman('judge', 'judge_manual_review', judge.explanation ? [judge.explanation] : undefined);
       if (decision === 'rejected') {
         return;
       }

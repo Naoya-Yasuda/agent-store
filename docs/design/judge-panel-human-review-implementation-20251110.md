@@ -66,6 +66,6 @@
 
 ## 7. 次ステップ (2025-11-11)
 1. **LLM Override Validation**: Judge再実行フォームから送られたLLM設定がTemporal→Inspect Workerまで到達することをVitest/E2Eで確認し、READMEに利用手順・注意点を追記。数値入力（temperature/maxTokens）の範囲・フォーマットをUIでバリデーションする。
-2. **W&B Event Logging**: `sandbox_runner.log_wandb_event` をJudge manual判定やLLM override通知にも適用し、W&Bダッシュボードのタイムラインに全処理イベント（再実行・決裁）を記録する。
+2. **W&B Event Logging**: `recordStageEvent` → `sandbox_runner.log_wandb_event` をJudge manual判定やLLM override通知にも適用し、W&Bダッシュボードのタイムラインに全処理イベント（再実行・決裁）を記録する（2025-11-11 実装）。
 3. **Relay UX改善**: Relayログ検索フィルタの追加、禁止語ヒット専用ビュー、JSONLダウンロードボタンなどHuman Review UIでの検証体験を改善する。
 4. **回帰テスト拡充**: Temporal/VitestでLLM override／W&Bイベントをモック検証。UIはReact Testing Library等でフォームバリデーションやエラー表示をテストする。

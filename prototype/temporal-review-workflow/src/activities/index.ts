@@ -2,7 +2,7 @@ import path from 'path';
 import { promises as fs } from 'fs';
 import { spawn } from 'child_process';
 import { createHash } from 'crypto';
-import { WandbRunInfo, LlmJudgeConfig } from '../workflows/reviewPipeline.workflow';
+import { WandbRunInfo, LlmJudgeConfig, StageName } from '../workflows/reviewPipeline.workflow';
 import { publishToLedger, AuditLedgerEntry } from '../lib/auditLedger';
 import { NAMESPACE } from '../../temporal.config';
 
@@ -65,6 +65,12 @@ function extractWandbFromMetadata(metadata?: any): WandbRunInfo | undefined {
     baseUrl: metadata.wandb?.baseUrl,
     url: preferred.url ?? metadata.wandb?.url
   };
+}
+
+async function resolveWandbInfo(agentRevisionId: string): Promise<WandbRunInfo | undefined> {
+  const metadataPath = path.join(SANDBOX_ARTIFACTS_DIR, agentRevisionId, 'metadata.json');
+  const metadata = await readJsonFile(metadataPath);
+  return extractWandbFromMetadata(metadata);
 }
 
 export async function preCheckSubmission(args: { submissionId: string }): Promise<{ passed: boolean; agentId: string; agentRevisionId: string; warnings: string[] }> {
@@ -450,18 +456,42 @@ export async function recordJudgeLedger(args: {
   }
 }
 
+export async function recordStageEvent(args: { agentRevisionId: string; stage: StageName; event: string; data?: Record<string, unknown>; timestamp?: string }): Promise<void> {
+  const occurredAt = args.timestamp ?? new Date().toISOString();
+  const eventData = args.data && Object.keys(args.data).length > 0 ? args.data : undefined;
+  const payload: Record<string, unknown> = {
+    stage: args.stage,
+    event: args.event,
+    type: args.event,
+    timestamp: occurredAt
+  };
+  if (eventData) {
+    payload.data = eventData;
+  }
+  await upsertStageMetadata(args.agentRevisionId, args.stage, {
+    lastEvent: {
+      event: args.event,
+      timestamp: occurredAt,
+      ...(eventData ? { data: eventData } : {})
+    }
+  });
+  await appendWandbEvent(args.agentRevisionId, payload);
+  await logWandbStageEvent(args.agentRevisionId, args.stage, args.event, eventData, occurredAt);
+}
+
 export async function recordHumanDecisionMetadata(args: { agentRevisionId: string; decision: 'approved' | 'rejected'; notes?: string; decidedAt?: string }): Promise<void> {
+  const decidedAt = args.decidedAt ?? new Date().toISOString();
   await upsertStageMetadata(args.agentRevisionId, 'human', {
     decision: args.decision,
     notes: args.notes,
-    decidedAt: args.decidedAt ?? new Date().toISOString()
+    decidedAt
   });
-  await appendWandbEvent(args.agentRevisionId, {
+  await recordStageEvent({
+    agentRevisionId: args.agentRevisionId,
     stage: 'human',
-    type: 'human_decision',
-    decision: args.decision,
-    notes: args.notes,
-    timestamp: args.decidedAt ?? new Date().toISOString()
+    event: 'human_decision',
+    data: { decision: args.decision, notes: args.notes },
+    timestamp: decidedAt
   });
   await logWandbHumanDecision(args.agentRevisionId, args.decision, args.notes);
 }
@@ -508,11 +538,37 @@ async function appendWandbEvent(agentRevisionId: string, event: Record<string, u
   }
 }
 
+async function logWandbStageEvent(agentRevisionId: string, stage: StageName, event: string, data: Record<string, unknown> | undefined, timestamp: string): Promise<void> {
+  try {
+    const wandb = await resolveWandbInfo(agentRevisionId);
+    if (!wandb?.runId || !wandb?.project || !wandb?.entity) {
+      return;
+    }
+    const payload: Record<string, unknown> = {
+      'event/stage': stage,
+      'event/name': event,
+      'event/timestamp': timestamp,
+      [`events/${stage}/${event}`]: 1
+    };
+    if (data) {
+      for (const [key, value] of Object.entries(data)) {
+        const metricKey = `event/${stage}/${event}/${key}`;
+        if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'string') {
+          payload[metricKey] = value;
+        } else {
+          payload[metricKey] = JSON.stringify(value);
+        }
+      }
+    }
+    await logWandbEvent(wandb, payload);
+  } catch (err) {
+    console.warn('[activities] failed to log stage event to W&B', err);
+  }
+}
+
 async function logWandbHumanDecision(agentRevisionId: string, decision: 'approved' | 'rejected', notes?: string): Promise<void> {
   try {
-    const metadataPath = path.join(SANDBOX_ARTIFACTS_DIR, agentRevisionId, 'metadata.json');
-    const metadata = await readJsonFile(metadataPath);
-    const wandb = extractWandbFromMetadata(metadata);
+    const wandb = await resolveWandbInfo(agentRevisionId);
     if (!wandb?.runId || !wandb?.project || !wandb?.entity) {
       return;
     }

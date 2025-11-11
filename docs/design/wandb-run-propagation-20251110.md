@@ -38,4 +38,8 @@
 ## 5. 今後のフォローアップ
 - `/review/ledger` のレスポンスに `workflowRunId` / `generatedAt` を含め、複数回の審査が行われた場合でもLedgerを切り分けられるようにする。
 - Submission APIでRun ID自動払い出し時に、W&B APIキー有無やプロジェクト存在確認を行い、失敗時のフォールバック戦略（例: ローカルRunに記録）の明文化。
-- Human Review以外のイベント（例: `judge/manual_retry`, `security/escalation`）についても `sandbox_runner.log_wandb_event` を再利用し、Runタイムラインを完全な監査ログに昇格させる。
+- Human Review以外のイベント（`security`失敗、`functional`のRetry、`judge`のManual判定など）も `recordStageEvent` → `sandbox_runner.log_wandb_event` 経由でRunタイムラインへ投稿し、Run単体で審査履歴を再生できる（2025-11-11対応済み）。
+
+## 6. ステージイベント汎用ロガー（2025-11-11追加）
+- Temporalアクティビティ `recordStageEvent` を新設。`stage` / `event` / `data` を `sandbox-runner/artifacts/<rev>/metadata.json` の `wandbMcp.events` と `stageDetails.<stage>.lastEvent` に書き込み、同時に W&B Run へ `event/<stage>/<event>/...` メトリクスを投稿。
+- Workflow側では `emitStageEvent` ヘルパーを追加し、Retry要求・Security/Functional失敗・Judge verdict（manual/reject）・Humanへのエスカレーションなどで呼び出す。これにより、W&Bダッシュボード上で再実行やエスカレーションの履歴をトレース可能になった。

@@ -6,7 +6,7 @@
 | メソッド | パス | 目的 | 主なレスポンス |
 | --- | --- | --- | --- |
 | GET | `/review/progress/:submissionId` | Temporalワークフロー進捗と各ステージ詳細を取得。 | `{ terminalState, stages, wandbRun, agentId, agentRevisionId, llmJudge }` |
-| GET | `/review/ledger/:submissionId` | Ledgerエントリのみを抽出（UI無しでも監査可）。 | `{ submissionId, entries: [{ stage, entryPath, digest, workflowId, workflowRunId, generatedAt, downloadUrl }] }` |
+| GET | `/review/ledger/:submissionId` | Ledgerエントリのみを抽出（UI無しでも監査可）。 | `{ submissionId, entries: [{ stage, entryPath, digest, workflowId, workflowRunId, generatedAt, sourceFile, downloadUrl }] }` |
 | GET | `/review/artifacts/:agentRevisionId?stage=judge&type=relay&agentId=foo` | ステージごとのJSON/JSONLアーティファクトをストリーミング取得。 | HTTPストリーム（`application/json` / `application/jsonl`）|
 | POST | `/review/retry` | `signalRetryStage` を発火し、ステージ再実行を要求。 | `{ status: 'retry_requested' }` |
 | POST | `/review/decision` | `signalHumanDecision` を送信し、人手審査決裁を記録。 | `{ status: 'decision_submitted' }` |
@@ -25,6 +25,7 @@
       "workflowId": "review-pipeline-subm-2025-001",
       "workflowRunId": "a1b2c3",
       "generatedAt": "2025-11-11T08:00:00Z",
+      "sourceFile": "sandbox-runner/artifacts/subm-2025-001/security/security_ledger_entry.json",
       "downloadUrl": "/review/ledger/download?submissionId=subm-2025-001&stage=security"
     },
     {
@@ -40,7 +41,19 @@
 }
 ```
 - `entryPath` がHTTP/HTTPSならそのままブラウザ遷移可能。ローカルファイルパスの場合はCLIやSFTPで参照する。
+- `sourceFile` はリポジトリ相対パス。`/review/ledger/download` はこのファイルをStreamingして返す。
 - `digest` は `auditLedger.publishToLedger` が出力するSHA-256。UI/W&B/MCPツールはこれを基準に改ざん検知を行う。
+
+## 3. LedgerダウンロードAPI (`GET /review/ledger/download`)
+
+| クエリ | 説明 |
+| --- | --- |
+| `submissionId` | 対象Submission。`/review/ledger/:id` と同じID。|
+| `stage` | `security` / `functional` / `judge` / `human` などLedgerを持つステージ。|
+
+- レスポンス成功時: `Content-Type: application/json; charset=utf-8`、`Content-Disposition: attachment; filename=<stage>-ledger.json`、`X-Ledger-Source: <repo-relative-path>` を付与し、ローカルLedgerファイルをストリーミング返却。
+- Ledgerファイルが存在しない/削除済みの場合は `404 { error: 'ledger_file_not_found', submissionId, stage, sourceFile }` を返す。`sourceFile` で期待パスを伝え、再取得 or Ledger復元手順へ誘導できる。
+- `entryPath` がHTTP/HTTPSの場合はローカルダウンロードは行わず、`/review/ledger` 側で直接URLを返す運用とする。
 
 ## 3. 利用フロー
 1. Reviewerは `/review/progress/:id` でAgent ID・LLM設定・ステージ状況を確認。

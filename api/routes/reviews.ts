@@ -319,13 +319,22 @@ router.get('/review/ledger/download', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'missing_params' });
   }
   try {
-    const filePath = await getLedgerEntryFile(submissionId, stage as StageName);
-    if (!filePath) {
-      return res.status(404).json({ error: 'ledger_file_not_found' });
+    const fileHandle = await getLedgerEntryFile(submissionId, stage as StageName);
+    if (!fileHandle) {
+      return res.status(404).json({ error: 'ledger_file_not_found', submissionId, stage });
+    }
+    if (!fileHandle.exists) {
+      return res.status(404).json({
+        error: 'ledger_file_not_found',
+        submissionId,
+        stage,
+        sourceFile: fileHandle.relativePath
+      });
     }
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename=${stage}-ledger.json`);
-    fs.createReadStream(filePath).pipe(res);
+    res.setHeader('X-Ledger-Source', fileHandle.relativePath);
+    fs.createReadStream(fileHandle.absolutePath).pipe(res);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'unknown_error';
     res.status(500).json({ error: 'ledger_download_failed', message });
