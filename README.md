@@ -109,7 +109,7 @@ flowchart TD
     --judge-dry-run
   ```
   を実行すると `out/<agent>/<revision>/judge/judge_report.jsonl` と `judge_summary.json` が生成されます。`--relay-endpoint` を指定すればA2A Relay経由で実エージェントに質問できます。Relay呼び出しは最大3回まで自動リトライし、HTTPエラー履歴・レスポンススニペット・禁止語検知（パスワード/APIキー/SSN/秘密鍵等）を `judge_report.jsonl` と `relay_logs.jsonl` に書き出します。
-- Human Review UIは `GET /review/ui/:submissionId` で確認できます。ステージ状況、W&Bダッシュボードリンク、再実行フォーム、承認/差戻しボタンが表示されます（バックエンド: `api/routes/reviews.ts`）。Judge セクションでは `llmScore` / `llmVerdict` のカード表示と Relay JSONL ログの整形プレビューを確認でき、CLI版ビューとNext.jsダッシュボードのどちらからでもLLM設定を再確認できます。Security/JudgeステージのLedger（監査台帳）リンクも同じビューで参照可能で、UIから送信した承認/差戻しは Temporal の `signalHumanDecision` を通じて Human ステージへ即時反映されます（実装メモ: [docs/design/judge-panel-human-review-implementation-20251110.md](docs/design/judge-panel-human-review-implementation-20251110.md)）。LedgerリストだけをJSONで取得したい場合は `GET /review/ledger/:submissionId` を利用してください。
+- Human Review UIは `GET /review/ui/:submissionId` で確認できます。ステージ状況、W&Bダッシュボードリンク、再実行フォーム、承認/差戻しボタンが表示されます（バックエンド: `api/routes/reviews.ts`）。Judge セクションでは `llmScore` / `llmVerdict` のカード表示と Relay JSONL ログの整形プレビューを確認でき、CLI版ビューとNext.jsダッシュボードのどちらからでもLLM設定を再確認できます。Security/JudgeステージのLedger（監査台帳）リンクも同じビューで参照可能で、UIから送信した承認/差戻しは Temporal の `signalHumanDecision` を通じて Human ステージへ即時反映されます（実装メモ: [docs/design/judge-panel-human-review-implementation-20251110.md](docs/design/judge-panel-human-review-implementation-20251110.md)）。LedgerリストだけをJSONで取得したい場合は `GET /review/ledger/:submissionId` を利用してください（詳細: [review-ledger-api-20251111.md](docs/design/review-ledger-api-20251111.md)）。
 - Next.js版のHuman Reviewダッシュボード（`review-ui/`）も用意しています。`cd review-ui && npm install && npm run dev`で起動し、`http://localhost:3000`からAPI経由で進捗・W&Bリンク・証拠ダウンロードを確認できます。
 
 ## W&B MCP 連携
@@ -133,7 +133,7 @@ flowchart TD
 | Functional DSL + RAGTruth突合 | ✅ 実装済み | AgentCardシナリオ生成 → Relay実行 → RAGTruth照合に加え、Embedding距離メトリクスを算出しTemporal/UI/W&Bへ返却。 |
 | Judge Panel (MCTS-Judge) | 🚧 部分実装 | Inspect Worker CLIでRelayログ＋MCTS評価＋LLM判定を実行し、TemporalアクティビティからLedger（summary/report/relayハッシュ）へ記録できるようにした。Human Review UIでのLLMカード表示・再実行設定保持は継続中（詳細: [judge-panel-human-review-implementation-20251110.md](docs/design/judge-panel-human-review-implementation-20251110.md)）。 |
 | Human Review UI連携 | ✅ 実装済み | `/review/*` RESTとNext.jsダッシュボードを実装。証拠JSON整形表示・再実行・承認/差戻しが可能。 |
-| W&B MCPトレース連携 | 🚧 部分実装 | Sandbox Runner/Inspect WorkerからRun IDを共有し、ステージサマリ/Artifactを記録。Human Review連携ログは今後。 |
+| W&B MCPトレース連携 | ✅ 実装済み | Security/Functional/Judge/Human各ステージのサマリ・Ledger・LLM設定を `metadata.json` / `wandbMcp.stages` に集約し、`/review/ledger` とW&B Runの両方からリプレイできる。 |
 
 > ※実装や設計の更新を行った際は、必ず本READMEのステータステーブルと該当セクションを更新してください。
 

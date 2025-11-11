@@ -55,6 +55,7 @@ type Activities = {
   runFunctionalAccuracy: (args: { submissionId: string; agentId: string; agentRevisionId: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string } }) => Promise<FunctionalAccuracyResult>;
   runJudgePanel: (args: { submissionId: string; agentId: string; agentRevisionId: string; promptVersion: string; workflowId: string; workflowRunId: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string }; llmJudge?: LlmJudgeConfig }) => Promise<JudgePanelResult>;
   notifyHumanReview: (args: { submissionId: string; agentId: string; agentRevisionId: string; reason: string; attachments?: string[] }) => Promise<'approved' | 'rejected'>;
+  recordHumanDecisionMetadata: (args: { agentRevisionId: string; decision: 'approved' | 'rejected'; notes?: string; decidedAt?: string }) => Promise<void>;
   publishAgent: (args: { submissionId: string; agentId: string; agentRevisionId: string }) => Promise<void>;
 };
 
@@ -244,6 +245,18 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
         decisionNotes: decisionPayload.notes
       }
     });
+    if (context.agentRevisionId) {
+      try {
+        await activities.recordHumanDecisionMetadata({
+          agentRevisionId: context.agentRevisionId,
+          decision,
+          notes: decisionPayload.notes,
+          decidedAt: new Date().toISOString()
+        });
+      } catch (err) {
+        console.warn('[workflow] failed to record human decision metadata', err);
+      }
+    }
     if (decision === 'rejected') {
       terminalState = 'rejected';
     } else {

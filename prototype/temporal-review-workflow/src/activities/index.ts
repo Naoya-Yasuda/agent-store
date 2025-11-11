@@ -120,6 +120,10 @@ export async function runSecurityGate(args: { submissionId: string; agentId: str
     promptsPath,
     summary
   });
+  await upsertStageMetadata(args.agentRevisionId, 'security', {
+    summary,
+    ledger: ledgerInfo.entryPath ? { entryPath: ledgerInfo.entryPath, digest: ledgerInfo.digest } : undefined
+  });
   return {
     passed,
     artifactsPath,
@@ -242,10 +246,11 @@ export async function runJudgePanel(args: { submissionId: string; agentId: strin
     summary
   });
 
-  await syncJudgeMetadata({
-    agentRevisionId: args.agentRevisionId,
-    judgeSummary: summary,
-    llmJudge: args.llmJudge
+  const llmSummary = (summary as any)?.llmJudge ?? args.llmJudge;
+  await upsertStageMetadata(args.agentRevisionId, 'judge', {
+    summary,
+    llmJudge: llmSummary,
+    ledger: ledgerInfo.entryPath ? { entryPath: ledgerInfo.entryPath, digest: ledgerInfo.digest } : undefined
   });
 
   return {
@@ -445,37 +450,34 @@ export async function recordJudgeLedger(args: {
   }
 }
 
-async function syncJudgeMetadata(args: { agentRevisionId: string; judgeSummary?: Record<string, unknown>; llmJudge?: LlmJudgeConfig }): Promise<void> {
+export async function recordHumanDecisionMetadata(args: { agentRevisionId: string; decision: 'approved' | 'rejected'; notes?: string; decidedAt?: string }): Promise<void> {
+  await upsertStageMetadata(args.agentRevisionId, 'human', {
+    decision: args.decision,
+    notes: args.notes,
+    decidedAt: args.decidedAt ?? new Date().toISOString()
+  });
+}
+
+async function upsertStageMetadata(agentRevisionId: string, stage: string, update: Record<string, unknown>): Promise<void> {
+  const metadataPath = path.join(SANDBOX_ARTIFACTS_DIR, agentRevisionId, 'metadata.json');
   try {
-    const metadataPath = path.join(SANDBOX_ARTIFACTS_DIR, args.agentRevisionId, 'metadata.json');
     const raw = await fs.readFile(metadataPath, 'utf8');
     const metadata = JSON.parse(raw);
-    const summaryLlm = (args.judgeSummary as any)?.llmJudge;
-    const judgePanel = {
-      ...(metadata.judgePanel ?? {}),
-      summary: args.judgeSummary,
-      updatedAt: Date.now(),
-      llmJudge: {
-        ...(metadata.judgePanel?.llmJudge ?? {}),
-        ...(summaryLlm ?? {}),
-        ...(args.llmJudge ?? {})
-      }
-    };
-    metadata.judgePanel = judgePanel;
-    const existingWandb = metadata.wandbMcp ?? {};
-    const stages = { ...(existingWandb.stages ?? {}) };
-    stages.judge = {
-      ...(args.judgeSummary ?? {}),
-      llmJudge: judgePanel.llmJudge
-    };
-    metadata.wandbMcp = {
-      ...existingWandb,
-      stages
-    };
+    const sanitized = Object.fromEntries(Object.entries(update).filter(([, value]) => value !== undefined));
+    if (Object.keys(sanitized).length === 0) {
+      return;
+    }
+    metadata.stageDetails = metadata.stageDetails ?? {};
+    metadata.stageDetails[stage] = { ...(metadata.stageDetails[stage] ?? {}), ...sanitized };
+    const wandbMcp = metadata.wandbMcp ?? {};
+    const stages = wandbMcp.stages ?? {};
+    stages[stage] = { ...(stages[stage] ?? {}), ...sanitized };
+    metadata.wandbMcp = { ...wandbMcp, stages };
     await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2), 'utf8');
   } catch (err: any) {
     if (err?.code !== 'ENOENT') {
-      console.warn('[activities] failed to sync judge metadata', err);
+      console.warn('[activities] failed to upsert stage metadata', err);
     }
   }
 }
+
