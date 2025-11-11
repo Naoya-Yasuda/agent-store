@@ -6,6 +6,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 from typing import Dict, Iterable, List, Optional, Tuple
+import uuid
 import re
 
 from .question_generator import QuestionSpec
@@ -45,6 +46,7 @@ class ExecutionResult:
     attempts: int = 1
     retry_errors: List[str] = field(default_factory=list)
     response_snippet: Optional[str] = None
+    trace_id: str = field(default_factory=lambda: uuid.uuid4().hex)
 
 
 def dispatch_questions(
@@ -80,7 +82,7 @@ def dispatch_questions(
                 flags=flags,
                 attempts=attempts,
                 retry_errors=error_history,
-                response_snippet=_build_response_snippet(response_text)
+                response_snippet=_build_response_snippet(response_text),
             )
         )
     return results

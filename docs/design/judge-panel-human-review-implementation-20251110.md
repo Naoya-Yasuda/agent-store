@@ -26,8 +26,8 @@
    - MCTS-Judge: 段階（主張→反証→再評価→集約→メタチェック）をコード化し、矛盾があれば`verdict=manual`、即NGなら`verdict=reject`。
    - 2025-11-11 時点で、Inspect Worker に外部LLM (OpenAI) を判定レイヤーとして組み込むPoCを追加済み。資格情報が無い場合は `--judge-llm-dry-run` でMCTSヒューリスティックのみを使用する。
 4. **Artifacts**
-   - `prototype/inspect-worker/out/<agent>/<revision>/judge_report.jsonl`（質問単位）と`judge_summary.json`（観点別スコア）。
-   - 各質問IDには `securityGate` / `functionalAccuracy` からの証拠リンク、A2Aログ、LLM判定理由を含める。Relayログ/LLM説明は審査専用データとしてフル保存し、Ledgerにはハッシュを記録する。
+- `prototype/inspect-worker/out/<agent>/<revision>/judge_report.jsonl`（質問単位）と`judge_summary.json`（観点別スコア）。
+- 各質問IDには `securityGate` / `functionalAccuracy` からの証拠リンク、A2Aログ、LLM判定理由に加えて `traceId`（RelayコールのトレースID）を含める。`traceId` はHuman Review UIやW&Bイベントタイムラインでハイパリンクするためのキーとして利用し、Relayログ/LLM説明は審査専用データとしてフル保存し、Ledgerにはハッシュを記録する。
 5. **Temporal フック**
    - `runJudgePanel` アクティビティは Inspect Worker をCLIまたはPython APIで呼び、`{ verdict, score, explanation, artifacts }` を返す。
    - しきい値/矛盾の場合は `signalRetryStage('judge', reason)` を送るための情報をHuman Review UIへ渡す。Ledger向けのハッシュ/パス情報も返し、Securityステージ同様に記録する。
@@ -53,8 +53,8 @@
 - **W&Bメトリクス**
   - `judge/questions`, `judge/approved`, `judge/manual`, `judge/rejected`, `judge/flagged`, `judge/llm_calls`, `judge/relay_errors` を出力し、QAトレースとプロセス健全性を可視化。
 - **Temporal Activities**
-  - `prototype/temporal-review-workflow/src/activities/index.ts` で `runJudgePanel` がInspect Worker CLIを実行し、`recordJudgeLedger` によって summary/report/relayログのハッシュ＋LLM設定をLedgerへPOST。Security Gate同様に `details.ledger` を`queryProgress`へ返す。
-  - Human Reviewの決定結果（承認/差戻し）は `signalHumanDecision` を通じてWorkflowへ伝搬し、`escalateToHuman` がシグナルを待ってHumanステージ/Terminal Stateを更新する（APIは `/review/decision` → `sendHumanDecision` → Temporal Signal という経路）。
+- `prototype/temporal-review-workflow/src/activities/index.ts` で `runJudgePanel` がInspect Worker CLIを実行し、`recordJudgeLedger` によって summary/report/relayログのハッシュ＋LLM設定をLedgerへPOST。Security Gate同様に `details.ledger` を`queryProgress`へ返す。
+- Human Reviewの決定結果（承認/差戻し）は `signalHumanDecision` を通じてWorkflowへ伝搬し、`escalateToHuman` がシグナルを待ってHumanステージ/Terminal Stateを更新する（APIは `/review/decision` → `sendHumanDecision` → Temporal Signal という経路）。Judgeステージでは `signalUpdateLlmJudge` を受け取った際に `recordStageEvent('llm_override_received', …)` を呼び、UI/W&BのタイムラインにLLM override履歴が残る。
 - **UI/API**
   - `api/routes/reviews.ts` (新規) でHuman Review用のREST API（進捗取得、証拠取得、再実行リクエスト、承認/差戻し）を提供。
   - フロントエンド（別リポジトリ想定）の要件として、観点フィルタ・差戻し理由入力・W&Bリンク表示を記述。

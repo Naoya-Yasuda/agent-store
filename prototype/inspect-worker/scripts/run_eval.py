@@ -530,6 +530,7 @@ def _run_judge_panel(
                 "llmScore": verdict.llm_score,
                 "llmVerdict": verdict.llm_verdict,
                 "llmRationale": verdict.llm_rationale,
+                "traceId": execution.trace_id if execution else None,
             }
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
@@ -549,6 +550,7 @@ def _run_judge_panel(
                 "flags": execution.flags,
                 "attempts": execution.attempts,
                 "retryErrors": execution.retry_errors,
+                "traceId": execution.trace_id,
             }, ensure_ascii=False) + "\n")
 
     summary = {

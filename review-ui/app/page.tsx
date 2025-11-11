@@ -521,6 +521,9 @@ export default function ReviewDashboard() {
               {displayedReport.map((item) => (
                 <div key={item.questionId} style={{ border: '1px solid #d0d7de', borderRadius: 10, padding: 12, background: '#fff' }}>
                   <div style={{ fontWeight: 600 }}>{item.questionId}</div>
+                  {item.traceId && (
+                    <div style={{ fontSize: 12, color: '#57606a', wordBreak: 'break-all' }}>Trace ID: <code>{item.traceId}</code></div>
+                  )}
                   <div style={{ fontSize: 13, color: '#475467' }}>Verdict: {item.verdict}</div>
                   <div style={{ fontSize: 13, color: '#475467' }}>LLM Verdict: {item.llmVerdict ?? 'N/A'}</div>
                   <div style={{ marginTop: 4, fontWeight: 600 }}>LLM Score: {typeof item.llmScore === 'number' ? item.llmScore.toFixed(2) : item.llmScore ?? '-'}</div>
@@ -601,6 +604,9 @@ export default function ReviewDashboard() {
               {filteredRelay.map((item) => (
                 <div key={`${item.questionId}-${item.latencyMs ?? 0}`} style={{ padding: 8, borderBottom: '1px solid #eaeef2' }}>
                   <div style={{ fontWeight: 600 }}>{item.questionId} ({item.status})</div>
+                  {item.traceId && (
+                    <div style={{ fontSize: 12, color: '#57606a', wordBreak: 'break-all' }}>Trace ID: <code>{item.traceId}</code></div>
+                  )}
                   <div style={{ fontSize: 12, color: '#57606a' }}>latency: {Math.round(item.latencyMs ?? 0)} ms / http: {item.httpStatus ?? 'n/a'}</div>
                   {item.error && <div style={{ color: '#d1242f' }}>{item.error}</div>}
                   <pre style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{JSON.stringify(item, null, 2)}</pre>
