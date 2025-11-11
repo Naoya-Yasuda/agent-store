@@ -189,7 +189,7 @@ export async function runFunctionalAccuracy(args: { submissionId: string; agentI
   };
 }
 
-export async function runJudgePanel(args: { submissionId: string; agentId: string; agentRevisionId: string; promptVersion: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string }; llmJudge?: LlmJudgeConfig }): Promise<{ verdict: 'approve' | 'reject' | 'manual'; score: number; explanation?: string; artifactsPath: string; reportPath: string; summaryPath: string; relayLogPath: string; summary?: Record<string, unknown> }> {
+export async function runJudgePanel(args: { submissionId: string; agentId: string; agentRevisionId: string; promptVersion: string; workflowId: string; workflowRunId: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string }; llmJudge?: LlmJudgeConfig }): Promise<{ verdict: 'approve' | 'reject' | 'manual'; score: number; explanation?: string; artifactsPath: string; reportPath: string; summaryPath: string; relayLogPath: string; summary?: Record<string, unknown>; ledgerEntryPath?: string; ledgerDigest?: string }> {
   console.log(`[activities] runJudgePanel submission=${args.submissionId} prompt=${args.promptVersion}`);
   const outDir = path.join(INSPECT_OUT_DIR, args.agentId, args.agentRevisionId);
   await fs.mkdir(outDir, { recursive: true });
@@ -230,6 +230,18 @@ export async function runJudgePanel(args: { submissionId: string; agentId: strin
     verdict = 'manual';
   }
   const explanation = (summary as any).notes ?? `approved=${approved}, manual=${manual}, rejected=${rejected}`;
+  const ledgerInfo = await recordJudgeLedger({
+    workflowId: args.workflowId,
+    workflowRunId: args.workflowRunId,
+    submissionId: args.submissionId,
+    agentId: args.agentId,
+    agentRevisionId: args.agentRevisionId,
+    summaryPath,
+    reportPath,
+    relayLogPath,
+    summary
+  });
+
   return {
     verdict,
     score,
@@ -238,7 +250,9 @@ export async function runJudgePanel(args: { submissionId: string; agentId: strin
     reportPath,
     summaryPath,
     relayLogPath,
-    summary
+    summary,
+    ledgerEntryPath: ledgerInfo.entryPath,
+    ledgerDigest: ledgerInfo.digest
   };
 }
 
@@ -363,6 +377,64 @@ export async function recordSecurityLedger(args: {
     return { entryPath, digest: ledgerDigest };
   } catch (err) {
     console.warn('[activities] failed to record security ledger entry', err);
+    return {};
+  }
+}
+
+export async function recordJudgeLedger(args: {
+  workflowId: string;
+  workflowRunId: string;
+  submissionId: string;
+  agentId: string;
+  agentRevisionId: string;
+  summaryPath: string;
+  reportPath: string;
+  relayLogPath: string;
+  summary: Record<string, unknown>;
+}): Promise<{ entryPath?: string; digest?: string }> {
+  try {
+    const summaryDigest = await hashFile(args.summaryPath);
+    const reportDigest = await hashFile(args.reportPath);
+    const relayDigest = await hashFile(args.relayLogPath);
+    const payload = {
+      stage: 'judge',
+      submissionId: args.submissionId,
+      agentId: args.agentId,
+      agentRevisionId: args.agentRevisionId,
+      summaryPath: args.summaryPath,
+      summaryDigest,
+      reportPath: args.reportPath,
+      reportDigest,
+      relayLogPath: args.relayLogPath,
+      relayLogDigest: relayDigest,
+      verdictCounts: {
+        approved: (args.summary as any)?.approved ?? 0,
+        manual: (args.summary as any)?.manual ?? 0,
+        rejected: (args.summary as any)?.rejected ?? 0
+      },
+      llmJudge: (args.summary as any)?.llmJudge,
+      relayErrors: (args.summary as any)?.relayErrors,
+      generatedAt: (args.summary as any)?.generatedAt ?? Date.now()
+    };
+    const payloadPath = path.join(path.dirname(args.summaryPath), 'judge_ledger_entry.json');
+    await fs.writeFile(payloadPath, JSON.stringify(payload, null, 2), 'utf8');
+    const ledgerDigest = await hashFile(payloadPath);
+    const auditEntry: AuditLedgerEntry = {
+      workflowId: args.workflowId,
+      runId: args.workflowRunId ?? null,
+      namespace: NAMESPACE,
+      historyDigestSha256: ledgerDigest,
+      exportedAt: new Date().toISOString(),
+      sourceFile: payloadPath
+    };
+    const entryPath = await publishToLedger(auditEntry, {
+      outputDir: process.env.JUDGE_LEDGER_DIR ?? process.env.SECURITY_LEDGER_DIR,
+      httpEndpoint: process.env.JUDGE_LEDGER_ENDPOINT ?? process.env.SECURITY_LEDGER_ENDPOINT,
+      httpToken: process.env.JUDGE_LEDGER_TOKEN ?? process.env.SECURITY_LEDGER_TOKEN
+    });
+    return { entryPath, digest: ledgerDigest };
+  } catch (err) {
+    console.warn('[activities] failed to record judge ledger entry', err);
     return {};
   }
 }

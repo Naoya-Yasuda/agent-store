@@ -89,7 +89,7 @@ flowchart TD
     --security-attempts 5 --output-dir sandbox-runner/artifacts
   ```
   を実行してください。`--security-endpoint` を指定すると実エージェントに対して攻撃プロンプトを送出できます（未指定の場合は`not_executed`として記録）。`--agent-card path/to/card.json` を渡すとユースケース語彙を組み合わせた攻撃テンプレートが生成され、`security/security_prompts.jsonl` に保存されます。
-  - Ledger連携を試す場合は `SECURITY_LEDGER_ENDPOINT` / `SECURITY_LEDGER_TOKEN` / `SECURITY_LEDGER_DIR` を環境変数として設定すると、Security Gateのサマリハッシュが `audit-ledger/` に書き出され、必要に応じてHTTPエンドポイントへPOSTされます（詳細は [security-gate-ledger-plan.md](docs/design/security-gate-ledger-plan.md) を参照）。
+  - Ledger連携を試す場合は `SECURITY_LEDGER_ENDPOINT` / `SECURITY_LEDGER_TOKEN` / `SECURITY_LEDGER_DIR` を環境変数として設定すると、Security Gateのサマリハッシュが `audit-ledger/` に書き出され、必要に応じてHTTPエンドポイントへPOSTされます（詳細は [security-gate-ledger-plan.md](docs/design/security-gate-ledger-plan.md) を参照）。Judge Panelでも同様に `JUDGE_LEDGER_ENDPOINT` / `JUDGE_LEDGER_TOKEN` / `JUDGE_LEDGER_DIR` を設定すると `judge_summary.json` / `judge_report.jsonl` / `relay_logs.jsonl` のハッシュをLedgerへ送れます（Security Gateと同じディレクトリを共有する場合は変数を省略しても構いません）。
 - Functional Accuracy（機能正確性）を試す場合は、AgentCard JSONとRAGTruthディレクトリを指定します。サンプルは`sandbox-runner/resources/ragtruth/sample.jsonl`にあります。DSLシナリオごとに回答を実行し、単語一致ベースの評価に加えてEmbedding距離（ベクトル類似度）も計算し、`functional_summary.json` に `embeddingAverageDistance` などのメトリクスを出力します。
   ```bash
   python3.13 -m sandbox_runner.cli \
@@ -131,17 +131,17 @@ flowchart TD
 | Temporalワークフロー（PreCheck→Publish） | ✅ 実装済み | `runSecurityGate`/`runFunctionalAccuracy`/`runJudgePanel` が実CLIを叩き、`queryProgress`へW&B/アーティファクト情報を返却。 |
 | Sandbox RunnerのAdvBench統合 | ✅ 実装済み | AgentCard語彙を差し込んだ攻撃テンプレ生成・Relay実行・カテゴリ別統計・W&B/Temporal連携まで完了。 |
 | Functional DSL + RAGTruth突合 | ✅ 実装済み | AgentCardシナリオ生成 → Relay実行 → RAGTruth照合に加え、Embedding距離メトリクスを算出しTemporal/UI/W&Bへ返却。 |
-| Judge Panel (MCTS-Judge) | 🚧 部分実装 | Relayログ＋MCTS評価に加え、任意のLLM (OpenAI等) をスコアリングに組み込めるレイヤーを追加。Verdict連携/UI統合は継続中。 |
+| Judge Panel (MCTS-Judge) | 🚧 部分実装 | Inspect Worker CLIでRelayログ＋MCTS評価＋LLM判定を実行し、TemporalアクティビティからLedger（summary/report/relayハッシュ）へ記録できるようにした。Human Review UIでのLLMカード表示・再実行設定保持は継続中（詳細: [judge-panel-human-review-implementation-20251110.md](docs/design/judge-panel-human-review-implementation-20251110.md)）。 |
 | Human Review UI連携 | ✅ 実装済み | `/review/*` RESTとNext.jsダッシュボードを実装。証拠JSON整形表示・再実行・承認/差戻しが可能。 |
 | W&B MCPトレース連携 | 🚧 部分実装 | Sandbox Runner/Inspect WorkerからRun IDを共有し、ステージサマリ/Artifactを記録。Human Review連携ログは今後。 |
 
 > ※実装や設計の更新を行った際は、必ず本READMEのステータステーブルと該当セクションを更新してください。
 
 ## 今後の優先タスク
-1. **Functional DSL + RAGTruth高度化**: Embedding距離ベースの判定や追加シナリオ生成ロジックを実装し、UI/Temporalへメトリクスを返す。
-2. **Judge Panel LLM統合の仕上げ**: LLMジャッジ結果をHuman Review UI/W&B/Audit Ledgerに完全連携し、再実行時の設定保持や監査ログを整備する。
-3. **Security Gate監査情報のLedger連携**: W&Bへ流したカテゴリ統計をAudit Ledgerにも反映し、Temporal `publishToLedger` ワークフローと整合させる。
-4. **自動テスト＆ドキュメント整備**: AdvBench/Functional/Judgeの自動テストを拡充し、README・設計メモで完了条件と運用手順を明文化する。
+1. **Judge Panel UI & Relay可視化強化**: Human Review UI（Next.js/HTMLビュー）で `llmScore`/`llmVerdict` カード表示、RelayログJSONL整形表示、再実行フォームのLLM設定デフォルト化を実装する（参照: [docs/design/judge-panel-human-review-implementation-20251110.md](docs/design/judge-panel-human-review-implementation-20251110.md)).
+2. **LLMメタデータのW&B/Temporal同期**: `queryProgress` で得たLLM設定とスコアをSandbox Runner・Inspect Worker双方のW&Bメタデータ（`wandbMcp`）に書き込み、審査証跡を一元化する（参照: [docs/design/security-gate-ledger-plan.md](docs/design/security-gate-ledger-plan.md)).
+3. **Inspect Worker Relay実行＆判定ロジック強化**: Relay HTTPエラー処理、レスポンスログ保存、禁止語検知、LLMエラー報告を拡張し、Ledger/W&B/READMEの要件に沿ってJudge結果を詳細化する。
+4. **Temporal/Judgeテスト拡充**: `prototype/temporal-review-workflow` のVitestでJudge LedgerやLLM設定伝播の回帰テストを追加し、ドキュメントの完了条件に沿って検証ログをREADMEへ反映する。
 
 ## Contributor Guide
 完全なコントリビュータガイド、コーディング規約、PR要件は[`AGENTS.md`](AGENTS.md)を参照してください。

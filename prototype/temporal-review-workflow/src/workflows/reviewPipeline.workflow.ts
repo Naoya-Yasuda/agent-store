@@ -45,13 +45,15 @@ type JudgePanelResult = {
   summaryPath: string;
   relayLogPath: string;
   summary?: Record<string, unknown>;
+  ledgerEntryPath?: string;
+  ledgerDigest?: string;
 };
 
 type Activities = {
   preCheckSubmission: (args: { submissionId: string }) => Promise<{ passed: boolean; agentId: string; agentRevisionId: string; warnings: string[] }>;
   runSecurityGate: (args: { submissionId: string; agentId: string; agentRevisionId: string; workflowId: string; workflowRunId: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string } }) => Promise<SecurityGateResult>;
   runFunctionalAccuracy: (args: { submissionId: string; agentId: string; agentRevisionId: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string } }) => Promise<FunctionalAccuracyResult>;
-  runJudgePanel: (args: { submissionId: string; agentId: string; agentRevisionId: string; promptVersion: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string }; llmJudge?: LlmJudgeConfig }) => Promise<JudgePanelResult>;
+  runJudgePanel: (args: { submissionId: string; agentId: string; agentRevisionId: string; promptVersion: string; workflowId: string; workflowRunId: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string }; llmJudge?: LlmJudgeConfig }) => Promise<JudgePanelResult>;
   notifyHumanReview: (args: { submissionId: string; agentId: string; agentRevisionId: string; reason: string; attachments?: string[] }) => Promise<'approved' | 'rejected'>;
   publishAgent: (args: { submissionId: string; agentId: string; agentRevisionId: string }) => Promise<void>;
 };
@@ -305,6 +307,8 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
       agentId: context.agentId,
       agentRevisionId: context.agentRevisionId,
       promptVersion: context.promptVersion,
+      workflowId: context.workflowId,
+      workflowRunId: context.workflowRunId,
       wandbRun: context.wandbRun,
       agentCardPath: context.agentCardPath,
       relay: context.relay,
@@ -322,7 +326,8 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
           report: { stage: 'judge', type: 'report', agentRevisionId: context.agentRevisionId, agentId: context.agentId },
           summary: { stage: 'judge', type: 'summary', agentRevisionId: context.agentRevisionId, agentId: context.agentId },
           relayLogs: { stage: 'judge', type: 'relay', agentRevisionId: context.agentRevisionId, agentId: context.agentId }
-        }
+        },
+        ledger: judge.ledgerEntryPath ? { entryPath: judge.ledgerEntryPath, digest: judge.ledgerDigest } : undefined
       }
     });
 

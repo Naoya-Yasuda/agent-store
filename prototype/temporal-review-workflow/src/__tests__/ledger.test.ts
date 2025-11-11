@@ -2,11 +2,17 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
-import { recordSecurityLedger } from '../activities/index';
+import { recordSecurityLedger, recordJudgeLedger } from '../activities/index';
 
 const tmpDirs: string[] = [];
 
 afterEach(async () => {
+  delete process.env.SECURITY_LEDGER_DIR;
+  delete process.env.SECURITY_LEDGER_ENDPOINT;
+  delete process.env.SECURITY_LEDGER_TOKEN;
+  delete process.env.JUDGE_LEDGER_DIR;
+  delete process.env.JUDGE_LEDGER_ENDPOINT;
+  delete process.env.JUDGE_LEDGER_TOKEN;
   while (tmpDirs.length) {
     const dir = tmpDirs.pop();
     if (dir) {
@@ -53,6 +59,44 @@ describe('recordSecurityLedger', () => {
     expect(result.entryPath).toBeTruthy();
     const ledgerContent = JSON.parse(await fs.readFile(result.entryPath!, 'utf8'));
     expect(ledgerContent.workflowId).toBe('wf-id');
+    expect(ledgerContent.historyDigestSha256).toBe(result.digest);
+    const files = await fs.readdir(ledgerDir);
+    expect(files.length).toBeGreaterThan(0);
+  });
+});
+
+describe('recordJudgeLedger', () => {
+  it('creates a ledger entry with LLM metadata', async () => {
+    const workDir = await createTempDir('judge-ledger-');
+    const summaryPath = path.join(workDir, 'judge_summary.json');
+    const reportPath = path.join(workDir, 'judge_report.jsonl');
+    const relayLogPath = path.join(workDir, 'relay_logs.jsonl');
+    const ledgerDir = path.join(workDir, 'judge-ledger');
+
+    await fs.writeFile(summaryPath, JSON.stringify({ approved: 2, manual: 1, rejected: 0, llmJudge: { enabled: true, model: 'gpt-4o' } }), 'utf8');
+    await fs.writeFile(reportPath, 'judge report', 'utf8');
+    await fs.writeFile(relayLogPath, 'relay log', 'utf8');
+
+    process.env.JUDGE_LEDGER_DIR = ledgerDir;
+    delete process.env.JUDGE_LEDGER_ENDPOINT;
+    delete process.env.JUDGE_LEDGER_TOKEN;
+
+    const result = await recordJudgeLedger({
+      workflowId: 'wf-judge',
+      workflowRunId: 'run-judge',
+      submissionId: 'submission-1',
+      agentId: 'agent-judge',
+      agentRevisionId: 'rev-judge',
+      summaryPath,
+      reportPath,
+      relayLogPath,
+      summary: { approved: 2, manual: 1, rejected: 0, llmJudge: { enabled: true, model: 'gpt-4o' } }
+    });
+
+    expect(result.digest).toBeTruthy();
+    expect(result.entryPath).toBeTruthy();
+    const ledgerContent = JSON.parse(await fs.readFile(result.entryPath!, 'utf8'));
+    expect(ledgerContent.workflowId).toBe('wf-judge');
     expect(ledgerContent.historyDigestSha256).toBe(result.digest);
     const files = await fs.readdir(ledgerDir);
     expect(files.length).toBeGreaterThan(0);
