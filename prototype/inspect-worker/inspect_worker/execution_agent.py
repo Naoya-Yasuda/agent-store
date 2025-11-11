@@ -16,6 +16,7 @@ class ExecutionResult:
     prompt: str
     response: str
     latency_ms: float
+    relay_endpoint: Optional[str] = None
 
 
 def dispatch_questions(
@@ -43,6 +44,7 @@ def dispatch_questions(
                 prompt=question.prompt,
                 response=response_text,
                 latency_ms=latency_ms,
+                relay_endpoint=relay_endpoint,
             )
         )
     return results

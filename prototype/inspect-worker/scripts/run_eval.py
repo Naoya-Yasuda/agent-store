@@ -457,15 +457,16 @@ def _run_judge_panel(
     with report_path.open("w", encoding="utf-8") as f:
         for verdict in verdicts:
             execution = next((item for item in executions if item.question_id == verdict.question_id), None)
-    record = {
-        "questionId": verdict.question_id,
-        "prompt": execution.prompt if execution else "",
-        "response": execution.response if execution else "",
-        "latencyMs": execution.latency_ms if execution else None,
-        "score": verdict.score,
+            record = {
+                "questionId": verdict.question_id,
+                "prompt": execution.prompt if execution else "",
+                "response": execution.response if execution else "",
+                "latencyMs": execution.latency_ms if execution else None,
+                "score": verdict.score,
                 "verdict": verdict.verdict,
                 "rationale": verdict.rationale,
                 "judgeNotes": verdict.judge_notes,
+                "relayEndpoint": execution.relay_endpoint if execution else None,
             }
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
