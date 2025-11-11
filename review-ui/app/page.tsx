@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { buildLlmOverride } from '../src/lib/judgeOverride';
 
 type StageName = 'precheck' | 'security' | 'functional' | 'judge' | 'human' | 'publish';
 
@@ -105,6 +106,7 @@ export default function ReviewDashboard() {
   const [retryLlmMaxTokens, setRetryLlmMaxTokens] = useState('');
   const [retryLlmBaseUrl, setRetryLlmBaseUrl] = useState('');
   const [retryLlmDryRun, setRetryLlmDryRun] = useState<boolean | 'inherit'>('inherit');
+  const [llmOverrideErrors, setLlmOverrideErrors] = useState<string[]>([]);
   const [retryStatus, setRetryStatus] = useState<string | null>(null);
   const [decisionNotes, setDecisionNotes] = useState('');
   const [decisionStatus, setDecisionStatus] = useState<string | null>(null);
@@ -182,6 +184,7 @@ export default function ReviewDashboard() {
       setRetryLlmMaxTokens('');
       setRetryLlmBaseUrl('');
       setRetryLlmDryRun('inherit');
+      setLlmOverrideErrors([]);
       return;
     }
     const llm = progress.llmJudge;
@@ -191,6 +194,7 @@ export default function ReviewDashboard() {
     setRetryLlmMaxTokens(typeof llm.maxOutputTokens === 'number' ? String(llm.maxOutputTokens) : '');
     setRetryLlmBaseUrl(llm.baseUrl ?? '');
     setRetryLlmDryRun(typeof llm.dryRun === 'boolean' ? llm.dryRun : 'inherit');
+    setLlmOverrideErrors([]);
   }, [progress?.llmJudge]);
 
   useEffect(() => {
@@ -268,19 +272,23 @@ export default function ReviewDashboard() {
 
   const buildJudgeOverride = () => {
     if (!llmOverrideEnabled) {
+      setLlmOverrideErrors([]);
       return undefined;
     }
-    const override: Record<string, unknown> = {};
-    if (retryLlmProvider) override.provider = retryLlmProvider;
-    if (retryLlmModel) override.model = retryLlmModel;
-    if (retryLlmBaseUrl) override.baseUrl = retryLlmBaseUrl;
-    const temp = Number(retryLlmTemperature);
-    if (!Number.isNaN(temp)) override.temperature = temp;
-    const maxTokens = Number(retryLlmMaxTokens);
-    if (!Number.isNaN(maxTokens)) override.maxOutputTokens = maxTokens;
-    if (retryLlmDryRun !== 'inherit') override.dryRun = retryLlmDryRun;
-    override.enabled = true;
-    return Object.keys(override).length ? override : undefined;
+    const { override, errors } = buildLlmOverride({
+      enabled: llmOverrideEnabled,
+      provider: retryLlmProvider,
+      model: retryLlmModel,
+      temperature: retryLlmTemperature,
+      maxTokens: retryLlmMaxTokens,
+      baseUrl: retryLlmBaseUrl,
+      dryRun: retryLlmDryRun
+    });
+    setLlmOverrideErrors(errors);
+    if (errors.length > 0) {
+      return undefined;
+    }
+    return override;
   };
 
   const handleRetry = async () => {
@@ -293,6 +301,10 @@ export default function ReviewDashboard() {
       const body: Record<string, unknown> = { submissionId, stage: retryStage, reason: retryReason };
       if (retryStage === 'judge') {
         const override = buildJudgeOverride();
+        if (!override && llmOverrideEnabled) {
+          setRetryStatus('LLM設定のエラーを修正してください');
+          return;
+        }
         if (override) {
           body.llmOverride = override;
         }
@@ -717,6 +729,13 @@ export default function ReviewDashboard() {
                   </select>
                 </label>
                 <small style={{ color: '#57606a' }}>空欄の項目は既存設定が使用されます。</small>
+                {llmOverrideErrors.length > 0 && (
+                  <ul style={{ color: '#d1242f', margin: 0, paddingLeft: 16 }}>
+                    {llmOverrideErrors.map((err) => (
+                      <li key={err}>{err}</li>
+                    ))}
+                  </ul>
+                )}
               </div>
             )}
           </div>
