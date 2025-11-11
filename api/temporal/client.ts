@@ -33,7 +33,7 @@ export async function sendRetrySignal(submissionId: string, stage: string, reaso
 export async function sendHumanDecision(submissionId: string, decision: 'approved' | 'rejected', notes?: string): Promise<void> {
   const client = await getWorkflowClient();
   const handle = client.getHandle(`review-pipeline-${submissionId}`);
-  await handle.signal('signalRetryStage', 'human', `decision:${decision}:${notes ?? ''}`);
+  await handle.signal('signalHumanDecision', decision, notes);
 }
 
 export async function startReviewWorkflow(input: ReviewPipelineInput): Promise<void> {

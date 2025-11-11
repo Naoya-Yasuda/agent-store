@@ -1,4 +1,4 @@
-import { proxyActivities, setHandler, defineSignal, defineQuery, workflowInfo } from '@temporalio/workflow';
+import { proxyActivities, setHandler, defineSignal, defineQuery, workflowInfo, condition } from '@temporalio/workflow';
 import { TASK_QUEUE } from '../../temporal.config';
 
 export type LlmJudgeConfig = {
@@ -109,6 +109,7 @@ export interface ReviewPipelineInput {
 }
 
 const retryStageSignal = defineSignal<[StageName, string]>('signalRetryStage');
+const humanDecisionSignal = defineSignal<['approved' | 'rejected', string?]>('signalHumanDecision');
 const progressQuery = defineQuery<WorkflowProgress>('queryProgress');
 
 export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promise<void> {
@@ -122,6 +123,7 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
   let terminalState: WorkflowTerminalState = 'running';
   let seqCounter = 0;
   const retryRequests = new Set<StageName>();
+  let pendingHumanDecision: { decision: 'approved' | 'rejected'; notes?: string } | undefined;
 
   const context = {
     submissionId: input.submissionId,
@@ -161,6 +163,17 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
   setHandler(retryStageSignal, (stage, reason) => {
     retryRequests.add(stage);
     updateStage(stage, { status: 'pending', message: `retry requested: ${reason}` });
+  });
+  setHandler(humanDecisionSignal, (decision, notes) => {
+    pendingHumanDecision = { decision, notes };
+    updateStage('human', {
+      message: `human decision received: ${decision}`,
+      details: {
+        ...(stageProgress.human.details ?? {}),
+        decision,
+        decisionNotes: notes
+      }
+    });
   });
 
   function nextSeq(): number {
@@ -202,7 +215,7 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
   }
 
   async function escalateToHuman(reason: string, notes?: string[]): Promise<'approved' | 'rejected'> {
-    const decision = await runStageWithRetry('human', () =>
+    await runStageWithRetry('human', () =>
       activities.notifyHumanReview({
         submissionId: context.submissionId,
         agentId: context.agentId,
@@ -212,8 +225,24 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
       })
     );
     updateStage('human', {
+      status: 'running',
+      message: 'waiting for human decision',
+      details: {
+        reason,
+        attachments: notes
+      }
+    });
+    const decisionPayload = await waitForHumanDecision();
+    const decision = decisionPayload.decision;
+    const existingHumanDetails = stageProgress.human.details ?? {};
+    updateStage('human', {
       status: decision === 'approved' ? 'completed' : 'failed',
-      message: `human decision: ${decision}`
+      message: `human decision: ${decision}`,
+      details: {
+        ...existingHumanDetails,
+        decision,
+        decisionNotes: decisionPayload.notes
+      }
     });
     if (decision === 'rejected') {
       terminalState = 'rejected';
@@ -221,6 +250,13 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
       terminalState = 'running';
     }
     return decision;
+  }
+
+  async function waitForHumanDecision(): Promise<{ decision: 'approved' | 'rejected'; notes?: string }> {
+    await condition(() => pendingHumanDecision !== undefined);
+    const result = pendingHumanDecision!;
+    pendingHumanDecision = undefined;
+    return result;
   }
 
   function markPendingAsSkipped(): void {

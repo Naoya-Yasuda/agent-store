@@ -53,7 +53,7 @@
   - `judge/questions`, `judge/approved`, `judge/manual`, `judge/rejected`, `judge/flagged`, `judge/llm_calls`, `judge/relay_errors` を出力し、QAトレースとプロセス健全性を可視化。
 - **Temporal Activities**
   - `prototype/temporal-review-workflow/src/activities/index.ts` で `runJudgePanel` がInspect Worker CLIを実行し、`recordJudgeLedger` によって summary/report/relayログのハッシュ＋LLM設定をLedgerへPOST。Security Gate同様に `details.ledger` を`queryProgress`へ返す。
-  - Human Reviewの決定結果（承認/差戻し）をAPI経由で受け取り、`signalRetryStage`や`terminalState`に反映する処理は未実装。UI実装と合わせて追加する。
+  - Human Reviewの決定結果（承認/差戻し）は `signalHumanDecision` を通じてWorkflowへ伝搬し、`escalateToHuman` がシグナルを待ってHumanステージ/Terminal Stateを更新する（APIは `/review/decision` → `sendHumanDecision` → Temporal Signal という経路）。
 - **UI/API**
   - `api/routes/reviews.ts` (新規) でHuman Review用のREST API（進捗取得、証拠取得、再実行リクエスト、承認/差戻し）を提供。
   - フロントエンド（別リポジトリ想定）の要件として、観点フィルタ・差戻し理由入力・W&Bリンク表示を記述。
@@ -64,7 +64,7 @@
 - Human Review UIのユーザー管理（RBAC）と監査ログ連携。
 
 ## 7. 次ステップ (2025-11-11)
-1. Human Review UI: Ledgerリンク表示とHuman Review決裁API連携（承認/差戻しでTemporalへ状態反映）を仕上げ、操作ログにLLM設定の変更履歴を残す。
+1. Human Review UI: Ledgerリンク表示と決裁ログ（承認/差戻しメモ、受信時刻など）の可視化、再実行フォームでのLLM設定デフォルト表示を仕上げる。
 2. W&Bメタデータ: `wandbMcp.stages.judge` にRelayエラー詳細やLLM呼び出し回数を追加し、Sandbox Runner→Inspect Worker→Temporalの三者で差異が無いようにする。
 3. Inspect Worker Relay層: HTTPエラーリトライ、禁止語検出、レスポンスログ圧縮を追加し、Ledger/W&B/UIで参照できる統一スキーマを整備する。
 4. Temporal/Vitest: Judgeステージ向け回帰テスト（LLM設定伝播、Ledger失敗時の警告、Human Review再実行シグナル）を拡充する。
