@@ -1,5 +1,5 @@
 import { Connection, WorkflowClient } from '@temporalio/client';
-import { reviewPipelineWorkflow, ReviewPipelineInput, WandbRunInfo, LlmJudgeConfig } from '../../prototype/temporal-review-workflow/src/workflows/reviewPipeline.workflow';
+import { reviewPipelineWorkflow, ReviewPipelineInput, WandbRunInfo, LlmJudgeConfig, WorkflowProgress } from '../../prototype/temporal-review-workflow/src/workflows/reviewPipeline.workflow';
 import { NAMESPACE } from '../../prototype/temporal-review-workflow/temporal.config';
 
 let workflowClient: WorkflowClient | undefined;
@@ -13,7 +13,7 @@ async function getWorkflowClient(): Promise<WorkflowClient> {
   return workflowClient;
 }
 
-export async function getWorkflowProgress(submissionId: string): Promise<{ terminalState: string; stages: Record<string, unknown>; wandbRun?: WandbRunInfo } | undefined> {
+export async function getWorkflowProgress(submissionId: string): Promise<WorkflowProgress | undefined> {
   const client = await getWorkflowClient();
   const handle = client.getHandle(`review-pipeline-${submissionId}`);
   try {

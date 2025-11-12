@@ -2,9 +2,44 @@ import { Router, Request, Response } from 'express';
 import path from 'path';
 import fs from 'fs';
 import { getWorkflowProgress, getLedgerSummary, getLedgerEntryFile, getStageEvents, requestHumanDecision, requestStageRetry } from '../services/reviewService';
-import { StageName } from '../types/reviewTypes';
+import { StageName, LlmJudgeOverride } from '../types/reviewTypes';
 
 const router = Router();
+const REPO_ROOT = path.resolve(__dirname, '..', '..');
+const SANDBOX_ARTIFACTS_DIR = path.join(REPO_ROOT, 'sandbox-runner', 'artifacts');
+const INSPECT_OUT_DIR = path.join(REPO_ROOT, 'prototype', 'inspect-worker', 'out');
+const SAFE_SEGMENT = /^[A-Za-z0-9._-]+$/;
+const stageNameList: StageName[] = ['precheck', 'security', 'functional', 'judge', 'human', 'publish'];
+
+type JudgeSummary = {
+  questions?: number;
+  approved?: number;
+  manual?: number;
+  rejected?: number;
+  flagged?: number;
+  relayErrors?: number;
+};
+
+class BadRequestError extends Error {}
+
+function sanitizeSegment(value: string | undefined, label: string): string {
+  if (!value || !SAFE_SEGMENT.test(value)) {
+    throw new BadRequestError(`${label}_invalid`);
+  }
+  return value;
+}
+
+function ensureWithinRepo(target: string): string {
+  const resolved = path.resolve(target);
+  if (!resolved.startsWith(REPO_ROOT)) {
+    throw new BadRequestError('path_outside_repo');
+  }
+  return resolved;
+}
+
+function isStageName(value: string): value is StageName {
+  return stageNameList.includes(value as StageName);
+}
 
 function escapeHtml(input: unknown): string {
   return String(input ?? '')
@@ -80,7 +115,7 @@ router.get('/review/ui/:submissionId', async (req: Request, res: Response) => {
           </tbody></table>`
       : 'LLM Judge: 未設定';
     const judgeDetails = progress.stages?.judge?.details ?? {};
-    const judgeSummary = judgeDetails.summary ?? {};
+    const judgeSummary = (judgeDetails.summary as JudgeSummary | undefined) ?? {};
     const judgeTable = Object.keys(judgeSummary).length
       ? `<div style="margin-top:8px;background:#fff;border:1px solid #d0d7de;border-radius:8px;padding:12px;">
           <h3>Judge Panel 統計</h3>
@@ -378,13 +413,24 @@ function normalizeLlmOverride(input: unknown): LlmJudgeOverride | undefined {
 }
 
 router.get('/review/artifacts/:agentRevisionId', async (req: Request, res: Response) => {
-  const { stage = 'security', type = 'report', agentId } = req.query;
-  const revision = req.params.agentRevisionId as string;
-  const baseDir = path.resolve(__dirname, '..', '..', 'sandbox-runner', 'artifacts', revision);
-  const judgeBase = path.join(__dirname, '..', '..', 'prototype', 'inspect-worker', 'out', String(agentId ?? 'unknown'), revision, 'judge');
-  if (String(stage) === 'judge' && !agentId) {
-    return res.status(400).json({ error: 'agent_id_required' });
-  }
+  try {
+    const { stage = 'security', type = 'report', agentId } = req.query;
+    const revision = sanitizeSegment(req.params.agentRevisionId as string, 'agent_revision');
+    const stageKey = String(stage);
+    if (!['security', 'functional', 'judge'].includes(stageKey)) {
+      throw new BadRequestError('stage_invalid');
+    }
+    if (stageKey === 'judge' && !agentId) {
+      return res.status(400).json({ error: 'agent_id_required' });
+    }
+    const safeAgentId = agentId ? sanitizeSegment(String(agentId), 'agent_id') : undefined;
+    const baseDir = ensureWithinRepo(path.join(SANDBOX_ARTIFACTS_DIR, revision));
+    const judgeBase = safeAgentId
+      ? ensureWithinRepo(path.join(INSPECT_OUT_DIR, safeAgentId, revision, 'judge'))
+      : undefined;
+    if (stageKey === 'judge' && !judgeBase) {
+      throw new BadRequestError('judge_artifacts_unavailable');
+    }
   const mapping: Record<string, Record<string, string>> = {
     security: {
       report: path.join(baseDir, 'security', 'security_report.jsonl'),
@@ -399,16 +445,15 @@ router.get('/review/artifacts/:agentRevisionId', async (req: Request, res: Respo
       prompts: path.join(baseDir, 'functional', 'functional_scenarios.jsonl')
     },
     judge: {
-      report: path.join(judgeBase, 'judge_report.jsonl'),
-      summary: path.join(judgeBase, 'judge_summary.json'),
-      relay: path.join(judgeBase, 'relay_logs.jsonl')
+      report: judgeBase ? path.join(judgeBase, 'judge_report.jsonl') : '',
+      summary: judgeBase ? path.join(judgeBase, 'judge_summary.json') : '',
+      relay: judgeBase ? path.join(judgeBase, 'relay_logs.jsonl') : ''
     }
   };
-  const stageKey = String(stage);
-  const stageMap = mapping[stageKey] || mapping.security;
-  const fileKey = String(type);
-  const filePath = stageMap[fileKey] ?? stageMap.report;
-  try {
+    const stageMap = mapping[stageKey];
+    const fileKey = String(type);
+    const resolvedFile = stageMap[fileKey] || stageMap.report;
+    const filePath = ensureWithinRepo(resolvedFile);
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ error: 'artifact_not_found' });
     }
@@ -420,14 +465,12 @@ router.get('/review/artifacts/:agentRevisionId', async (req: Request, res: Respo
     }
     fs.createReadStream(filePath).pipe(res);
   } catch (err) {
+    if (err instanceof BadRequestError) {
+      return res.status(400).json({ error: err.message });
+    }
     const message = err instanceof Error ? err.message : 'unknown_error';
     res.status(500).json({ error: 'artifact_fetch_failed', message });
   }
 });
 
 export default router;
-const stageNameList: StageName[] = ['precheck', 'security', 'functional', 'judge', 'human', 'publish'];
-
-function isStageName(value: string): value is StageName {
-  return stageNameList.includes(value as StageName);
-}

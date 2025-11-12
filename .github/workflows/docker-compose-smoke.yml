@@ -1,0 +1,65 @@
+name: Docker Compose Smoke Test
+
+on:
+  pull_request:
+    paths:
+      - 'docker-compose.yml'
+      - 'docker/**'
+      - 'api/**'
+      - 'prototype/inspect-worker/**'
+      - 'prototype/temporal-review-workflow/**'
+      - '.github/workflows/docker-compose-smoke.yml'
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare environment file
+        run: |
+          cp .env.example .env
+          echo "WANDB_DISABLED=true" >> .env
+
+      - name: Pull docker images
+        run: docker compose pull temporal postgres temporal-postgres || true
+
+      - name: Build application images
+        run: docker compose build api review-ui temporal-worker inspect-worker
+
+      - name: Launch stack
+        run: |
+          docker compose up -d postgres temporal-postgres temporal temporal-worker api inspect-worker
+
+      - name: Wait for API health
+        run: |
+          for i in {1..30}; do
+            if curl -sf http://localhost:3000/health > /dev/null; then
+              echo "API healthy" && exit 0
+            fi
+            echo "waiting for API..."
+            sleep 5
+          done
+          echo "API never became healthy" >&2
+          docker compose logs api
+          exit 1
+
+      - name: Temporal health check
+        run: |
+          for i in {1..30}; do
+            if docker compose exec -T temporal tctl cluster health > /dev/null 2>&1; then
+              echo "Temporal healthy" && exit 0
+            fi
+            echo "waiting for Temporal..."
+            sleep 5
+          done
+          echo "Temporal never became healthy" >&2
+          docker compose logs temporal
+          exit 1
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

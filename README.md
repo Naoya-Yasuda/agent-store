@@ -78,13 +78,13 @@ flowchart TD
 
 ### Docker Composeで一括起動（推奨）
 
-全サービス（PostgreSQL、Temporal、API、Review UI）を一括で起動する場合：
+全サービス（Submission用PostgreSQL、Temporal用PostgreSQL、Temporal、API、Inspect Worker、Review UI）を一括で起動する場合：
 
 ```bash
 # 1. 環境変数の設定（オプション）
 cp .env.example .env
 # 必要に応じて .env を編集
-> `.env.example` には `POSTGRES_PASSWORD` / `DATABASE_URL` / `ALLOWED_ORIGINS` / `RATE_LIMIT_*` などの機微情報が含まれます。環境に合わせて書き換え、Secrets Manager等で管理してください。
+> `.env.example` には `POSTGRES_PASSWORD` / `DATABASE_URL` / `TEMPORAL_DB_*` / `ALLOWED_ORIGINS` / `RATE_LIMIT_*` などの機微情報が含まれます。環境に合わせて書き換え、Secrets Manager等で管理してください。
 
 # 2. AdvBenchデータセットのセットアップ
 bash scripts/setup_aisev.sh
@@ -114,11 +114,15 @@ docker compose down -v
 - **Health Check**: http://localhost:3000/health
 
 各サービスのコンテナ名：
-- `agent-store-postgres` - PostgreSQLデータベース
+- `agent-store-postgres` - Submission/APサーバ用PostgreSQLデータベース
+- `agent-store-temporal-postgres` - Temporalサーバ専用PostgreSQLデータベース
 - `agent-store-temporal` - Temporalサーバ
 - `agent-store-temporal-worker` - Temporalワーカー
 - `agent-store-api` - Express APIサーバ
 - `agent-store-review-ui` - Next.js Review UI
+- `agent-store-inspect-worker` - Inspect Worker（Judge Panel CLI + W&Bロガー）
+
+GitHub Actionsの`Docker Compose Smoke Test`ワークフロー（Continuous Integration=継続的統合の一環で、PRごとに自動実行されるE2E起動テスト）は `.env.example` を基にstackを立ち上げ、`/health` や Temporal CLI(`tctl cluster health`)を確認してから後片付けします。ローカルと同じ手順で失敗が再現されるため、Docker構成の回 regress（回帰=以前動いていたものが動かなくなること）を早期に検知できます。
 
 ### ローカル開発環境でのセットアップ
 
@@ -172,6 +176,12 @@ Docker Composeを使わずに個別に起動する場合：
 - Human Review UIは `GET /review/ui/:submissionId` で確認できます。ステージ状況、W&Bダッシュボードリンク、再実行フォーム、承認/差戻しボタンが表示されます（バックエンド: `api/routes/reviews.ts`）。Judge セクションでは `llmScore` / `llmVerdict` のカード表示と Relay JSONL ログの整形プレビュー・検索ボックスを備え、JSONLを取得済みのままステータス/禁止語でフィルタできます。Manual/Reject になった質問IDの一覧と再実行理由プレフィルボタン、LLM override 履歴、RelayトレースIDも同画面で確認でき、再実行フォームにワンクリックで反映可能です。Functional Accuracy セクションでは平均距離・Embedding距離メトリクス、Fail上位シナリオ、応答/期待値の差分を表示し、RAGTruth突合の失敗理由を即座に把握できます。Humanステージには Judge manual 判定を受けた際のバナーと承認メモ/添付一覧が表示され、レビュワーが保留中の理由を即座に把握できます。Judge再実行時はフォームの「LLM設定を上書きする」にチェックを入れることで、`model` / `provider` / `temperature(0〜2)` / `maxOutputTokens(>0整数)` / `dryRun(true|false|inherit)` を指定できます。必須・数値項目はクライアント側でリアルタイム検証され、エラー時は送信ボタンが無効化されます（Next.js側のテスト: `cd review-ui && npm run test` / `tests/judgeOverride.test.ts`、Temporal CLI伝播のテスト: `cd prototype/temporal-review-workflow && npm run test` / `src/__tests__/llmOverride.test.ts`）。Security/Functional/JudgeステージのLedger（監査台帳）はカード化され、`workflowId`/`workflowRunId`/`sourceFile`/`digest`の確認、パスのクリップボードコピー、`/review/ledger/download` 経由のローカルファイル取得ボタンを同じビューで操作できます。Ledgerファイルが欠損していても `sourceFile` をFallbackとして配信し、レスポンスヘッダー `X-Ledger-Fallback: true` で復元経路を示します。また `recordStageEvent` が生成したイベント履歴は `/review/events/:submissionId` 経由で取得され、UI上のタイムラインテーブルでRetry理由やHuman決裁ログを直接参照できます（詳細: [review-ledger-api-20251111.md](docs/design/review-ledger-api-20251111.md)、[judge-panel-human-review-implementation-20251110.md](docs/design/judge-panel-human-review-implementation-20251110.md)、[wandb-run-propagation-20251110.md](docs/design/wandb-run-propagation-20251110.md)）。
 - Next.js版のHuman Reviewダッシュボード（`review-ui/`）も用意しています。`cd review-ui && npm install && npm run dev`で起動し、`http://localhost:3000`からAPI経由で進捗・W&Bリンク・証拠ダウンロードを確認できます。
 - Human Review UIの単体テストはVitest＋Testing Libraryを利用しています。`cd review-ui && npm run test` でフォームバリデーションやUIロジックの検証が実行できます。
+
+### CI / 自動テスト
+
+- **Docker Compose Build**（CI=Continuous Integration=継続的統合）: `docker compose build` をPRごとに検証し、Dockerfileや依存更新によるビルド失敗を即検知します。
+- **Docker Compose Smoke Test**（E2E=End-to-End=端から端の一連動作確認）: 本コミットで追加。`docker compose up` で `postgres` / `temporal-postgres` / `temporal` / `temporal-worker` / `api` / `inspect-worker` を起動し、`curl http://localhost:3000/health` と `tctl cluster health` を用いてAPIおよびTemporalの可用性を自動チェック後、`docker compose down -v` で環境を掃除します。
+- **Inspect Worker Tests**: `scripts/test_inspect_worker.sh` をGitHub Actionsで実行し、Judge Panel/Relayロジックのpytestを常に走らせます（`WANDB_DISABLED=true`でネットワーク資格情報が不要なDry Run相当の検証）。
 
 ## W&B MCP 連携
 - Sandbox Runnerは各実行でW&B Runを生成し（`wandb_run_id`は`sandbox-runner/src/sandbox_runner/cli.py`の`init_wandb_run`で払い出し）、`metadata.json`の`wandbMcp`にRun IDとステージサマリを記録します。

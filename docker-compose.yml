@@ -24,12 +24,39 @@ services:
     networks:
       - agent-store-network
 
+  temporal-postgres:
+    image: postgres:15-alpine
+    container_name: agent-store-temporal-postgres
+    env_file:
+      - .env
+    environment:
+      POSTGRES_USER: ${TEMPORAL_DB_USER:-temporal}
+      POSTGRES_PASSWORD: ${TEMPORAL_DB_PASSWORD:-temporal_pass}
+      POSTGRES_DB: ${TEMPORAL_DB_NAME:-temporal}
+    ports:
+      - "5433:5432"
+    volumes:
+      - temporal_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${TEMPORAL_DB_USER:-temporal} -d ${TEMPORAL_DB_NAME:-temporal}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - agent-store-network
+
   # Temporal Server
   temporal:
     image: temporalio/auto-setup:1.24.0
     container_name: agent-store-temporal
     environment:
-      - DB=sqlite
+      - DB=postgresql
+      - DB_HOST=${TEMPORAL_DB_HOST:-temporal-postgres}
+      - DB_PORT=${TEMPORAL_DB_PORT:-5432}
+      - DB_USER=${TEMPORAL_DB_USER:-temporal}
+      - DB_PWD=${TEMPORAL_DB_PASSWORD:-temporal_pass}
+      - DB_NAME=${TEMPORAL_DB_NAME:-temporal}
+      - SQL_PLUGIN=postgresql
       - LOG_LEVEL=warn
     ports:
       - "7233:7233"
@@ -39,6 +66,9 @@ services:
       interval: 10s
       timeout: 5s
       retries: 20
+    depends_on:
+      temporal-postgres:
+        condition: service_healthy
     networks:
       - agent-store-network
 
@@ -134,6 +164,8 @@ services:
 
 volumes:
   postgres_data:
+    driver: local
+  temporal_postgres_data:
     driver: local
 
 networks:

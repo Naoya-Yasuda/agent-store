@@ -1,6 +1,32 @@
 import { PoolClient } from 'pg';
-import { AgentCard } from '../../prototype/temporal-review-workflow/src/types/agentCard';
+import { AgentCard, AgentCardStatus, AgentExecutionProfile, PricingInfo } from '../../prototype/temporal-review-workflow/src/types/agentCard';
 import { getDbPool } from '../db/pool';
+
+type AgentCardRow = {
+  id: string;
+  agent_id: string;
+  default_locale: string;
+  icon_url: string | null;
+  banner_url: string | null;
+  pricing_type: string | null;
+  pricing_details: string | null;
+  compliance_notes: string | null;
+  last_reviewed_at: string | null;
+  status: string;
+  status_reason: string | null;
+  execution_profile: string;
+  endpoint_relay_id: string | null;
+  provider_registry_ids: string[] | null;
+};
+
+type AgentCardTranslationRow = {
+  locale: string;
+  display_name: string;
+  short_description: string;
+  long_description: string | null;
+  capabilities: string[];
+  use_cases: string[] | null;
+};
 
 export async function upsertAgentCard(card: AgentCard): Promise<void> {
   const pool = getDbPool();
@@ -87,13 +113,16 @@ export async function fetchAgentCards(): Promise<AgentCard[]> {
   const pool = getDbPool();
   const client = await pool.connect();
   try {
-    const cardsResult = await client.query('SELECT * FROM agent_cards');
+    const cardsResult = await client.query<AgentCardRow>('SELECT * FROM agent_cards');
     const cards: AgentCard[] = [];
     for (const row of cardsResult.rows) {
-      const translationsResult = await client.query(
+      const translationsResult = await client.query<AgentCardTranslationRow>(
         'SELECT * FROM agent_card_translations WHERE card_id = $1',
         [row.id]
       );
+      const pricing: PricingInfo | undefined = row.pricing_type
+        ? { type: row.pricing_type as PricingInfo['type'], details: row.pricing_details ?? undefined }
+        : undefined;
       cards.push({
         id: row.id,
         agentId: row.agent_id,
@@ -108,12 +137,12 @@ export async function fetchAgentCards(): Promise<AgentCard[]> {
         })),
         iconUrl: row.icon_url ?? undefined,
         bannerUrl: row.banner_url ?? undefined,
-        pricing: row.pricing_type ? { type: row.pricing_type, details: row.pricing_details ?? undefined } : undefined,
+        pricing,
         complianceNotes: row.compliance_notes ?? undefined,
         lastReviewedAt: row.last_reviewed_at ?? undefined,
-        status: row.status,
+        status: row.status as AgentCardStatus,
         statusReason: row.status_reason ?? undefined,
-        executionProfile: row.execution_profile,
+        executionProfile: row.execution_profile as AgentExecutionProfile,
         endpointRelayId: row.endpoint_relay_id ?? undefined,
         providerRegistryIds: row.provider_registry_ids ?? undefined
       });
@@ -128,15 +157,18 @@ export async function fetchAgentCardByAgentId(agentId: string): Promise<AgentCar
   const pool = getDbPool();
   const client = await pool.connect();
   try {
-    const cardResult = await client.query('SELECT * FROM agent_cards WHERE agent_id = $1 LIMIT 1', [agentId]);
+    const cardResult = await client.query<AgentCardRow>('SELECT * FROM agent_cards WHERE agent_id = $1 LIMIT 1', [agentId]);
     if (cardResult.rowCount === 0) {
       return undefined;
     }
     const row = cardResult.rows[0];
-    const translationsResult = await client.query(
+    const translationsResult = await client.query<AgentCardTranslationRow>(
       'SELECT * FROM agent_card_translations WHERE card_id = $1',
       [row.id]
     );
+    const pricing: PricingInfo | undefined = row.pricing_type
+      ? { type: row.pricing_type as PricingInfo['type'], details: row.pricing_details ?? undefined }
+      : undefined;
     return {
       id: row.id,
       agentId: row.agent_id,
@@ -151,12 +183,12 @@ export async function fetchAgentCardByAgentId(agentId: string): Promise<AgentCar
       })),
       iconUrl: row.icon_url ?? undefined,
       bannerUrl: row.banner_url ?? undefined,
-      pricing: row.pricing_type ? { type: row.pricing_type, details: row.pricing_details ?? undefined } : undefined,
+      pricing,
       complianceNotes: row.compliance_notes ?? undefined,
       lastReviewedAt: row.last_reviewed_at ?? undefined,
-      status: row.status,
+      status: row.status as AgentCardStatus,
       statusReason: row.status_reason ?? undefined,
-      executionProfile: row.execution_profile,
+      executionProfile: row.execution_profile as AgentExecutionProfile,
       endpointRelayId: row.endpoint_relay_id ?? undefined,
       providerRegistryIds: row.provider_registry_ids ?? undefined
     };

@@ -83,7 +83,7 @@ interface StageProgress {
   details?: Record<string, unknown>;
 }
 
-interface WorkflowProgress {
+export interface WorkflowProgress {
   terminalState: WorkflowTerminalState;
   stages: Record<StageName, StageProgress>;
   wandbRun?: WandbRunInfo;

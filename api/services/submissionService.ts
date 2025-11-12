@@ -5,11 +5,11 @@ import path from 'path';
 import { promises as fs } from 'fs';
 import { randomUUID } from 'crypto';
 
-export interface SubmissionRequestContext {
+export type SubmissionRequestContext = Record<string, string | undefined> & {
   ip?: string;
   userAgent?: string;
   requestId?: string;
-}
+};
 
 export async function createSubmission(payload: SubmissionPayload, manifestWarnings: string[], requestContext: SubmissionRequestContext): Promise<SubmissionRecord> {
   const wandbRun = ensureWandbConfig(payload.telemetry?.wandb);
