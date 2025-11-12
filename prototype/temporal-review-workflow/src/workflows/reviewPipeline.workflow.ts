@@ -100,6 +100,7 @@ export interface WorkflowProgress {
   agentRevisionId?: string;
   agentCardPath?: string;
   llmJudge?: LlmJudgeConfig;
+  warnings?: Record<StageName, string[]>;
 }
 
 export interface WandbRunInfo {
@@ -176,7 +177,11 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
     agentId: context.agentId,
     agentRevisionId: context.agentRevisionId,
     agentCardPath: context.agentCardPath,
-    llmJudge: context.llmJudge
+    llmJudge: context.llmJudge,
+    warnings: stageOrder.reduce<Record<StageName, string[]>>((acc, stage) => {
+      acc[stage] = stageProgress[stage].warnings ?? [];
+      return acc;
+    }, {} as Record<StageName, string[]>)
   }));
   setHandler(retryStageSignal, (stage, reason) => {
     retryRequests.add(stage);

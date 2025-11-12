@@ -31,6 +31,15 @@ type StageDetails = {
   ledger?: {
     entryPath?: string;
     digest?: string;
+    sourceFile?: string;
+    httpPosted?: boolean;
+    httpAttempts?: number;
+    httpError?: string;
+    downloadAvailable?: boolean;
+    downloadFallback?: boolean;
+    downloadRelativePath?: string;
+    downloadStatus?: 'primary' | 'fallback';
+    downloadMissingReason?: string;
   };
 };
 
@@ -57,6 +66,7 @@ type ProgressResponse = {
   agentId?: string;
   agentRevisionId?: string;
   llmJudge?: LlmJudgeConfig;
+  warnings?: Record<StageName, string[]>;
 };
 
 type ArtifactState = {
@@ -75,6 +85,14 @@ type LedgerEntrySummary = {
   generatedAt?: string;
   downloadUrl?: string;
   sourceFile?: string;
+  httpPosted?: boolean;
+  httpAttempts?: number;
+  httpError?: string;
+  downloadAvailable?: boolean;
+  downloadFallback?: boolean;
+  downloadRelativePath?: string;
+  downloadStatus?: 'primary' | 'fallback';
+  downloadMissingReason?: string;
 };
 
 type StageEventEntry = {
@@ -84,6 +102,7 @@ type StageEventEntry = {
   type?: string;
   timestamp?: string;
   data?: Record<string, unknown>;
+  severity?: 'info' | 'warn' | 'error';
 };
 
 const stageOrder: StageName[] = ['precheck', 'security', 'functional', 'judge', 'human', 'publish'];
@@ -815,6 +834,12 @@ export default function ReviewDashboard() {
     }
   };
 
+  const severityStyles: Record<'info' | 'warn' | 'error', { color: string; background: string }> = {
+    info: { color: '#0969da', background: '#e7f1ff' },
+    warn: { color: '#bf8700', background: '#fff4ce' },
+    error: { color: '#d1242f', background: '#ffe1e1' }
+  };
+
   const evidenceOptions = useMemo(() => evidenceStageOptions.filter((opt) => progress?.stages?.[opt.stage]), [progress]);
 
   const renderLedgerSection = () => {
@@ -837,13 +862,40 @@ export default function ReviewDashboard() {
         {ledgerCopyError && <span style={{ color: '#d1242f' }}>{ledgerCopyError}</span>}
         <div style={{ display: 'grid', gap: 12 }}>
           {ledgerEntries.map((entry) => (
-            <div key={`ledger-${entry.stage}`} style={{ border: '1px solid #d0d7de', borderRadius: 8, padding: 12 }}>
+            <div
+              key={`ledger-${entry.stage}`}
+              style={{
+                border: `1px solid ${entry.httpPosted === false || entry.downloadAvailable === false ? '#d1242f' : '#d0d7de'}`,
+                borderRadius: 8,
+                padding: 12,
+                background: entry.httpPosted === false || entry.downloadAvailable === false ? '#fff5f5' : '#fff'
+              }}
+            >
               <div style={{ fontWeight: 600, marginBottom: 4 }}>{stageLabels[entry.stage]}</div>
               <div>Entry: {formatEntryPath(entry.entryPath)}</div>
               <div>Digest: {entry.digest ? <code style={{ fontSize: 12 }}>{entry.digest}</code> : 'N/A'}</div>
               <div>Workflow ID: {entry.workflowId ?? 'unknown'}</div>
               <div>Workflow Run: {entry.workflowRunId ?? 'unknown'}</div>
               <div>Generated: {entry.generatedAt ?? 'unknown'}</div>
+              <div style={{ fontSize: 12, marginTop: 4 }}>
+                DL状態: {entry.downloadAvailable === true
+                  ? `利用可${entry.downloadStatus === 'fallback' ? ' (Fallback)' : ''}`
+                  : entry.downloadAvailable === false
+                    ? `不可${entry.downloadMissingReason ? ` (${entry.downloadMissingReason})` : ''}`
+                    : 'N/A'}
+              </div>
+              <div style={{ fontSize: 12 }}>
+                HTTP送信: {entry.httpPosted === true
+                  ? `成功${entry.httpAttempts ? ` (${entry.httpAttempts}回)` : ''}`
+                  : entry.httpPosted === false
+                    ? `失敗${entry.httpAttempts ? ` (${entry.httpAttempts}回)` : ''}${entry.httpError ? ` - ${entry.httpError}` : ''}`
+                    : '未設定'}
+              </div>
+              {entry.downloadMissingReason && (
+                <div style={{ fontSize: 12, color: '#d1242f' }}>
+                  欠損理由: {entry.downloadMissingReason === 'primary_missing' ? 'primaryファイルが存在しません' : 'fallbackファイルが存在しません'}
+                </div>
+              )}
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 6 }}>
                 <span>Source: {entry.sourceFile ? <code style={{ fontSize: 12 }}>{entry.sourceFile}</code> : 'N/A'}</span>
                 {entry.sourceFile && (
@@ -853,6 +905,9 @@ export default function ReviewDashboard() {
                 )}
                 {ledgerCopyStage === entry.stage && <span style={{ color: '#1a7f37', fontSize: 12 }}>コピーしました</span>}
               </div>
+              {entry.downloadRelativePath && (
+                <div style={{ fontSize: 12, color: '#57606a' }}>Local: <code style={{ fontSize: 12 }}>{entry.downloadRelativePath}</code></div>
+              )}
               {entry.downloadUrl && (
                 <a
                   style={{ marginTop: 8, display: 'inline-block' }}
@@ -965,6 +1020,7 @@ export default function ReviewDashboard() {
                   <th style={{ textAlign: 'left', padding: 8 }}>時刻</th>
                   <th style={{ textAlign: 'left', padding: 8 }}>ステージ</th>
                   <th style={{ textAlign: 'left', padding: 8 }}>イベント</th>
+                  <th style={{ textAlign: 'left', padding: 8 }}>重要度</th>
                   <th style={{ textAlign: 'left', padding: 8 }}>データ</th>
                 </tr>
               </thead>
@@ -976,6 +1032,15 @@ export default function ReviewDashboard() {
                     <td style={{ padding: 8 }}>
                       <div style={{ fontWeight: 600 }}>{evt.event}</div>
                       {evt.type && <div style={{ fontSize: 12, color: '#57606a' }}>{evt.type}</div>}
+                    </td>
+                    <td style={{ padding: 8 }}>
+                      {(() => {
+                        const severity = evt.severity ?? 'info';
+                        const palette = severityStyles[severity];
+                        return (
+                          <span style={{ fontSize: 12, fontWeight: 600, color: palette.color, background: palette.background, padding: '2px 6px', borderRadius: 999 }}>{severity}</span>
+                        );
+                      })()}
                     </td>
                     <td style={{ padding: 8 }}>
                       {evt.data ? (
@@ -1087,12 +1152,22 @@ export default function ReviewDashboard() {
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
               {stageOrder.map((stage) => {
                 const info = progress.stages[stage];
+                const warnings = info?.warnings ?? progress.warnings?.[stage] ?? [];
                 return (
                   <div key={stage} style={{ border: '1px solid #d0d7de', borderRadius: 8, padding: 12, minWidth: 140 }}>
                     <div style={{ fontWeight: 600 }}>{stageLabels[stage]}</div>
                     <div style={{ color: statusColor(info?.status ?? 'pending') }}>{info?.status ?? 'pending'}</div>
                     <div style={{ fontSize: 12, color: '#57606a' }}>Attempts: {info?.attempts ?? 0}</div>
                     {info?.message && <div style={{ fontSize: 12 }}>{info.message}</div>}
+                    {warnings.length > 0 && (
+                      <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                        {warnings.map((warning, index) => (
+                          <span key={`${stage}-warning-${index}`} style={{ fontSize: 12, background: '#fff5f5', color: '#d1242f', border: '1px solid #d1242f', borderRadius: 4, padding: '2px 6px' }}>
+                            {warning}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 );
               })}

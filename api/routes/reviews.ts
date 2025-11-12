@@ -101,7 +101,17 @@ router.get('/review/ui/:submissionId', async (req: Request, res: Response) => {
     }
     const ledgerSummary = await getLedgerSummary(submissionId, { progress });
     const stagesEntries = Object.entries(progress.stages ?? {}) as [string, any][];
-    const stageRows = stagesEntries.map(([stage, info]) => `<tr><td>${escapeHtml(stage)}</td><td>${escapeHtml(info?.status ?? 'unknown')}</td><td>${escapeHtml(info?.attempts ?? 0)}</td><td>${escapeHtml(info?.message ?? '')}</td></tr>`).join('');
+    const stageRows = stagesEntries.map(([stage, info]) => {
+      const warnings = Array.isArray(info?.warnings) && info.warnings.length
+        ? `<div class="warning-list">${info.warnings.map((w: string) => `<span>${escapeHtml(w)}</span>`).join('')}</div>`
+        : '';
+      return `<tr>
+        <td>${escapeHtml(stage)}</td>
+        <td>${escapeHtml(info?.status ?? 'unknown')}</td>
+        <td>${escapeHtml(info?.attempts ?? 0)}</td>
+        <td>${escapeHtml(info?.message ?? '')}${warnings}</td>
+      </tr>`;
+    }).join('');
     const stageOptions = stagesEntries.map(([stage]) => `<option value="${escapeHtml(stage)}">${escapeHtml(stage)}</option>`).join('');
     const wandbLink = progress.wandbRun?.url
       ? `<a href="${escapeHtml(progress.wandbRun.url)}" target="_blank" rel="noreferrer">W&B Dashboard</a>`
@@ -265,6 +275,8 @@ router.get('/review/ui/:submissionId', async (req: Request, res: Response) => {
         .ledger-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;}
         .ledger-card{background:#fff;border:1px solid #d0d7de;border-radius:8px;padding:12px;}
         .ledger-card--error{border-color:#d1242f;background:#fff5f5;}
+        .warning-list{margin-top:4px;display:flex;flex-wrap:wrap;gap:4px;}
+        .warning-list span{background:#fff5f5;color:#d1242f;border:1px solid #d1242f;padding:2px 6px;border-radius:4px;font-size:12px;display:inline-block;}
         .ledger-card__title{font-weight:600;margin-bottom:4px;}
       </style>
       </head><body>

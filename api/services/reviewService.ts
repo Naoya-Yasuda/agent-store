@@ -56,6 +56,7 @@ export type StageEventRecord = {
   type?: string;
   timestamp?: string;
   data?: Record<string, unknown>;
+  severity?: string;
 };
 
 export async function getLedgerSummary(submissionId: string, options?: { progress?: any }): Promise<LedgerEntry[]> {
