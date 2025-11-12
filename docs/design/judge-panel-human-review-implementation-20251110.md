@@ -67,7 +67,13 @@
 - Human Review UIのユーザー管理（RBAC）と監査ログ連携。
 
 ## 7. 次ステップ (2025-11-12)
-1. **Manual Verdict UX仕上げ**: Judge verdict=`manual` の際にHuman Review UIへバナーを表示し、該当質問IDの evidence/LLM設定をワンクリックで再実行フォームへプリセットできるようにする。Next.js側では`progress.warnings`と`stageEvents`を組み合わせ、「Judge manual review awaiting human decision」をカード上に表示する。
-2. **LLM Override Validation**: Judge再実行フォームから送られたLLM設定がTemporal→Inspect Workerまで到達することをVitest/E2Eで確認し、READMEに利用手順・注意点を追記。数値入力（temperature/maxTokens）の範囲・フォーマットをUIでバリデーションする。→ UIの基礎実装は完了したため、次はVitest＋Playwright的なE2Eテストを追加する。
+1. **LLM Overrideプリセット**: Manual/Rejectカードで「証拠ビュー」や「カードを表示」が可能になったため、次は「LLM設定を引き継ぐ」ボタンを追加し、カード上に記録されている `item.overrideHint`（Judge CLIに追加予定）や直近の `llmOverrideHistory` から再実行フォームのinputをプリセットする。UI/UX要件:
+   - カードの `LLM override` 情報（model/provider/temperature等）を `useState` にコピーし、`setRetryLlmProvider` などを更新。
+   - ボタン押下時に `setLlmOverrideEnabled(true)` とスクロールを行い、Human reviewer がミスなく設定を復元できるようにする。
+   - ドキュメント（README / この設計書）に操作手順を追記し、LLM overrideを引き継いだ再実行作業の推奨ワークフローを明示する。
+2. **Playwright E2Eテスト準備**: Next.js UIの重要フロー（manualバナー → 証拠ビュー → LLM overrideフォーム → `/review/retry` submit）を自動テストするためのPlaywrightシナリオを追加する。準備タスク:
+   - `review-ui/playwright.config.ts` を追加し、APIをモックする `msw` または custom fetch stub を用意。
+   - サンプルsubmissionIdに対する `mockProgress` / `mockLedger` / `mockEvents` JSONを`tests/fixtures`に置く。
+   - READMEに「Playwrightテストの実行方法 (`cd review-ui && npx playwright test`)」と `CI` で走らせる際の環境変数を追記。
 3. **Relay UX改善**: Relayログ検索フィルタの追加、禁止語ヒット専用ビュー、JSONLダウンロードボタンなどHuman Review UIでの検証体験を改善する。
 4. **回帰テスト拡充**: Temporal/VitestでLLM override／W&Bイベントをモック検証。UIはReact Testing Library等でフォームバリデーションやエラー表示をテストする。
