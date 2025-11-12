@@ -1,0 +1,5 @@
+- 変更後は関連ステージのテストを必ず実行し、READMEの実装ステータスと「今後の優先タスク」を更新する。例: `pytest`, `cd prototype/temporal-review-workflow && npm run build && npm run lint`, `cd review-ui && npm run test`, `scripts/run_inspect_flow.sh`, `cd api && npm run typecheck`。
+- LedgerやW&Bに影響する変更時は対応する `docs/design/*.md` を更新し、READMEからリンクする。
+- Docker/Temporal関連を触れた場合は `docker compose build ...` や Smokeテスト (`docker compose up ... && curl http://localhost:3000/health`) を実施/記録。
+- PR/コミット前に `git status -sb` で差分確認、Secrets (.env) をコミットしない。
+- 新しい設定・ルール・次タスクはユーザー指示がなくてもREADMEへ追記するのがルール。

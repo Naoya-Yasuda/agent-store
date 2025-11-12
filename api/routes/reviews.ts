@@ -83,7 +83,8 @@ const stageLabels: Record<string, string> = {
 
 router.get('/review/progress/:submissionId', async (req: Request, res: Response) => {
   try {
-    const progress = await getWorkflowProgress(req.params.submissionId);
+    const submissionId = sanitizeSegment(req.params.submissionId, 'submission_id');
+    const progress = await getWorkflowProgress(submissionId);
     res.json(progress);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'unknown_error';
@@ -93,7 +94,8 @@ router.get('/review/progress/:submissionId', async (req: Request, res: Response)
 
 router.get('/review/ui/:submissionId', async (req: Request, res: Response) => {
   try {
-    const progress = await getWorkflowProgress(req.params.submissionId);
+    const submissionId = sanitizeSegment(req.params.submissionId, 'submission_id');
+    const progress = await getWorkflowProgress(submissionId);
     if (!progress) {
       return res.status(404).send('workflow not found');
     }
@@ -339,8 +341,9 @@ router.post('/review/decision', async (req: Request, res: Response) => {
 
 router.get('/review/ledger/:submissionId', async (req: Request, res: Response) => {
   try {
-    const entries = await getLedgerSummary(req.params.submissionId);
-    res.json({ submissionId: req.params.submissionId, entries });
+    const submissionId = sanitizeSegment(req.params.submissionId, 'submission_id');
+    const entries = await getLedgerSummary(submissionId);
+    res.json({ submissionId, entries });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'unknown_error';
     res.status(500).json({ error: 'ledger_fetch_failed', message });
@@ -349,11 +352,12 @@ router.get('/review/ledger/:submissionId', async (req: Request, res: Response) =
 
 router.get('/review/events/:submissionId', async (req: Request, res: Response) => {
   try {
-    const result = await getStageEvents(req.params.submissionId);
+    const submissionId = sanitizeSegment(req.params.submissionId, 'submission_id');
+    const result = await getStageEvents(submissionId);
     if (!result) {
       return res.status(404).json({ error: 'workflow_not_found' });
     }
-    res.json({ submissionId: req.params.submissionId, events: result.events, agentRevisionId: result.agentRevisionId });
+    res.json({ submissionId, events: result.events, agentRevisionId: result.agentRevisionId });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'unknown_error';
     res.status(500).json({ error: 'events_fetch_failed', message });
@@ -370,14 +374,15 @@ router.get('/review/ledger/download', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'invalid_stage' });
   }
   try {
-    const fileHandle = await getLedgerEntryFile(submissionId, stage as StageName);
+    const sanitizedSubmissionId = sanitizeSegment(submissionId, 'submission_id');
+    const fileHandle = await getLedgerEntryFile(sanitizedSubmissionId, stage as StageName);
     if (!fileHandle) {
-      return res.status(404).json({ error: 'ledger_file_not_found', submissionId, stage });
+      return res.status(404).json({ error: 'ledger_file_not_found', submissionId: sanitizedSubmissionId, stage });
     }
     if (!fileHandle.exists) {
       return res.status(404).json({
         error: 'ledger_file_not_found',
-        submissionId,
+        submissionId: sanitizedSubmissionId,
         stage,
         sourceFile: fileHandle.relativePath,
         fallback: fileHandle.fallback ?? false
@@ -391,6 +396,9 @@ router.get('/review/ledger/download', async (req: Request, res: Response) => {
     }
     fs.createReadStream(fileHandle.absolutePath).pipe(res);
   } catch (err) {
+    if (err instanceof BadRequestError) {
+      return res.status(400).json({ error: err.message });
+    }
     const message = err instanceof Error ? err.message : 'unknown_error';
     res.status(500).json({ error: 'ledger_download_failed', message });
   }

@@ -1,0 +1,10 @@
+- 依存セットアップ: `python3.13 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt`
+- sandbox-runnerテスト: `cd sandbox-runner && pip install -e .[dev] && pytest`
+- Security/Functional/Judge CLI: `python -m sandbox_runner.cli --agent-id demo --revision rev1 --template google-adk --dry-run --generate-fairness`
+- Inspect Worker Judge Panel: `cd prototype/inspect-worker && python scripts/run_eval.py --agent-id demo --revision rev1 --artifacts ../../sandbox-runner/artifacts --enable-judge-panel`
+- Temporal workflow build/test: `cd prototype/temporal-review-workflow && npm install && npm run build && npm run lint`
+- Review UI開発/テスト: `cd review-ui && npm install && npm run dev` / `npm run test`
+- Docker Compose起動: `docker compose build api review-ui temporal-worker inspect-worker` → `docker compose up -d`
+- CI相当Smoke: `docker compose up temporal-postgres temporal temporal-worker api inspect-worker`
+- Inspect Worker CI script: `scripts/test_inspect_worker.sh`
+- 一般ユーティリティ: `git status -sb`, `ls`, `rg <pattern> -n`, `npm run typecheck` (api)。

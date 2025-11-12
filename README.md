@@ -183,6 +183,12 @@ Docker Composeを使わずに個別に起動する場合：
 - **Docker Compose Smoke Test**（E2E=End-to-End=端から端の一連動作確認）: 本コミットで追加。`docker compose up` で `postgres` / `temporal-postgres` / `temporal` / `temporal-worker` / `api` / `inspect-worker` を起動し、`curl http://localhost:3000/health` と `tctl cluster health` を用いてAPIおよびTemporalの可用性を自動チェック後、`docker compose down -v` で環境を掃除します。
 - **Inspect Worker Tests**: `scripts/test_inspect_worker.sh` をGitHub Actionsで実行し、Judge Panel/Relayロジックのpytestを常に走らせます（`WANDB_DISABLED=true`でネットワーク資格情報が不要なDry Run相当の検証）。
 
+### APIセキュリティ指針
+
+- `/api/review/*` 系のファイル配信APIは `sanitizeSegment` + `ensureWithinRepo` で `submissionId` / `agentRevisionId` / `agentId` / `stage` を検証し、パストラバーサル（`../` 等によるリポジトリ外アクセス）を防止しています。新しいダウンロード系エンドポイントを追加する際は必ず同じヘルパーを再利用し、Stage名は `StageName` 列挙（`precheck|security|functional|judge|human|publish`）で制限してください。
+- Ledgerファイル取得（`/review/ledger/download`）は `X-Ledger-Source` / `X-Ledger-Fallback` ヘッダーで配信元を可視化します。ファイルが欠損した場合は `fallback: true` のレスポンスで監査ルートを示し、UIやW&BメタデータのLedgerカードで同じ情報が参照できるようにしています。
+- すべてのSubmission/Stage IDはSAFE_SEGMENT (`^[A-Za-z0-9._-]+$`) でホワイトリスト化されるため、外部入力をそのまま `fs` や `spawn` に渡さないでください。Express Routerに新規パラメータが増える場合は `BadRequestError` を投げて400を返す実装に合わせます。
+
 ## W&B MCP 連携
 - Sandbox Runnerは各実行でW&B Runを生成し（`wandb_run_id`は`sandbox-runner/src/sandbox_runner/cli.py`の`init_wandb_run`で払い出し）、`metadata.json`の`wandbMcp`にRun IDとステージサマリを記録します。
 - ダッシュボードURLは `https://wandb.ai/<entity>/<project>/runs/<runId>`（CLIの`--wandb-entity`/`--wandb-project`/`--wandb-base-url`で指定）です。デフォルトは`project=agent-store-sandbox`,`entity=local`なので、実運用では `--wandb-base-url https://wandb.ai --wandb-entity <org> --wandb-project <proj>` のように明示してください。

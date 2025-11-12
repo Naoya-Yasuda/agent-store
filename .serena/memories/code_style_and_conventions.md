@@ -1,0 +1,5 @@
+- TypeScript: 2スペースインデント、camelCase関数/フィールド、PascalCase型、named exports、JSON-Schemaバリデーション必須。Express APIはAjv&型安全で、Temporal型を共有。ルータでは sanitizeSegment/ensureWithinRepo でパストラバーサル対策。
+- Python (sandbox-runner / inspect-worker): typing必須、I/Oは `sandbox_runner.cli` 等のエントリに隔離、`wandb` 等のoptional依存はtry-import。UTF-8 JSONは `ensure_ascii=False` で出力。CLIフラグはkebab-case。
+- JSON/YAML manifestsはソート＆人間可読。`sandbox-runner/artifacts/` や `prototype/inspect-worker/out/` の生成物は手動編集しない。
+- ドキュメント&README: 新タスクや進捗が発生したらREADME「今後の優先タスク」に即反映。Ledger設計など関連ドキュメントにリンクを追加する。
+- Git: 既存変更を上書きせず、schema変更とテストを同一コミットにまとめる。
