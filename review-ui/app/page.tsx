@@ -595,6 +595,33 @@ export default function ReviewDashboard() {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
+    const parseMaybeNumber = (value: unknown): number | undefined => {
+      if (typeof value === 'number' && !Number.isNaN(value)) {
+        return value;
+      }
+      if (typeof value === 'string') {
+        const parsed = Number(value);
+        if (!Number.isNaN(parsed)) {
+          return parsed;
+        }
+      }
+      return undefined;
+    };
+
+    const presetOverrideFromEvent = (evtData: Record<string, unknown> | undefined) => {
+      if (!evtData) return;
+      const overrideSource: Partial<LlmJudgeConfig> = {
+        provider: typeof evtData.provider === 'string' ? evtData.provider : undefined,
+        model: typeof evtData.model === 'string' ? evtData.model : undefined,
+        temperature: parseMaybeNumber(evtData.temperature),
+        maxOutputTokens: parseMaybeNumber(evtData.maxOutputTokens),
+        baseUrl: typeof evtData.baseUrl === 'string' ? evtData.baseUrl : undefined,
+        dryRun: typeof evtData.dryRun === 'boolean' ? evtData.dryRun : undefined
+      };
+      applyLlmOverridePreset(overrideSource);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
     return (
       <section style={{ display: 'grid', gap: 12 }}>
         <h3 style={{ margin: 0 }}>Judge 詳細</h3>
@@ -718,6 +745,7 @@ export default function ReviewDashboard() {
                     <th style={{ textAlign: 'left', padding: 6 }}>時刻</th>
                     <th style={{ textAlign: 'left', padding: 6 }}>モデル/プロバイダ</th>
                     <th style={{ textAlign: 'left', padding: 6 }}>設定</th>
+                    <th style={{ textAlign: 'left', padding: 6 }}>操作</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -727,6 +755,9 @@ export default function ReviewDashboard() {
                       <td style={{ padding: 6 }}>{String(evt.data?.model ?? 'N/A')}<div style={{ fontSize: 12, color: '#57606a' }}>{String(evt.data?.provider ?? 'N/A')}</div></td>
                       <td style={{ padding: 6, fontSize: 12 }}>
                         <pre style={{ margin: 0 }}>{JSON.stringify(evt.data, null, 2)}</pre>
+                      </td>
+                      <td style={{ padding: 6 }}>
+                        <button type="button" onClick={() => presetOverrideFromEvent(evt.data)}>この設定を適用</button>
                       </td>
                     </tr>
                   ))}
