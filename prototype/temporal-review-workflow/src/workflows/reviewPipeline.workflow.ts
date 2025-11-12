@@ -512,6 +512,16 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
           : undefined
       }
     });
+    if (judgeLlm) {
+      await emitStageEvent('judge', 'llm_override_applied', {
+        provider: judgeLlm.provider,
+        model: judgeLlm.model,
+        temperature: judgeLlm.temperature,
+        maxOutputTokens: judgeLlm.maxOutputTokens,
+        dryRun: judgeLlm.dryRun,
+        baseUrl: judgeLlm.baseUrl
+      }, 'info');
+    }
     await handleLedgerStatus('judge', judge);
 
     if (judge.verdict === 'reject') {

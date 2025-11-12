@@ -493,6 +493,10 @@ def _run_judge_panel(
         "dryRun": bool(llm_config.dry_run) if llm_config else False,
         "error": None,
         "calls": 0,
+        "provider": llm_config.provider if llm_config else None,
+        "temperature": llm_config.temperature if llm_config else None,
+        "maxOutputTokens": llm_config.max_output_tokens if llm_config else None,
+        "baseUrl": llm_config.base_url if llm_config else None
     }
     llm_judge_instance = None
     if llm_config and llm_config.enabled:
@@ -530,6 +534,12 @@ def _run_judge_panel(
                 "llmScore": verdict.llm_score,
                 "llmVerdict": verdict.llm_verdict,
                 "llmRationale": verdict.llm_rationale,
+                "llmProvider": llm_config.provider if llm_config else None,
+                "llmModel": llm_config.model if llm_config else None,
+                "llmTemperature": llm_config.temperature if llm_config else None,
+                "llmMaxOutputTokens": llm_config.max_output_tokens if llm_config else None,
+                "llmDryRun": llm_config.dry_run if llm_config else None,
+                "llmBaseUrl": llm_config.base_url if llm_config else None,
                 "traceId": execution.trace_id if execution else None,
             }
             f.write(json.dumps(record, ensure_ascii=False) + "\n")

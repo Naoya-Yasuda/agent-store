@@ -223,8 +223,8 @@ Docker Composeを使わずに個別に起動する場合：
 
 ## 今後の優先タスク
 1. **Judge Panel仕上げ**: Inspect WorkerのMCTS-Judge結果をUIに完全表示し、manual 判定時の再実行ワークフローを最後まで仕上げる。
-   - 直近の `llm_override_received` イベントやJudgeカードの `llm*` フィールドから LL M override フォームを自動プリセットし、複数履歴がある場合は選択できるようにする。
-   - Manual判定→LLM override→Human承認の一連フローをPlaywrightでE2E検証し、CIでも常時走るようにする。
+   - 直近の `llm_override_received` イベントやJudgeカードの `llm*` フィールドから LLM override フォームを自動プリセットし、複数履歴がある場合は選択できるようにする（UI側は実装済み、Inspect Worker→W&B/Artifactsの隙間を埋める）。
+   - Manual判定→LLM override→Human承認の一連フローをPlaywrightでE2E検証し、`review-ui-playwright` GitHub Actions で常時走るようにする。
    - Judgeカードに W&B スクリーンショット／Artifactsリンクの埋め込みを追加する（詳細: [docs/design/judge-panel-human-review-implementation-20251110.md](docs/design/judge-panel-human-review-implementation-20251110.md)）。
 2. **Ledger耐障害性の強化（残タスク）**: `/review/ledger/download` の詳細エラーコードは実装済み。今後は自動再送制御や外部Ledger APIのヘルスチェックを追加し、[security-gate-ledger-plan.md](docs/design/security-gate-ledger-plan.md) の運用指針を拡張する。
 3. **FunctionalリプレイUI**: Functional AccuracyステージのEmbedding距離やRAGTruth照合結果をHuman Review UIで比較表示し、Functional Ledgerと同期した差分ビューを提供する。
