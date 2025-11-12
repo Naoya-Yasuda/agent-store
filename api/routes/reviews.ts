@@ -421,7 +421,7 @@ router.get('/review/ledger/download', async (req: Request, res: Response) => {
   }
   try {
     const sanitizedSubmissionId = sanitizeSegment(submissionIdRaw, 'submission_id');
-    const fileHandle = await getLedgerEntryFile(sanitizedSubmissionId, stage as StageName);
+    const fileHandle = await getLedgerEntryFile(sanitizedSubmissionId, stage as StageName, { allowRemote: true });
     if (!fileHandle) {
       return res.status(404).json({ error: 'ledger_file_not_found', submissionId: sanitizedSubmissionId, stage });
     }
@@ -433,7 +433,10 @@ router.get('/review/ledger/download', async (req: Request, res: Response) => {
         sourceFile: fileHandle.relativePath,
         fallback: fileHandle.fallback ?? false,
         status: fileHandle.status,
-        missingReason: fileHandle.missingReason
+        missingReason: fileHandle.missingReason,
+        remoteUrl: fileHandle.remoteUrl,
+        remoteError: fileHandle.remoteError,
+        remoteStatusCode: fileHandle.remoteStatusCode
       });
     }
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -444,6 +447,18 @@ router.get('/review/ledger/download', async (req: Request, res: Response) => {
     }
     if (fileHandle.fallback) {
       res.setHeader('X-Ledger-Fallback', 'true');
+    }
+    if (fileHandle.status === 'remote') {
+      res.setHeader('X-Ledger-Remote', 'true');
+    }
+    if (fileHandle.remoteUrl) {
+      res.setHeader('X-Ledger-Remote-Source', fileHandle.remoteUrl);
+    }
+    if (fileHandle.remoteStatusCode) {
+      res.setHeader('X-Ledger-Remote-Status', String(fileHandle.remoteStatusCode));
+    }
+    if (fileHandle.remoteFetchedAt) {
+      res.setHeader('X-Ledger-Remote-Fetched-At', fileHandle.remoteFetchedAt);
     }
     fs.createReadStream(fileHandle.absolutePath).pipe(res);
   } catch (err) {

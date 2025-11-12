@@ -78,3 +78,8 @@
    - READMEに「Playwrightテストの実行方法 (`cd review-ui && npx playwright test`)」と `CI` で走らせる際の環境変数を追記。
 3. **Relay UX改善**: Relayログ検索フィルタの追加、禁止語ヒット専用ビュー、JSONLダウンロードボタンなどHuman Review UIでの検証体験を改善する。
 4. **回帰テスト拡充**: Temporal/VitestでLLM override／W&Bイベントをモック検証。UIはReact Testing Library等でフォームバリデーションやエラー表示をテストする。
+
+## 8. 2025-11-12 実装ログ
+- Judgeカードに W&B / `judge_report.jsonl` / `relay_logs.jsonl` のディープリンクを実装（`review-ui/app/page.tsx`）。Manual/Rejectカード、ステージ表の双方から同じリンクを利用できる。
+- Playwrightシナリオ `tests/e2e/judge-manual.spec.ts` を拡張し、LLMプリセット→証拠ビュー→ディープリンクの確認、さらにFunctionalタブの差分ビュー/Embeddingヒストグラムまで自動検証するようにした。CI (`.github/workflows/review-ui-playwright.yml`) でも常時実行。
+- FunctionalタブにRAGTruth差分ビューとEmbedding距離ヒストグラムを実装し、`ragTruthArtifact` のパスコピーと合わせてレビュワーが即時に再実行判断できるようにした。

@@ -6,7 +6,36 @@
   "stages": {
     "precheck": { "status": "completed", "attempts": 1, "message": "done" },
     "security": { "status": "completed", "attempts": 1, "message": "passed" },
-    "functional": { "status": "completed", "attempts": 1, "message": "ok" },
+    "functional": {
+      "status": "completed",
+      "attempts": 1,
+      "message": "ok",
+      "details": {
+        "metrics": {
+          "averageDistance": 0.32,
+          "embeddingAverageDistance": 0.28,
+          "embeddingMaxDistance": 0.61
+        },
+        "summary": {
+          "total": 3,
+          "passed": 1,
+          "needsReview": 2,
+          "ragtruthRecords": 3,
+          "ragTruthArtifact": "sandbox-runner/artifacts/demo-rev/functional/functional_scenarios.jsonl"
+        },
+        "ledger": {
+          "entryPath": "sandbox-runner/artifacts/demo-rev/functional/functional_ledger_entry.json",
+          "digest": "functional-digest-123",
+          "sourceFile": "sandbox-runner/artifacts/demo-rev/functional/functional_ledger_entry.json",
+          "httpPosted": true,
+          "httpAttempts": 1
+        },
+        "artifacts": {
+          "report": { "stage": "functional", "type": "report", "agentRevisionId": "demo-rev", "agentId": "demo-agent" },
+          "summary": { "stage": "functional", "type": "summary", "agentRevisionId": "demo-rev", "agentId": "demo-agent" }
+        }
+      }
+    },
     "judge": {
       "status": "failed",
       "attempts": 1,

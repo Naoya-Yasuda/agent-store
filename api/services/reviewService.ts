@@ -2,6 +2,9 @@ import { getWorkflowProgress as fetchProgress, sendHumanDecision, sendRetrySigna
 import { StageName, LlmJudgeOverride } from '../types/reviewTypes';
 import path from 'path';
 import { promises as fs } from 'fs';
+import http from 'http';
+import https from 'https';
+import { URL } from 'url';
 
 export async function getWorkflowProgress(submissionId: string) {
   return fetchProgress(submissionId);
@@ -20,6 +23,9 @@ export async function requestHumanDecision(submissionId: string, decision: 'appr
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const SANDBOX_ARTIFACTS_DIR = path.join(REPO_ROOT, 'sandbox-runner', 'artifacts');
+const LEDGER_CACHE_DIR = path.join(SANDBOX_ARTIFACTS_DIR, '__ledger-cache__');
+const LEDGER_REMOTE_TIMEOUT_MS = Number(process.env.LEDGER_REMOTE_TIMEOUT_MS ?? 8000);
+const LEDGER_REMOTE_MAX_BYTES = Number(process.env.LEDGER_REMOTE_MAX_BYTES ?? 5 * 1024 * 1024);
 
 type LedgerEntry = {
   stage: StageName;
@@ -36,8 +42,12 @@ type LedgerEntry = {
   downloadAvailable?: boolean;
   downloadRelativePath?: string;
   downloadFallback?: boolean;
-  downloadStatus?: 'primary' | 'fallback';
-  downloadMissingReason?: 'primary_missing' | 'fallback_missing';
+  downloadStatus?: 'primary' | 'fallback' | 'remote';
+  downloadMissingReason?: 'primary_missing' | 'fallback_missing' | 'remote_unreachable';
+  remoteStatusCode?: number;
+  remoteLatencyMs?: number;
+  remoteReachable?: boolean;
+  remoteError?: string;
 };
 
 export type LedgerFileHandle = {
@@ -45,8 +55,12 @@ export type LedgerFileHandle = {
   relativePath: string;
   exists: boolean;
   fallback?: boolean;
-  status?: 'primary' | 'fallback';
-  missingReason?: 'primary_missing' | 'fallback_missing';
+  status?: 'primary' | 'fallback' | 'remote';
+  missingReason?: 'primary_missing' | 'fallback_missing' | 'remote_unreachable';
+  remoteUrl?: string;
+  remoteStatusCode?: number;
+  remoteFetchedAt?: string;
+  remoteError?: string;
 };
 
 export type StageEventRecord = {
@@ -74,6 +88,9 @@ export async function getLedgerSummary(submissionId: string, options?: { progres
         : undefined;
       const sourceRelative = resolvedSource ? path.relative(REPO_ROOT, resolvedSource) : relativePath;
       const downloadHandle = await getLedgerEntryFile(submissionId, stage, { progress });
+      const remoteHealth = ledger.entryPath && isRemotePath(ledger.entryPath)
+        ? await probeRemoteLedger(ledger.entryPath)
+        : undefined;
       entries.push({
         stage,
         entryPath: ledger.entryPath,
@@ -92,21 +109,32 @@ export async function getLedgerSummary(submissionId: string, options?: { progres
         downloadMissingReason: downloadHandle?.missingReason,
         downloadUrl: ledger.entryPath && !isRemotePath(ledger.entryPath)
           ? `/review/ledger/download?submissionId=${submissionId}&stage=${stage}`
-          : ledger.entryPath
+          : ledger.entryPath,
+        remoteStatusCode: remoteHealth?.statusCode,
+        remoteLatencyMs: remoteHealth?.latencyMs,
+        remoteReachable: remoteHealth?.reachable,
+        remoteError: remoteHealth?.error
       });
     }
   }
   return entries;
 }
 
-export async function getLedgerEntryFile(submissionId: string, stage: StageName, options?: { progress?: any }): Promise<LedgerFileHandle | undefined> {
+export async function getLedgerEntryFile(submissionId: string, stage: StageName, options?: { progress?: any; allowRemote?: boolean }): Promise<LedgerFileHandle | undefined> {
   const progress = options?.progress ?? await fetchProgress(submissionId);
   if (!progress) {
     return undefined;
   }
   const ledger = progress.stages?.[stage]?.details?.ledger;
-  if (!ledger?.entryPath || isRemotePath(ledger.entryPath)) {
+  const allowRemote = options?.allowRemote ?? false;
+  if (!ledger?.entryPath) {
     return undefined;
+  }
+  if (isRemotePath(ledger.entryPath)) {
+    if (!allowRemote) {
+      return undefined;
+    }
+    return downloadRemoteLedger(submissionId, stage, ledger.entryPath, progress.agentRevisionId);
   }
   const resolved = path.resolve(ledger.entryPath);
   if (!resolved.startsWith(REPO_ROOT)) {
@@ -177,6 +205,133 @@ async function readLedgerMetadata(entryPath?: string): Promise<{ metadata?: Reco
   } catch {
     return {};
   }
+}
+
+type HttpRequestArgs = {
+  method?: string;
+  timeoutMs?: number;
+  headers?: Record<string, string>;
+  maxBytes?: number;
+};
+
+async function downloadRemoteLedger(submissionId: string, stage: StageName, url: string, agentRevisionId?: string): Promise<LedgerFileHandle> {
+  const cacheRoot = agentRevisionId ?? submissionId;
+  const cacheDir = path.join(LEDGER_CACHE_DIR, cacheRoot);
+  const cachePath = path.join(cacheDir, `${stage}-remote.json`);
+  const relativePath = path.relative(REPO_ROOT, cachePath);
+  try {
+    await fs.mkdir(cacheDir, { recursive: true });
+    const response = await httpRequestRaw(url, {
+      method: 'GET',
+      timeoutMs: LEDGER_REMOTE_TIMEOUT_MS,
+      maxBytes: LEDGER_REMOTE_MAX_BYTES
+    });
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      await fs.writeFile(cachePath, response.body);
+      return {
+        absolutePath: cachePath,
+        relativePath,
+        exists: true,
+        fallback: true,
+        status: 'remote',
+        remoteUrl: url,
+        remoteStatusCode: response.statusCode,
+        remoteFetchedAt: new Date().toISOString()
+      };
+    }
+    return {
+      absolutePath: cachePath,
+      relativePath,
+      exists: false,
+      fallback: true,
+      status: 'remote',
+      missingReason: 'remote_unreachable',
+      remoteUrl: url,
+      remoteStatusCode: response.statusCode
+    };
+  } catch (err) {
+    return {
+      absolutePath: cachePath,
+      relativePath,
+      exists: false,
+      fallback: true,
+      status: 'remote',
+      missingReason: 'remote_unreachable',
+      remoteUrl: url,
+      remoteError: err instanceof Error ? err.message : String(err)
+    };
+  }
+}
+
+async function probeRemoteLedger(url: string): Promise<{ reachable: boolean; statusCode?: number; latencyMs?: number; error?: string }> {
+  const start = Date.now();
+  try {
+    let response = await httpRequestRaw(url, {
+      method: 'HEAD',
+      timeoutMs: Math.min(LEDGER_REMOTE_TIMEOUT_MS, 5000),
+      maxBytes: 0
+    });
+    if (response.statusCode === 405 || response.statusCode === 501) {
+      response = await httpRequestRaw(url, {
+        method: 'GET',
+        timeoutMs: Math.min(LEDGER_REMOTE_TIMEOUT_MS, 5000),
+        headers: { Range: 'bytes=0-0' },
+        maxBytes: 1
+      });
+    }
+    return {
+      reachable: response.statusCode >= 200 && response.statusCode < 400,
+      statusCode: response.statusCode,
+      latencyMs: Date.now() - start
+    };
+  } catch (err) {
+    return {
+      reachable: false,
+      error: err instanceof Error ? err.message : String(err)
+    };
+  }
+}
+
+function httpRequestRaw(urlString: string, options: HttpRequestArgs = {}): Promise<{ statusCode: number; headers: http.IncomingHttpHeaders; body: Buffer }> {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(urlString);
+    const client = parsed.protocol === 'https:' ? https : http;
+    const requestOptions: http.RequestOptions = {
+      method: options.method ?? 'GET',
+      headers: options.headers,
+      hostname: parsed.hostname,
+      port: parsed.port,
+      path: `${parsed.pathname}${parsed.search}`
+    };
+    const req = client.request(requestOptions, (res) => {
+      const chunks: Buffer[] = [];
+      let received = 0;
+      const maxBytes = typeof options.maxBytes === 'number' ? options.maxBytes : LEDGER_REMOTE_MAX_BYTES;
+      res.on('data', (chunk: Buffer) => {
+        if (maxBytes > 0) {
+          received += chunk.length;
+          if (received > maxBytes) {
+            res.destroy(new Error('ledger_remote_response_too_large'));
+            return;
+          }
+        }
+        chunks.push(chunk);
+      });
+      res.on('end', () => {
+        resolve({
+          statusCode: res.statusCode ?? 0,
+          headers: res.headers,
+          body: Buffer.concat(chunks)
+        });
+      });
+      res.on('error', reject);
+    });
+    req.setTimeout(options.timeoutMs ?? LEDGER_REMOTE_TIMEOUT_MS, () => {
+      req.destroy(new Error('ledger_remote_timeout'));
+    });
+    req.on('error', reject);
+    req.end();
+  });
 }
 
 async function readMetadata(agentRevisionId: string): Promise<any | undefined> {

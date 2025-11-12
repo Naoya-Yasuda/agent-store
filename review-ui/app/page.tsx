@@ -130,6 +130,43 @@ const evidenceStageOptions: { stage: StageName; artifacts: string[] }[] = [
   { stage: 'judge', artifacts: ['summary', 'report', 'relay'] }
 ];
 
+type EmbeddingHistogramBucket = {
+  label: string;
+  count: number;
+  min: number;
+  max: number | null;
+};
+
+const EMBEDDING_BUCKETS: ReadonlyArray<{ min: number; max: number | null }> = [
+  { min: 0, max: 0.1 },
+  { min: 0.1, max: 0.25 },
+  { min: 0.25, max: 0.5 },
+  { min: 0.5, max: 0.75 },
+  { min: 0.75, max: 1 },
+  { min: 1, max: null }
+];
+
+function buildEmbeddingHistogram(values: number[]): EmbeddingHistogramBucket[] {
+  if (!values.length) {
+    return [];
+  }
+  return EMBEDDING_BUCKETS.map(({ min, max }) => {
+    const count = values.filter((value) => value >= min && (max === null ? true : value < max)).length;
+    return {
+      label: formatBucketLabel(min, max),
+      count,
+      min,
+      max
+    };
+  }).filter((bucket) => bucket.count > 0);
+}
+
+function formatBucketLabel(min: number, max: number | null): string {
+  const minLabel = min.toFixed(2);
+  const maxLabel = max === null ? '∞' : max.toFixed(2);
+  return `${minLabel}〜${maxLabel}`;
+}
+
 export default function ReviewDashboard() {
   const [submissionId, setSubmissionId] = useState('demo');
   const [progress, setProgress] = useState<ProgressResponse | null>(null);
@@ -445,6 +482,29 @@ export default function ReviewDashboard() {
     });
   }, [artifactStates, loadArtifact, progress]);
 
+  const judgeArtifactLinks = useMemo(() => {
+    const descriptors = progress?.stages?.judge?.details?.artifacts;
+    if (!descriptors) {
+      return {} as Record<string, string | undefined>;
+    }
+    return {
+      summary: descriptors.summary ? buildArtifactUrl(descriptors.summary) : undefined,
+      report: descriptors.report ? buildArtifactUrl(descriptors.report) : undefined,
+      relay: descriptors.relay ? buildArtifactUrl(descriptors.relay) : undefined
+    };
+  }, [buildArtifactUrl, progress?.stages?.judge?.details?.artifacts]);
+
+  useEffect(() => {
+    const functionalArtifacts = progress?.stages?.functional?.details?.artifacts;
+    if (!functionalArtifacts) {
+      return;
+    }
+    const descriptor = functionalArtifacts.report;
+    if (descriptor && !artifactStates['functional:report']) {
+      loadArtifact(descriptor, 'functional:report');
+    }
+  }, [artifactStates, loadArtifact, progress]);
+
   const handleRetry = async () => {
     const trimmedReason = retryReason.trim();
     if (!trimmedReason) {
@@ -719,12 +779,21 @@ export default function ReviewDashboard() {
                     </details>
                   )}
                   <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {progress.wandbRun?.url && (
+                      <a href={progress.wandbRun.url} target="_blank" rel="noreferrer">W&Bで開く</a>
+                    )}
+                    {judgeArtifactLinks.report && (
+                      <a href={judgeArtifactLinks.report} target="_blank" rel="noreferrer">Judgeレポート</a>
+                    )}
+                    {judgeArtifactLinks.relay && (
+                      <a href={judgeArtifactLinks.relay} target="_blank" rel="noreferrer">Relayログ</a>
+                    )}
                     <button type="button" onClick={() => presetOverrideFromCard(item)}>LLM設定をプリセット</button>
                     <button type="button" onClick={() => focusJudgeEvidence(item.questionId)}>証拠ビュー</button>
                   </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
             {hasMoreCards && (
               <button style={{ marginTop: 8 }} onClick={() => setJudgeCardLimit((limit) => limit + 12)}>
                 さらに読み込む ({Math.max(reportData.length - judgeCardLimit, 0)} 件)
@@ -785,6 +854,17 @@ export default function ReviewDashboard() {
                         <td style={{ padding: 6 }}>{item.questionId}</td>
                         <td style={{ padding: 6, fontSize: 12 }}>{item.rationale ?? item.llmRationale ?? 'manual decision'}</td>
                         <td style={{ padding: 6 }}>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 6 }}>
+                            {progress.wandbRun?.url && (
+                              <a href={progress.wandbRun.url} target="_blank" rel="noreferrer">W&Bで開く</a>
+                            )}
+                            {judgeArtifactLinks.report && (
+                              <a href={judgeArtifactLinks.report} target="_blank" rel="noreferrer">Judgeレポート</a>
+                            )}
+                            {judgeArtifactLinks.relay && (
+                              <a href={judgeArtifactLinks.relay} target="_blank" rel="noreferrer">Relayログ</a>
+                            )}
+                          </div>
                           <button onClick={() => handlePrefillRetry(`judge manual follow-up: ${item.questionId}`)}>再実行理由にコピー</button>
                           <button onClick={() => scrollToJudgeCard(item.questionId)}>カードを表示</button>
                           <button onClick={() => presetOverrideFromCard(item)}>LLMプリセット</button>
@@ -813,6 +893,17 @@ export default function ReviewDashboard() {
                         <td style={{ padding: 6 }}>{item.questionId}</td>
                         <td style={{ padding: 6, fontSize: 12 }}>{item.rationale ?? item.llmRationale ?? 'reject decision'}</td>
                         <td style={{ padding: 6 }}>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 6 }}>
+                            {progress.wandbRun?.url && (
+                              <a href={progress.wandbRun.url} target="_blank" rel="noreferrer">W&Bで開く</a>
+                            )}
+                            {judgeArtifactLinks.report && (
+                              <a href={judgeArtifactLinks.report} target="_blank" rel="noreferrer">Judgeレポート</a>
+                            )}
+                            {judgeArtifactLinks.relay && (
+                              <a href={judgeArtifactLinks.relay} target="_blank" rel="noreferrer">Relayログ</a>
+                            )}
+                          </div>
                           <button onClick={() => handlePrefillRetry(`judge reject follow-up: ${item.questionId}`)}>再実行理由にコピー</button>
                           <button onClick={() => scrollToJudgeCard(item.questionId)}>カードを表示</button>
                           <button onClick={() => presetOverrideFromCard(item)}>LLMプリセット</button>
@@ -938,6 +1029,18 @@ export default function ReviewDashboard() {
       .filter((item) => item?.evaluation?.verdict && item.evaluation.verdict !== 'pass')
       .sort((a, b) => ((b?.evaluation?.distance ?? 0) - (a?.evaluation?.distance ?? 0)));
     const topFailing = failingRecords.slice(0, 5);
+    const diffRecords = topFailing.slice(0, 3);
+    const embeddingDistances = reportData
+      .map((item) => {
+        if (typeof item?.embeddingDistance === 'number') {
+          return item.embeddingDistance;
+        }
+        const evaluationDistance = item?.evaluation?.embeddingDistance;
+        return typeof evaluationDistance === 'number' ? evaluationDistance : undefined;
+      })
+      .filter((value): value is number => typeof value === 'number');
+    const embeddingHistogram = buildEmbeddingHistogram(embeddingDistances);
+    const maxEmbeddingCount = embeddingHistogram.reduce((max, bucket) => Math.max(max, bucket.count), 0);
     return (
       <section style={{ display: 'grid', gap: 12 }}>
         <h3 style={{ margin: 0 }}>Functional Accuracy 統計</h3>
@@ -1051,6 +1154,57 @@ export default function ReviewDashboard() {
                 </div>
               ))}
             </div>
+          </div>
+        )}
+        {diffRecords.length > 0 && (
+          <div>
+            <div style={{ fontWeight: 600, marginBottom: 4 }}>RAGTruth差分ビュー</div>
+            {diffRecords.map((item, index) => {
+              const embeddingDistance = typeof item.embeddingDistance === 'number'
+                ? item.embeddingDistance
+                : typeof item?.evaluation?.embeddingDistance === 'number'
+                  ? item.evaluation.embeddingDistance
+                  : undefined;
+              return (
+                <div key={`ragtruth-diff-${item.scenarioId ?? index}`} style={{ border: '1px solid #d0d7de', borderRadius: 8, padding: 8, marginBottom: 8 }}>
+                  <div style={{ fontWeight: 600 }}>{item.scenarioId ?? `scenario-${index + 1}`} ({item.evaluation?.verdict ?? 'needs_review'})</div>
+                  <div style={{ fontSize: 12, color: '#57606a' }}>
+                    距離: {item.evaluation?.distance ?? '-'} / Embedding: {typeof embeddingDistance === 'number' ? embeddingDistance.toFixed(3) : '-'} / しきい値: {item.evaluation?.threshold ?? '-'}
+                  </div>
+                  <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', marginTop: 8 }}>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 12 }}>RAGTruth</div>
+                      <pre style={{ whiteSpace: 'pre-wrap', background: '#f6f8fa', padding: 8, borderRadius: 6, minHeight: 60 }}>{item.expected ?? '(データなし)'}</pre>
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 12 }}>エージェント応答</div>
+                      <pre style={{ whiteSpace: 'pre-wrap', background: '#fff5f5', padding: 8, borderRadius: 6, minHeight: 60 }}>{item.response ?? item.output ?? '(empty)'}</pre>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {embeddingHistogram.length > 0 && (
+          <div style={{ border: '1px solid #d0d7de', borderRadius: 8, padding: 12 }}>
+            <div style={{ fontWeight: 600, marginBottom: 6 }}>Embedding距離ヒストグラム</div>
+            {embeddingHistogram.map((bucket) => (
+              <div key={bucket.label} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <div style={{ width: 110, fontSize: 12 }}>{bucket.label}</div>
+                <div style={{ flex: 1, background: '#eaeef2', borderRadius: 6, height: 8 }}>
+                  <div
+                    style={{
+                      width: `${maxEmbeddingCount ? Math.max((bucket.count / maxEmbeddingCount) * 100, 5) : 0}%`,
+                      background: '#218bff',
+                      borderRadius: 6,
+                      height: '100%'
+                    }}
+                  />
+                </div>
+                <div style={{ minWidth: 32, textAlign: 'right', fontSize: 12 }}>{bucket.count}</div>
+              </div>
+            ))}
           </div>
         )}
       </section>

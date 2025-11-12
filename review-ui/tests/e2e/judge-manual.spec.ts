@@ -4,6 +4,7 @@ import ledgerEntries from '../fixtures/ledger-summary.json';
 import events from '../fixtures/events.json';
 import judgeReport from '../fixtures/judge-report.json';
 import judgeRelay from '../fixtures/judge-relay.json';
+import functionalReport from '../fixtures/functional-report.json';
 
 const submissionId = 'demo';
 
@@ -26,13 +27,26 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/review/artifacts/**', async (route) => {
     const url = new URL(route.request().url());
     const type = url.searchParams.get('type');
-    if (type === 'report') {
-      await route.fulfill(jsonResponse(judgeReport));
-      return;
+    const stage = url.searchParams.get('stage');
+    if (stage === 'judge') {
+      if (type === 'report') {
+        await route.fulfill(jsonResponse(judgeReport));
+        return;
+      }
+      if (type === 'relay') {
+        await route.fulfill(jsonResponse(judgeRelay));
+        return;
+      }
     }
-    if (type === 'relay') {
-      await route.fulfill(jsonResponse(judgeRelay));
-      return;
+    if (stage === 'functional') {
+      if (type === 'report') {
+        await route.fulfill(jsonResponse(functionalReport));
+        return;
+      }
+      if (type === 'summary') {
+        await route.fulfill(jsonResponse(progress.stages.functional.details.summary));
+        return;
+      }
     }
     await route.fulfill(jsonResponse({}));
   });
@@ -56,6 +70,17 @@ const loadJudgeArtifacts = async (page: any) => {
   const typeSelect = evidenceSection.locator('label:has-text("種別") select').first();
   await typeSelect.selectOption('report');
   const responsePromise = page.waitForResponse((res: any) => res.url().includes('type=report') && res.status() === 200);
+  await evidenceSection.getByRole('button', { name: 'APIから再取得' }).click();
+  await responsePromise;
+};
+
+const loadFunctionalArtifacts = async (page: any) => {
+  const evidenceSection = page.locator('section').filter({ has: page.locator('h2', { hasText: '証拠ビューア' }) }).first();
+  const stageSelect = evidenceSection.locator('label:has-text("ステージ") select').first();
+  await stageSelect.selectOption({ label: 'Functional Accuracy' });
+  const typeSelect = evidenceSection.locator('label:has-text("種別") select').first();
+  await typeSelect.selectOption('report');
+  const responsePromise = page.waitForResponse((res: any) => res.url().includes('stage=functional') && res.url().includes('type=report') && res.status() === 200);
   await evidenceSection.getByRole('button', { name: 'APIから再取得' }).click();
   await responsePromise;
 };
@@ -95,4 +120,35 @@ test('manual card controls open artifacts and highlight card', async ({ page }) 
 
   await page.getByRole('button', { name: '証拠ビューを開く' }).click();
   await expect(page.getByText('質問別LLM判定カード')).toBeVisible();
+});
+
+test('judge cards expose W&BおよびArtifactsディープリンク', async ({ page }) => {
+  await page.goto('/');
+  await page.fill('label:has-text("Submission ID") >> input', submissionId);
+  const progressResponse = waitForProgress(page);
+  await page.getByRole('button', { name: '最新の進捗を取得' }).click();
+  await progressResponse;
+  await loadJudgeArtifacts(page);
+
+  const wandbLink = page.getByRole('link', { name: 'W&Bで開く' }).first();
+  await expect(wandbLink).toHaveAttribute('href', progress.wandbRun.url);
+
+  const reportLink = page.getByRole('link', { name: 'Judgeレポート' }).first();
+  await expect(reportLink).toHaveAttribute('href', /stage=judge/);
+
+  const relayLink = page.getByRole('link', { name: 'Relayログ' }).first();
+  await expect(relayLink).toHaveAttribute('href', /type=relay/);
+});
+
+test('functional diffビューとEmbeddingヒストグラムを表示する', async ({ page }) => {
+  await page.goto('/');
+  await page.fill('label:has-text("Submission ID") >> input', submissionId);
+  const progressResponse = waitForProgress(page);
+  await page.getByRole('button', { name: '最新の進捗を取得' }).click();
+  await progressResponse;
+  await loadFunctionalArtifacts(page);
+
+  await expect(page.getByText('RAGTruth差分ビュー')).toBeVisible();
+  await expect(page.getByText('Embedding距離ヒストグラム')).toBeVisible();
+  await expect(page.getByText('0.10〜0.25')).toBeVisible();
 });

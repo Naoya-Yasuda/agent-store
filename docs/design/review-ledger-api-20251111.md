@@ -54,6 +54,7 @@
 - `entryPath` がHTTP/HTTPSならそのままブラウザ遷移可能。ローカルファイルパスの場合はCLIやSFTPで参照する。
 - `sourceFile` はリポジトリ相対パス。`/review/ledger/download` はこのファイルをStreamingして返す。
 - `digest` は `auditLedger.publishToLedger` が出力するSHA-256。UI/W&B/MCPツールはこれを基準に改ざん検知を行う。
+- 2025-11-12 現在、レスポンスにはリモートLedgerのヘルスチェック結果（`remoteStatusCode`, `remoteLatencyMs`, `remoteReachable`, `remoteError`）も含まれる。UIカードやW&BイベントでLedger APIの可用性を即時に把握できる。
 
 ## 3. LedgerダウンロードAPI (`GET /review/ledger/download`)
 
@@ -63,8 +64,8 @@
 | `stage` | `security` / `functional` / `judge` / `human` などLedgerを持つステージ。|
 
 - レスポンス成功時: `Content-Type: application/json; charset=utf-8`、`Content-Disposition: attachment; filename=<stage>-ledger.json`、`X-Ledger-Source: <repo-relative-path>` を付与し、ローカルLedgerファイルをストリーミング返却。`X-Ledger-Fallback: true` が付く場合は、`ledger.entryPath` が欠損していたため `sourceFile`（Sandbox Artifacts 配下の `*_ledger_entry.json`）から復元したことを示す。
-- Ledgerファイルが存在しない/削除済みの場合は `404 { error: 'ledger_file_not_found', submissionId, stage, sourceFile }` を返す。`sourceFile` で期待パスを伝え、再取得 or Ledger復元手順へ誘導できる。
-- `entryPath` がHTTP/HTTPSの場合はローカルダウンロードは行わず、`/review/ledger` 側で直接URLを返す運用とする。
+- Ledgerファイルが存在しない/削除済みの場合でも、`entryPath` がHTTP/HTTPSであれば `/review/ledger/download` がリモートをフェッチしてローカルにキャッシュする。取得できなかった場合は `missingReason: 'remote_unreachable'`、`remoteStatusCode`、`remoteError` を返してUIに通知する。
+- リモートフェッチに成功した場合は `X-Ledger-Remote: true`、`X-Ledger-Remote-Source`、`X-Ledger-Remote-Status`、`X-Ledger-Remote-Fetched-At` をヘッダーで返し、UI/CLIがキャッシュの経路を把握できる。ローカルFallbackを使った場合は従来どおり `X-Ledger-Fallback: true` を付与する。
 
 ## 3. 利用フロー
 1. Reviewerは `/review/progress/:id` でAgent ID・LLM設定・ステージ状況を確認。
