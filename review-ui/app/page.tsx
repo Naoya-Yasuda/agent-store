@@ -115,6 +115,15 @@ const stageLabels: Record<StageName, string> = {
   publish: 'Publish'
 };
 
+const stageIcons: Record<StageName, string> = {
+  precheck: '🧾',
+  security: '🛡️',
+  functional: '🧪',
+  judge: '⚖️',
+  human: '🙋',
+  publish: '🚀'
+};
+
 const evidenceStageOptions: { stage: StageName; artifacts: string[] }[] = [
   { stage: 'security', artifacts: ['summary', 'report', 'metadata', 'prompts'] },
   { stage: 'functional', artifacts: ['summary', 'report'] },
@@ -153,6 +162,9 @@ export default function ReviewDashboard() {
   const [judgeCardLimit, setJudgeCardLimit] = useState(12);
   const [showRelayErrorsOnly, setShowRelayErrorsOnly] = useState(false);
   const manualSectionRef = useRef<HTMLDivElement | null>(null);
+  const judgeCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const [focusedJudgeQuestion, setFocusedJudgeQuestion] = useState<string | null>(null);
+  const artifactSectionRef = useRef<HTMLDivElement | null>(null);
 
   const llmOverrideResult = useMemo<LlmOverrideResult>(() => {
     if (!llmOverrideEnabled) {
@@ -463,7 +475,7 @@ export default function ReviewDashboard() {
     const artifactState = artifactStates[cacheKey];
 
     return (
-      <div style={{ border: '1px solid #d0d7de', borderRadius: 8, padding: 16 }}>
+      <section ref={artifactSectionRef} style={{ border: '1px solid #d0d7de', borderRadius: 8, padding: 16 }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
           <button
             onClick={() => loadArtifact(descriptor, cacheKey)}
@@ -489,7 +501,7 @@ export default function ReviewDashboard() {
         ) : (
           <p>アーティファクトがまだ取得されていません。</p>
         )}
-      </div>
+      </section>
     );
   };
 
@@ -510,6 +522,14 @@ export default function ReviewDashboard() {
     const relayErrorCount = relayData.filter((item) => item?.error).length;
     const displayedReport = reportData.slice(0, Math.min(judgeCardLimit, reportData.length));
     const hasMoreCards = reportData.length > judgeCardLimit;
+    const scrollToJudgeCard = (questionId?: string) => {
+      if (!questionId) return;
+      setFocusedJudgeQuestion(questionId);
+      setTimeout(() => {
+        const target = judgeCardRefs.current[questionId];
+        target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 50);
+    };
     const llmOverrideHistory = stageEvents.filter((evt) => evt.stage === 'judge' && evt.event === 'llm_override_received');
     const manualRecords = reportData.filter((item) => item.verdict === 'manual');
     const rejectedRecords = reportData.filter((item) => item.verdict === 'reject');
@@ -526,6 +546,23 @@ export default function ReviewDashboard() {
     const jumpToManualList = () => {
       manualSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
+    const scrollToJudgeCard = (questionId?: string) => {
+      if (!questionId) return;
+      setFocusedJudgeQuestion(questionId);
+      setTimeout(() => {
+        const target = judgeCardRefs.current[questionId];
+        target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 50);
+    };
+    const focusJudgeEvidence = (questionId?: string) => {
+      setSelectedEvidenceStage('judge');
+      setSelectedArtifactType('report');
+      setRelaySearchTerm(questionId ?? '');
+      setShowRelayErrorsOnly(false);
+      setTimeout(() => {
+        artifactSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 60);
+    };
 
     return (
       <section style={{ display: 'grid', gap: 12 }}>
@@ -541,7 +578,13 @@ export default function ReviewDashboard() {
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button type="button" onClick={() => handlePrefillRetry(`judge manual follow-up: ${primaryManualId ?? 'manual review'}`)}>再実行フォームに理由をコピー</button>
               <button type="button" onClick={() => handleManualRetry(primaryManualId)}>LLM設定を見直して再実行</button>
-              {manualRecords.length > 0 && <button type="button" onClick={jumpToManualList}>該当カードへ移動</button>}
+              {manualRecords.length > 0 && (
+                <>
+                  <button type="button" onClick={jumpToManualList}>manual一覧へ移動</button>
+                  <button type="button" onClick={() => scrollToJudgeCard(primaryManualId)}>該当カードへ移動</button>
+                  <button type="button" onClick={() => focusJudgeEvidence(primaryManualId)}>証拠ビューを開く</button>
+                </>
+              )}
             </div>
           </div>
         )}
@@ -571,11 +614,34 @@ export default function ReviewDashboard() {
                   {displayedReport.map((item) => (
                     <div
                       key={item.questionId}
+                      ref={(node) => {
+                        if (node) {
+                          judgeCardRefs.current[item.questionId] = node;
+                        } else {
+                          delete judgeCardRefs.current[item.questionId];
+                        }
+                      }}
                       style={{
-                        border: `1px solid ${item.verdict === 'manual' ? '#bf8700' : item.verdict === 'reject' ? '#d1242f' : '#d0d7de'}`,
+                        border: `2px solid ${
+                          focusedJudgeQuestion === item.questionId
+                            ? '#0969da'
+                            : item.verdict === 'manual'
+                              ? '#bf8700'
+                              : item.verdict === 'reject'
+                                ? '#d1242f'
+                                : '#d0d7de'
+                        }`,
                         borderRadius: 10,
                         padding: 12,
-                        background: item.verdict === 'manual' ? '#fff8e7' : item.verdict === 'reject' ? '#fff5f5' : '#fff'
+                        background: focusedJudgeQuestion === item.questionId
+                          ? '#e7f1ff'
+                          : item.verdict === 'manual'
+                            ? '#fff8e7'
+                            : item.verdict === 'reject'
+                              ? '#fff5f5'
+                              : '#fff',
+                        boxShadow: focusedJudgeQuestion === item.questionId ? '0 0 0 3px rgba(9,105,218,0.2)' : 'none',
+                        transition: 'box-shadow 0.2s ease'
                       }}
                     >
                       <div style={{ fontWeight: 600 }}>{item.questionId}</div>
@@ -654,6 +720,8 @@ export default function ReviewDashboard() {
                         <td style={{ padding: 6, fontSize: 12 }}>{item.rationale ?? item.llmRationale ?? 'manual decision'}</td>
                         <td style={{ padding: 6 }}>
                           <button onClick={() => handlePrefillRetry(`judge manual follow-up: ${item.questionId}`)}>再実行理由にコピー</button>
+                          <button onClick={() => scrollToJudgeCard(item.questionId)}>カードを表示</button>
+                          <button onClick={() => focusJudgeEvidence(item.questionId)}>証拠ビュー</button>
                         </td>
                       </tr>
                     ))}
@@ -679,6 +747,8 @@ export default function ReviewDashboard() {
                         <td style={{ padding: 6, fontSize: 12 }}>{item.rationale ?? item.llmRationale ?? 'reject decision'}</td>
                         <td style={{ padding: 6 }}>
                           <button onClick={() => handlePrefillRetry(`judge reject follow-up: ${item.questionId}`)}>再実行理由にコピー</button>
+                          <button onClick={() => scrollToJudgeCard(item.questionId)}>カードを表示</button>
+                          <button onClick={() => focusJudgeEvidence(item.questionId)}>証拠ビュー</button>
                         </td>
                       </tr>
                     ))}
@@ -869,6 +939,13 @@ export default function ReviewDashboard() {
       default:
         return '#57606a';
     }
+  };
+
+  const statusTooltip: Record<string, string> = {
+    completed: '完了済み',
+    failed: '失敗 (要対応)',
+    running: '実行中',
+    pending: '未着手'
   };
 
   const severityStyles: Record<'info' | 'warn' | 'error', { color: string; background: string }> = {
@@ -1190,10 +1267,17 @@ export default function ReviewDashboard() {
               {stageOrder.map((stage) => {
                 const info = progress.stages[stage];
                 const warnings = info?.warnings ?? progress.warnings?.[stage] ?? [];
+                const status = info?.status ?? 'pending';
+                const tooltip = statusTooltip[status] ?? status;
                 return (
-                  <div key={stage} style={{ border: '1px solid #d0d7de', borderRadius: 8, padding: 12, minWidth: 140 }}>
-                    <div style={{ fontWeight: 600 }}>{stageLabels[stage]}</div>
-                    <div style={{ color: statusColor(info?.status ?? 'pending') }}>{info?.status ?? 'pending'}</div>
+                  <div key={stage} style={{ border: '1px solid #d0d7de', borderRadius: 8, padding: 12, minWidth: 180 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 20 }}>{stageIcons[stage]}</span>
+                      <div style={{ fontWeight: 600 }}>{stageLabels[stage]}</div>
+                    </div>
+                    <div title={tooltip} style={{ color: statusColor(status), fontSize: 14, fontWeight: 600, marginTop: 4 }}>
+                      {status}
+                    </div>
                     <div style={{ fontSize: 12, color: '#57606a' }}>Attempts: {info?.attempts ?? 0}</div>
                     {info?.message && <div style={{ fontSize: 12 }}>{info.message}</div>}
                     {warnings.length > 0 && (
