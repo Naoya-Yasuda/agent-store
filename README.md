@@ -169,11 +169,11 @@ Docker Composeを使わずに個別に起動する場合：
     . .venv/bin/activate
     pip install -r requirements.txt
     pip install pytest  # requirementsに含まれないため個別導入
-    python -m pytest
+    PYTHONPATH=./ python -m pytest
     ```
     Trace IDやLLM override連携の挙動は `tests/test_judge_panel.py` / `tests/test_run_eval.py` で検証しています。
     - CIやローカル自動化では `scripts/test_inspect_worker.sh` を呼び出すと仮想環境の作成から `pytest` 実行までを一括で処理できます。
-- Human Review UIは `GET /review/ui/:submissionId` で確認できます。ステージ状況、W&Bダッシュボードリンク、再実行フォーム、承認/差戻しボタンが表示されます（バックエンド: `api/routes/reviews.ts`）。Judge セクションでは `llmScore` / `llmVerdict` のカード表示と Relay JSONL ログの整形プレビュー・検索ボックスを備え、JSONLを取得済みのままステータス/禁止語でフィルタできます。Manual/Reject になった質問IDの一覧と再実行理由プレフィルボタン、LLM override 履歴、RelayトレースIDも同画面で確認でき、再実行フォームにワンクリックで反映可能です。Functional Accuracy セクションでは平均距離・Embedding距離メトリクス、Fail上位シナリオ、応答/期待値の差分を表示し、RAGTruth突合の失敗理由を即座に把握できます。Humanステージには Judge manual 判定を受けた際のバナーと承認メモ/添付一覧が表示され、レビュワーが保留中の理由を即座に把握できます。Judge再実行時はフォームの「LLM設定を上書きする」にチェックを入れることで、`model` / `provider` / `temperature(0〜2)` / `maxOutputTokens(>0整数)` / `dryRun(true|false|inherit)` を指定できます。必須・数値項目はクライアント側でリアルタイム検証され、エラー時は送信ボタンが無効化されます（Next.js側のテスト: `cd review-ui && npm run test` / `tests/judgeOverride.test.ts`、Temporal CLI伝播のテスト: `cd prototype/temporal-review-workflow && npm run test` / `src/__tests__/llmOverride.test.ts`）。Security/Functional/JudgeステージのLedger（監査台帳）はカード化され、`workflowId`/`workflowRunId`/`sourceFile`/`digest`の確認、パスのクリップボードコピー、`/review/ledger/download` 経由のローカルファイル取得ボタンを同じビューで操作できます。Ledgerファイルが欠損していても `sourceFile` をFallbackとして配信し、レスポンスヘッダー `X-Ledger-Fallback: true` で復元経路を示します。また `recordStageEvent` が生成したイベント履歴は `/review/events/:submissionId` 経由で取得され、UI上のタイムラインテーブルでRetry理由やHuman決裁ログを直接参照できます（詳細: [review-ledger-api-20251111.md](docs/design/review-ledger-api-20251111.md)、[judge-panel-human-review-implementation-20251110.md](docs/design/judge-panel-human-review-implementation-20251110.md)、[wandb-run-propagation-20251110.md](docs/design/wandb-run-propagation-20251110.md)）。
+  - Human Review UIは `GET /review/ui/:submissionId` で確認できます。ステージ状況、W&Bダッシュボードリンク、再実行フォーム、承認/差戻しボタンが表示されます（バックエンド: `api/routes/reviews.ts`）。Judge セクションでは `llmScore` / `llmVerdict` のカード表示と Relay JSONL ログの整形プレビュー・検索ボックスを備え、JSONLを取得済みのままステータス/禁止語でフィルタできます。Manual/Reject になった質問IDの一覧と再実行理由プレフィルボタン、LLM override 履歴、RelayトレースIDも同画面で確認でき、再実行フォームにワンクリックで反映可能です。Functional Accuracy セクションでは平均距離・Embedding距離メトリクス、Fail上位シナリオ、応答/期待値の差分に加えて、`ragtruthRecords` 件数と `ragTruthArtifact`/`promptsArtifact` のパスをカード表示し、ワンクリックでJSONLダウンロードやパスコピーができます。Humanステージには Judge manual 判定を受けた際のバナーと承認メモ/添付一覧が表示され、レビュワーが保留中の理由を即座に把握できます。Judge再実行時はフォームの「LLM設定を上書きする」にチェックを入れることで、`model` / `provider` / `temperature(0〜2)` / `maxOutputTokens(>0整数)` / `dryRun(true|false|inherit)` を指定できます。必須・数値項目はクライアント側でリアルタイム検証され、エラー時は送信ボタンが無効化されます（Next.js側のテスト: `cd review-ui && npm run test` / `tests/judgeOverride.test.ts`、Temporal CLI伝播のテスト: `cd prototype/temporal-review-workflow && npm run test` / `src/__tests__/llmOverride.test.ts`）。Security/Functional/JudgeステージのLedger（監査台帳）はカード化され、`workflowId`/`workflowRunId`/`sourceFile`/`digest`の確認、パスのクリップボードコピー、`/review/ledger/download` 経由のローカルファイル取得ボタンを同じビューで操作できます。Ledgerファイルが欠損していても `sourceFile` をFallbackとして配信し、レスポンスヘッダー `X-Ledger-Fallback: true` で復元経路を示します。また `recordStageEvent` が生成したイベント履歴は `/review/events/:submissionId` 経由で取得され、UI上のタイムラインテーブルでRetry理由やHuman決裁ログを直接参照できます（詳細: [review-ledger-api-20251111.md](docs/design/review-ledger-api-20251111.md)、[judge-panel-human-review-implementation-20251110.md](docs/design/judge-panel-human-review-implementation-20251110.md)、[wandb-run-propagation-20251110.md](docs/design/wandb-run-propagation-20251110.md)）。
   - Manual判定が出た際はJudgeバナーに「再実行フォームへプリセット」「証拠ビュー」ボタンが表示され、該当質問のJudgeカードやArtifactビューへスクロールできます。今後のアップデートでLLM overrideの過去設定をカードから直接復元する予定です。
   - LedgerカードにはHTTP送信ステータス（成功/失敗/試行回数/エラーメッセージ）が表示され、Ledger APIがダウンしてもHuman Review UIから即座に判別できます。`JUDGE_LEDGER_*` や `FUNCTIONAL_LEDGER_*` のHTTP送信が失敗した場合でもワークフロー自体は継続し、UI上に「HTTP送信: 失敗」ラベルとエラー内容が提示されます。
   - Ledgerカードは `/review/ledger/download` の現在の可用性もリアルタイムでチェックし、ローカルファイルが削除/移動されていれば「ダウンロード: 不可」と赤枠で通知、Fallback経路が使われている場合はその旨を表示します。ダウンロードリンクは自動的に `/review/ledger/download?submissionId=<id>&stage=<stage>` に張り替えられるため、UIから直接再取得できます。
@@ -187,6 +187,7 @@ Docker Composeを使わずに個別に起動する場合：
 - **Inspect Worker Tests**: `scripts/test_inspect_worker.sh` をGitHub Actionsで実行し、Judge Panel/Relayロジックのpytestを常に走らせます（`WANDB_DISABLED=true`でネットワーク資格情報が不要なDry Run相当の検証）。
 - **Review UI (Next.js) テスト**: `cd review-ui && npm run test` でVitest＋Testing Libraryによるフォーム・バリデーションを実行。Judge manualフローのE2E検証に向けてPlaywright導入を予定しており、`npx playwright test` で `/review/progress` のモックレスポンスを用いたUI自動テストを実行する計画です。
 - Playwright E2Eテストのシナリオとセットアップ手順は [docs/testing/review-ui-playwright-plan.md](docs/testing/review-ui-playwright-plan.md) を参照してください。
+- **Review UI Playwright (CI)**: `.github/workflows/review-ui-playwright.yml` が `npm run test -- --run`（Vitest）と `npm run test:e2e`（Playwright）をPRごとに実行し、Judge Panelのmanualフローが退行していないかを自動検証します。
 
 ### APIセキュリティ指針
 
@@ -217,17 +218,17 @@ Docker Composeを使わずに個別に起動する場合：
 | Functional DSL + RAGTruth突合 | ✅ 実装済み | AgentCardシナリオ生成 → Relay実行 → RAGTruth照合に加え、Embedding距離メトリクスとLedger（`functional_ledger_entry.json`）を生成し、Temporal/UI/W&Bへ返却。 |
 | Judge Panel (MCTS-Judge) | 🚧 部分実装 | Inspect Worker CLIでRelayログ＋MCTS評価＋LLM判定を実行し、Ledger（summary/report/relayハッシュ）、LLM override履歴イベント、Trace ID付きJudgeカード/Relayログ表示をHuman Review UIへ供給済み。Ledgerアップロード失敗や再実行Mrnに応じた `warnings` がTemporal／API／Next.jsに伝播するようになった。残課題: manual判定時のUIフロー仕上げ、Judge verdictのW&Bスクリーンショット連携、CIでのinspect-worker統合テスト強化（詳細: [judge-panel-human-review-implementation-20251110.md](docs/design/judge-panel-human-review-implementation-20251110.md)）。 |
 | Human Review UI連携 | ✅ 実装済み | `/review/*` RESTとNext.jsダッシュボードを実装。証拠JSON整形表示・再実行・承認/差戻しが可能。 |
-| W&B MCPトレース連携 | ✅ 実装済み | Security/Functional/Judge/Human各ステージのサマリ・Ledger・LLM設定を `metadata.json` / `wandbMcp.stages` に集約し、`/review/ledger` とW&B Runの両方からリプレイできる。 |
+| W&B MCPトレース連携 | ✅ 実装済み | Security/Functional/Judge/Human各ステージのサマリ・Ledger・LLM設定を `metadata.json` / `wandbMcp.stages` に集約し、`/review/ledger` とW&B Runの両方からリプレイできる。Judge PanelはW&B Configへ LLM override情報・Relay指標（manual/reject/relay error ratio 等）を自動書き込み、Dashboard単体で審査履歴とトラブル箇所を把握できる。 |
 
 > ※実装や設計の更新を行った際は、必ず本READMEのステータステーブルと該当セクションを更新してください。
 
 ## 今後の優先タスク
 1. **Judge Panel仕上げ**: Inspect WorkerのMCTS-Judge結果をUIに完全表示し、manual 判定時の再実行ワークフローを最後まで仕上げる。
-   - 直近の `llm_override_received` イベントやJudgeカードの `llm*` フィールドから LLM override フォームを自動プリセットし、複数履歴がある場合は選択できるようにする（UI側は実装済み、Inspect Worker→W&B/Artifactsの隙間を埋める）。
+   - LLM overrideのW&B Config反映と `llm_override_applied` イベント送出は完了。次は W&B Run ↔ Human Review UI のリンク（スクリーンショット/Artifacts deeplink）をカードへ追加する。
    - Manual判定→LLM override→Human承認の一連フローをPlaywrightでE2E検証し、`review-ui-playwright` GitHub Actions で常時走るようにする。
    - Judgeカードに W&B スクリーンショット／Artifactsリンクの埋め込みを追加する（詳細: [docs/design/judge-panel-human-review-implementation-20251110.md](docs/design/judge-panel-human-review-implementation-20251110.md)）。
 2. **Ledger耐障害性の強化（残タスク）**: `/review/ledger/download` の詳細エラーコードは実装済み。今後は自動再送制御や外部Ledger APIのヘルスチェックを追加し、[security-gate-ledger-plan.md](docs/design/security-gate-ledger-plan.md) の運用指針を拡張する。
-3. **FunctionalリプレイUI**: Functional AccuracyステージのEmbedding距離やRAGTruth照合結果をHuman Review UIで比較表示し、Functional Ledgerと同期した差分ビューを提供する。
+3. **FunctionalリプレイUI**: `ragtruthRecords` カードとパスコピー/ダウンロード導線は追加済み。次は差分ビュー（回答 vs RAGTruth）やEmbedding距離ヒストグラム、RAGTruth JSONL検索をHuman Review UIへ実装する。
 4. **Inspect Workerトレーサビリティ**: Judge Panel CLIがW&BタイムラインやイベントAPIと整合するよう、LLM呼び出し/RelayリトライのトレースIDをArtifacts・Ledgerへ書き込み、UIで辿れるようにする。
 
 ## ドキュメント

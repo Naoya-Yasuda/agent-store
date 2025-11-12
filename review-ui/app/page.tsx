@@ -929,6 +929,10 @@ export default function ReviewDashboard() {
     const functionalDetails = progress.stages.functional?.details;
     const metrics = (functionalDetails?.metrics as Record<string, number>) ?? {};
     const summary = (functionalDetails?.summary as Record<string, any>) ?? {};
+    const ledger = functionalDetails?.ledger as Record<string, any> | undefined;
+    const ragTruthCount = summary.ragtruthRecords ?? summary.ragTruthRecords ?? summary.ragtruth_count;
+    const ragTruthArtifact = summary.ragTruthArtifact ?? summary.ragtruthArtifact ?? summary.promptsArtifact;
+    const ragTruthNotes = summary.ragTruthNotes ?? summary.ragtruthNotes;
     const reportData = (artifactStates['functional:report']?.data as any[]) ?? [];
     const failingRecords = reportData
       .filter((item) => item?.evaluation?.verdict && item.evaluation.verdict !== 'pass')
@@ -947,6 +951,57 @@ export default function ReviewDashboard() {
             <div>Embedding Avg: {typeof metrics.embeddingAverageDistance === 'number' ? metrics.embeddingAverageDistance.toFixed(3) : '-'}</div>
             <div>Embedding Max: {typeof metrics.embeddingMaxDistance === 'number' ? metrics.embeddingMaxDistance.toFixed(3) : '-'}</div>
           </div>
+          {ledger && (
+            <div style={{ border: '1px solid #d0d7de', borderRadius: 8, padding: 12, minWidth: 260 }}>
+              <div style={{ fontWeight: 600, marginBottom: 4 }}>Functional Ledger</div>
+              <div>Entry: {ledger.entryPath ? <code style={{ fontSize: 12 }}>{ledger.entryPath}</code> : 'N/A'}</div>
+              <div>Digest: {ledger.digest ? <code style={{ fontSize: 12 }}>{ledger.digest}</code> : 'N/A'}</div>
+              {ledger.sourceFile && (
+                <div style={{ marginTop: 4 }}>Source: <code style={{ fontSize: 12 }}>{ledger.sourceFile}</code></div>
+              )}
+              <div style={{ fontSize: 12, color: '#57606a' }}>HTTP送信: {ledger.httpPosted === false ? `失敗${ledger.httpError ? ` (${ledger.httpError})` : ''}` : ledger.httpPosted ? '成功' : '未設定'}</div>
+              <div style={{ marginTop: 6, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <a
+                  href={`/review/ledger/download?submissionId=${submissionId}&stage=functional`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  ダウンロード
+                </a>
+                {ledger.sourceFile && (
+                  <button type="button" onClick={() => copyLedgerPath('functional', ledger.sourceFile)}>
+                    パスをコピー
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+          {(ragTruthArtifact || typeof ragTruthCount === 'number') && (
+            <div style={{ border: '1px solid #d0d7de', borderRadius: 8, padding: 12, minWidth: 240 }}>
+              <div style={{ fontWeight: 600, marginBottom: 4 }}>RAGTruth 参照</div>
+              <div>レコード数: {typeof ragTruthCount === 'number' ? ragTruthCount : 'N/A'}</div>
+              {ragTruthNotes && <div style={{ fontSize: 12, color: '#57606a' }}>{ragTruthNotes}</div>}
+              {ragTruthArtifact && (
+                <>
+                  <div style={{ marginTop: 4 }}>Artifact: <code style={{ fontSize: 12 }}>{ragTruthArtifact}</code></div>
+                  <div style={{ marginTop: 6, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {progress?.agentRevisionId && (
+                      <a
+                        href={`/review/artifacts/${progress.agentRevisionId}?stage=functional&type=prompts`}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        JSONLを開く
+                      </a>
+                    )}
+                    <button type="button" onClick={() => copyLedgerPath('functional', ragTruthArtifact)}>
+                      パスをコピー
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
           <div style={{ border: '1px solid #d0d7de', borderRadius: 8, padding: 12, minWidth: 240 }}>
             <div style={{ fontWeight: 600, marginBottom: 4 }}>Failしたシナリオ上位</div>
             {topFailing.length === 0 ? (
@@ -983,6 +1038,12 @@ export default function ReviewDashboard() {
                   <div style={{ fontSize: 12, color: '#57606a' }}>距離: {item.evaluation?.distance} / しきい値: {item.evaluation?.threshold}</div>
                   {item.responseStatus && <div style={{ fontSize: 12 }}>status: {item.responseStatus}</div>}
                   {item.responseError && <div style={{ fontSize: 12, color: '#d1242f' }}>{item.responseError}</div>}
+                  {item.expected && (
+                    <details style={{ marginTop: 6 }}>
+                      <summary>期待値</summary>
+                      <pre style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{item.expected}</pre>
+                    </details>
+                  )}
                   <details style={{ marginTop: 6 }}>
                     <summary>回答</summary>
                     <pre style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{item.response ?? '(empty)'}</pre>

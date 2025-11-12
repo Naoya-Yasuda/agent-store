@@ -59,6 +59,7 @@ dist/
 build/
 *.tgz
 *.tar.gz
+review-ui/.next/
 
 # データベース
 *.db

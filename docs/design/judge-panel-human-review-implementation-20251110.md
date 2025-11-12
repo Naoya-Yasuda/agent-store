@@ -71,6 +71,7 @@
    - カードの `LLM override` 情報（model/provider/temperature等）を `useState` にコピーし、`setRetryLlmProvider` などを更新。
    - ボタン押下時に `setLlmOverrideEnabled(true)` とスクロールを行い、Human reviewer がミスなく設定を復元できるようにする。
    - ドキュメント（README / この設計書）に操作手順を追記し、LLM overrideを引き継いだ再実行作業の推奨ワークフローを明示する。
+   - Inspect Worker 側では `runJudgePanel` 完了時に `llm_override_applied` イベントをTemporalへ送信し、W&Bタイムライン/metadata/ledger三者に同じLLM設定（provider/model/temperature/maxTokens/baseUrl/dryRun）を残す。（2025-11-12 実装）
 2. **Playwright E2Eテスト準備**: Next.js UIの重要フロー（manualバナー → 証拠ビュー → LLM overrideフォーム → `/review/retry` submit）を自動テストするためのPlaywrightシナリオを追加する。準備タスク:
    - `review-ui/playwright.config.ts` を追加し、APIをモックする `msw` または custom fetch stub を用意。
    - サンプルsubmissionIdに対する `mockProgress` / `mockLedger` / `mockEvents` JSONを`tests/fixtures`に置く。

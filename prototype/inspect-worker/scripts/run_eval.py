@@ -15,7 +15,7 @@ if str(PACKAGE_ROOT) not in sys.path:
 
 from inspect_worker import MCTSJudgeOrchestrator, dispatch_questions, generate_questions
 from inspect_worker.llm_judge import LLMJudge, LLMJudgeConfig
-from inspect_worker.wandb_logger import WandbConfig, init_wandb, log_artifact, log_metrics
+from inspect_worker.wandb_logger import WandbConfig, init_wandb, log_artifact, log_metrics, update_config
 
 ROOT = Path(__file__).resolve().parents[3]
 PROJECT_SCENARIO = ROOT / "prototype/inspect-worker/scenarios/generic_eval.yaml"
@@ -578,6 +578,26 @@ def _run_judge_panel(
     summary_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
 
     if wandb_config:
+        questions_total = float(summary["questions"] or 0)
+        reject_count = float(summary.get("rejected") or 0)
+        manual_count = float(summary.get("manual") or 0)
+        relay_error_count = float(summary.get("relayErrors") or 0)
+        relay_retry_count = float(summary.get("relayRetries") or 0)
+
+        update_config(wandb_config, {
+            "judge_llm_enabled": 1 if llm_summary.get("enabled") else 0,
+            "judge_llm_provider": llm_summary.get("provider"),
+            "judge_llm_model": llm_summary.get("model"),
+            "judge_llm_temperature": llm_summary.get("temperature"),
+            "judge_llm_max_tokens": llm_summary.get("maxOutputTokens"),
+            "judge_llm_base_url": llm_summary.get("baseUrl"),
+            "judge_llm_dry_run": bool(llm_summary.get("dryRun")),
+            "judge_relay_endpoint": relay_endpoint,
+            "judge_manual_ratio": (manual_count / questions_total) if questions_total else 0,
+            "judge_reject_ratio": (reject_count / questions_total) if questions_total else 0,
+            "judge_relay_error_ratio": (relay_error_count / questions_total) if questions_total else 0,
+            "judge_relay_retry_ratio": (relay_retry_count / questions_total) if questions_total else 0,
+        })
         log_artifact(wandb_config, report_path, name=f"judge-report-{wandb_config.run_id}")
         log_artifact(wandb_config, summary_path, name=f"judge-summary-{wandb_config.run_id}")
         log_artifact(wandb_config, relay_log_path, name=f"judge-relay-{wandb_config.run_id}")
@@ -588,8 +608,15 @@ def _run_judge_panel(
             "judge/rejected": float(summary["rejected"]),
             "judge/flagged": float(summary.get("flagged") or 0),
             "judge/llm_calls": float(llm_summary.get("calls") or 0),
-            "judge/relay_errors": float(summary.get("relayErrors") or 0),
-            "judge/relay_retries": float(summary.get("relayRetries") or 0),
+            "judge/relay_errors": relay_error_count,
+            "judge/relay_retries": relay_retry_count,
+            "judge/llm_enabled": float(1 if llm_summary.get("enabled") else 0),
+            "judge/llm_temperature": float(llm_summary.get("temperature") or 0.0),
+            "judge/llm_max_tokens": float(llm_summary.get("maxOutputTokens") or 0.0),
+            "judge/manual_ratio": (manual_count / questions_total) if questions_total else 0.0,
+            "judge/reject_ratio": (reject_count / questions_total) if questions_total else 0.0,
+            "judge/relay_error_ratio": (relay_error_count / questions_total) if questions_total else 0.0,
+            "judge/relay_retry_ratio": (relay_retry_count / questions_total) if questions_total else 0.0,
         })
     return summary
 

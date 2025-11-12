@@ -67,3 +67,20 @@ def log_metrics(config: WandbConfig, metrics: Dict[str, float]) -> None:
     except ImportError:  # pragma: no cover
         return
     wandb.log(metrics)  # type: ignore[attr-defined]
+
+
+def update_config(config: WandbConfig, values: Dict[str, object]) -> None:
+    if not config.enabled or not values:
+        return
+    try:
+        import wandb  # type: ignore
+    except ImportError:  # pragma: no cover
+        return
+    run = getattr(wandb, "run", None)
+    if run is None:
+        return
+    try:
+        wandb.config.update(values, allow_val_change=True)  # type: ignore[attr-defined]
+    except Exception:
+        # wandb.config may be frozen in some contexts; ignore update failures
+        return
