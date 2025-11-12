@@ -399,32 +399,37 @@ router.get('/review/events/:submissionId', async (req: Request, res: Response) =
 });
 
 router.get('/review/ledger/download', async (req: Request, res: Response) => {
-  const submissionId = req.query.submissionId as string | undefined;
+  const submissionIdRaw = req.query.submissionId as string | undefined;
   const stage = req.query.stage as string | undefined;
-  if (!submissionId || !stage) {
+  if (!submissionIdRaw || !stage) {
     return res.status(400).json({ error: 'missing_params' });
   }
   if (!isStageName(stage)) {
     return res.status(400).json({ error: 'invalid_stage' });
   }
   try {
-    const sanitizedSubmissionId = sanitizeSegment(submissionId, 'submission_id');
+    const sanitizedSubmissionId = sanitizeSegment(submissionIdRaw, 'submission_id');
     const fileHandle = await getLedgerEntryFile(sanitizedSubmissionId, stage as StageName);
     if (!fileHandle) {
       return res.status(404).json({ error: 'ledger_file_not_found', submissionId: sanitizedSubmissionId, stage });
     }
     if (!fileHandle.exists) {
       return res.status(404).json({
-        error: 'ledger_file_not_found',
+        error: fileHandle.missingReason ?? 'ledger_file_not_found',
         submissionId: sanitizedSubmissionId,
         stage,
         sourceFile: fileHandle.relativePath,
-        fallback: fileHandle.fallback ?? false
+        fallback: fileHandle.fallback ?? false,
+        status: fileHandle.status,
+        missingReason: fileHandle.missingReason
       });
     }
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename=${stage}-ledger.json`);
     res.setHeader('X-Ledger-Source', fileHandle.relativePath);
+    if (fileHandle.status) {
+      res.setHeader('X-Ledger-Status', fileHandle.status);
+    }
     if (fileHandle.fallback) {
       res.setHeader('X-Ledger-Fallback', 'true');
     }

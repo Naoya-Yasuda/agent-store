@@ -189,6 +189,7 @@ Docker Composeを使わずに個別に起動する場合：
 
 - `/api/review/*` 系のファイル配信APIは `sanitizeSegment` + `ensureWithinRepo` で `submissionId` / `agentRevisionId` / `agentId` / `stage` を検証し、パストラバーサル（`../` 等によるリポジトリ外アクセス）を防止しています。新しいダウンロード系エンドポイントを追加する際は必ず同じヘルパーを再利用し、Stage名は `StageName` 列挙（`precheck|security|functional|judge|human|publish`）で制限してください。
 - Ledgerファイル取得（`/review/ledger/download`）は `X-Ledger-Source` / `X-Ledger-Fallback` ヘッダーで配信元を可視化します。ファイルが欠損した場合は `fallback: true` のレスポンスで監査ルートを示し、UIやW&BメタデータのLedgerカードで同じ情報が参照できるようにしています。
+- `/review/ledger/download` が404を返す場合は `error=primary_missing` / `fallback_missing` と `status=primary|fallback` を返すので、UIやW&Bイベントは欠損パターンを区別して表示できます。レスポンスヘッダー `X-Ledger-Status` でもどちらのファイルが配信されたか（primary/fallback）を判別可能です。
 - すべてのSubmission/Stage IDはSAFE_SEGMENT (`^[A-Za-z0-9._-]+$`) でホワイトリスト化されるため、外部入力をそのまま `fs` や `spawn` に渡さないでください。Express Routerに新規パラメータが増える場合は `BadRequestError` を投げて400を返す実装に合わせます。
 
 ## W&B MCP 連携

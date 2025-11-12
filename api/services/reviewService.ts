@@ -36,6 +36,8 @@ type LedgerEntry = {
   downloadAvailable?: boolean;
   downloadRelativePath?: string;
   downloadFallback?: boolean;
+  downloadStatus?: 'primary' | 'fallback';
+  downloadMissingReason?: 'primary_missing' | 'fallback_missing';
 };
 
 export type LedgerFileHandle = {
@@ -43,6 +45,8 @@ export type LedgerFileHandle = {
   relativePath: string;
   exists: boolean;
   fallback?: boolean;
+  status?: 'primary' | 'fallback';
+  missingReason?: 'primary_missing' | 'fallback_missing';
 };
 
 export type StageEventRecord = {
@@ -83,6 +87,8 @@ export async function getLedgerSummary(submissionId: string, options?: { progres
         downloadAvailable: downloadHandle?.exists,
         downloadRelativePath: downloadHandle?.relativePath,
         downloadFallback: downloadHandle?.fallback,
+        downloadStatus: downloadHandle?.status,
+        downloadMissingReason: downloadHandle?.missingReason,
         downloadUrl: ledger.entryPath && !isRemotePath(ledger.entryPath)
           ? `/review/ledger/download?submissionId=${submissionId}&stage=${stage}`
           : ledger.entryPath
@@ -108,7 +114,7 @@ export async function getLedgerEntryFile(submissionId: string, stage: StageName,
   const relativePath = path.relative(REPO_ROOT, resolved);
   try {
     await fs.access(resolved);
-    return { absolutePath: resolved, relativePath, exists: true };
+    return { absolutePath: resolved, relativePath, exists: true, status: 'primary' };
   } catch {
     const fallbackResolved = ledger.sourceFile && ledger.sourceFile.startsWith(REPO_ROOT)
       ? ledger.sourceFile
@@ -120,18 +126,21 @@ export async function getLedgerEntryFile(submissionId: string, stage: StageName,
           absolutePath: fallbackResolved,
           relativePath: path.relative(REPO_ROOT, fallbackResolved),
           exists: true,
-          fallback: true
+          fallback: true,
+          status: 'fallback'
         };
       } catch {
         return {
           absolutePath: fallbackResolved,
           relativePath: path.relative(REPO_ROOT, fallbackResolved),
           exists: false,
-          fallback: true
+          fallback: true,
+          status: 'fallback',
+          missingReason: 'fallback_missing'
         };
       }
     }
-    return { absolutePath: resolved, relativePath, exists: false };
+    return { absolutePath: resolved, relativePath, exists: false, status: 'primary', missingReason: 'primary_missing' };
   }
 }
 
