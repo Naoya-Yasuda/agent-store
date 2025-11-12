@@ -190,25 +190,31 @@ router.get('/review/ui/:submissionId', async (req: Request, res: Response) => {
           <h3>Ledger 記録</h3>
           <div class="ledger-grid">
             ${ledgerEntries.map((entry) => {
-              const entryPath = entry.ledger.entryPath;
+              const entryPath = entry.ledger.entryPath ?? '';
               const digest = entry.ledger.digest ? `<code>${escapeHtml(entry.ledger.digest)}</code>` : 'N/A';
+              const isRemote = entryPath.startsWith('http://') || entryPath.startsWith('https://');
               const link = entryPath
-                ? (entryPath.startsWith('http://') || entryPath.startsWith('https://')
+                ? (isRemote
                     ? `<a href="${escapeHtml(entryPath)}" target="_blank" rel="noreferrer">Ledger Link</a>`
                     : `<code>${escapeHtml(entryPath)}</code>`)
                 : 'N/A';
+              const downloadLink = entryPath && !isRemote
+                ? `<div><a href="/review/ledger/download?submissionId=${escapeHtml(submissionId)}&stage=${escapeHtml(entry.stage)}" target="_blank" rel="noreferrer">ダウンロード</a></div>`
+                : '';
               const httpStatus = entry.ledger.httpPosted === true
                 ? `HTTP送信: 成功${entry.ledger.httpAttempts ? ` (${escapeHtml(String(entry.ledger.httpAttempts))}回)` : ''}`
                 : entry.ledger.httpPosted === false
                   ? `HTTP送信: 失敗${entry.ledger.httpAttempts ? ` (${escapeHtml(String(entry.ledger.httpAttempts))}回)` : ''}${entry.ledger.httpError ? `<div class="ledger-card__error">${escapeHtml(entry.ledger.httpError)}</div>` : ''}`
                   : 'HTTP送信: 未設定';
               const source = entry.ledger.sourceFile ? `<div>Source: <code>${escapeHtml(entry.ledger.sourceFile)}</code></div>` : '';
+              const errorClass = entry.ledger.httpPosted === false ? ' ledger-card--error' : '';
               return `
-                <div class="ledger-card">
+                <div class="ledger-card${errorClass}">
                   <div class="ledger-card__title">${escapeHtml(stageLabels[entry.stage as keyof typeof stageLabels] ?? entry.stage)}</div>
                   <div>Entry: ${link}</div>
                   <div>Digest: ${digest}</div>
                   <div>${httpStatus}</div>
+                  ${downloadLink}
                   ${source}
                 </div>`;
             }).join('')}
@@ -240,6 +246,7 @@ router.get('/review/ui/:submissionId', async (req: Request, res: Response) => {
         .relay-item pre{white-space:pre-wrap;background:#0f172a;color:#e2e8f0;padding:8px;border-radius:6px;}
         .ledger-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;}
         .ledger-card{background:#fff;border:1px solid #d0d7de;border-radius:8px;padding:12px;}
+        .ledger-card--error{border-color:#d1242f;background:#fff5f5;}
         .ledger-card__title{font-weight:600;margin-bottom:4px;}
       </style>
       </head><body>

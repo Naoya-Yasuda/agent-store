@@ -227,6 +227,28 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
     };
   }
 
+  function appendStageWarning(stage: StageName, warning: string): void {
+    const warnings = [...(stageProgress[stage].warnings ?? []), warning];
+    updateStage(stage, { warnings });
+  }
+
+  async function handleLedgerStatus(stage: StageName, ledgerInfo?: { ledgerHttpPosted?: boolean; ledgerHttpAttempts?: number; ledgerHttpError?: string }): Promise<void> {
+    if (!ledgerInfo) {
+      return;
+    }
+    if (ledgerInfo.ledgerHttpPosted === false || ledgerInfo.ledgerHttpError) {
+      appendStageWarning(stage, 'Ledger upload failed: check network/endpoint');
+      await emitStageEvent(stage, 'ledger_upload_failed', {
+        attempts: ledgerInfo.ledgerHttpAttempts,
+        error: ledgerInfo.ledgerHttpError
+      });
+    } else if (ledgerInfo.ledgerHttpPosted === true && ledgerInfo.ledgerHttpAttempts && ledgerInfo.ledgerHttpAttempts > 1) {
+      await emitStageEvent(stage, 'ledger_upload_retry_succeeded', {
+        attempts: ledgerInfo.ledgerHttpAttempts
+      });
+    }
+  }
+
   async function runStage<T>(stage: StageName, fn: () => Promise<T>): Promise<T> {
     const attempts = stageProgress[stage].attempts + 1;
     updateStage(stage, { status: 'running', attempts, message: `attempt ${attempts}` });
@@ -391,6 +413,7 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
           : undefined
       }
     });
+    await handleLedgerStatus('security', security);
     if (!security.passed) {
       updateStage('security', { status: 'failed', message: security.failReasons?.join(', ') ?? 'security gate failed' });
       await emitStageEvent('security', 'stage_failed', {
@@ -434,6 +457,7 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
           : undefined
       }
     });
+    await handleLedgerStatus('functional', functional);
     if (!functional.passed) {
       updateStage('functional', { status: 'failed', message: functional.failReasons?.join(', ') ?? 'functional accuracy failed' });
       await emitStageEvent('functional', 'stage_failed', {
@@ -482,6 +506,7 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
           : undefined
       }
     });
+    await handleLedgerStatus('judge', judge);
 
     if (judge.verdict === 'reject') {
       await emitStageEvent('judge', 'verdict_rejected', {
