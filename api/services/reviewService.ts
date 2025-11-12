@@ -73,6 +73,11 @@ export type StageEventRecord = {
   severity?: string;
 };
 
+type StageLedgerInfo = {
+  entryPath?: string;
+  sourceFile?: string;
+};
+
 export async function getLedgerSummary(submissionId: string, options?: { progress?: any }): Promise<LedgerEntry[]> {
   const progress = options?.progress ?? await fetchProgress(submissionId);
   if (!progress) {
@@ -125,7 +130,7 @@ export async function getLedgerEntryFile(submissionId: string, stage: StageName,
   if (!progress) {
     return undefined;
   }
-  const ledger = progress.stages?.[stage]?.details?.ledger;
+  const ledger = progress.stages?.[stage]?.details?.ledger as StageLedgerInfo | undefined;
   const allowRemote = options?.allowRemote ?? false;
   if (!ledger?.entryPath) {
     return undefined;
@@ -173,6 +178,47 @@ export async function getLedgerEntryFile(submissionId: string, stage: StageName,
   }
 }
 
+export async function retryLedgerUpload(submissionId: string, stage: StageName): Promise<{ success: boolean; statusCode?: number }> {
+  const progress = await fetchProgress(submissionId);
+  if (!progress) {
+    throw new Error('workflow_not_found');
+  }
+  const ledger = progress.stages?.[stage]?.details?.ledger as StageLedgerInfo | undefined;
+  if (!ledger) {
+    throw new Error('ledger_not_found');
+  }
+  const env = resolveLedgerEnv(stage);
+  if (!env.httpEndpoint) {
+    throw new Error('ledger_endpoint_missing');
+  }
+  const payloadPath = ledger.entryPath && !isRemotePath(ledger.entryPath)
+    ? ledger.entryPath
+    : ledger.sourceFile && !ledger.sourceFile.startsWith('http')
+      ? ledger.sourceFile
+      : undefined;
+  if (!payloadPath) {
+    throw new Error('ledger_payload_missing');
+  }
+  const resolved = path.resolve(payloadPath);
+  if (!resolved.startsWith(REPO_ROOT)) {
+    throw new Error('ledger_payload_outside_repo');
+  }
+  const raw = await fs.readFile(resolved, 'utf8');
+  const payload = JSON.parse(raw);
+  const response = await fetch(env.httpEndpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(env.httpToken ? { Authorization: `Bearer ${env.httpToken}` } : {})
+    },
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) {
+    throw new Error(`ledger_http_failed_${response.status}`);
+  }
+  return { success: true, statusCode: response.status };
+}
+
 function isRemotePath(entryPath?: string): boolean {
   return !!entryPath && /^https?:\/\//i.test(entryPath);
 }
@@ -186,6 +232,25 @@ function resolveRepoPath(target?: string): string | undefined {
     return undefined;
   }
   return resolved;
+}
+
+function resolveLedgerEnv(stage: StageName): { httpEndpoint?: string; httpToken?: string } {
+  let prefix: string;
+  switch (stage) {
+    case 'functional':
+      prefix = 'FUNCTIONAL';
+      break;
+    case 'judge':
+      prefix = 'JUDGE';
+      break;
+    case 'security':
+    default:
+      prefix = 'SECURITY';
+      break;
+  }
+  const endpoint = process.env[`${prefix}_LEDGER_ENDPOINT`] ?? process.env.SECURITY_LEDGER_ENDPOINT;
+  const token = process.env[`${prefix}_LEDGER_TOKEN`] ?? process.env.SECURITY_LEDGER_TOKEN;
+  return { httpEndpoint: endpoint, httpToken: token };
 }
 
 async function readLedgerMetadata(entryPath?: string): Promise<{ metadata?: Record<string, any>; relativePath?: string }> {

@@ -11,6 +11,7 @@
 | GET | `/review/artifacts/:agentRevisionId?stage=judge&type=relay&agentId=foo` | ステージごとのJSON/JSONLアーティファクトをストリーミング取得。 | HTTPストリーム（`application/json` / `application/jsonl`）|
 | POST | `/review/retry` | `signalRetryStage` を発火し、ステージ再実行を要求。 | `{ status: 'retry_requested' }` |
 | POST | `/review/decision` | `signalHumanDecision` を送信し、人手審査決裁を記録。 | `{ status: 'decision_submitted' }` |
+| POST | `/review/ledger/resend` | Ledger HTTP送信を手動で再実行し、ヘルスチェック結果を返す。 | `{ success: boolean, statusCode?: number }` |
 
 > 参考: HTMLビュー (`/review/ui/:submissionId`) は上記APIをバックエンドで呼び、Ledgerリンク・LLM設定カード・Relayログプレビューをレンダリングする。
 
@@ -66,6 +67,7 @@
 - レスポンス成功時: `Content-Type: application/json; charset=utf-8`、`Content-Disposition: attachment; filename=<stage>-ledger.json`、`X-Ledger-Source: <repo-relative-path>` を付与し、ローカルLedgerファイルをストリーミング返却。`X-Ledger-Fallback: true` が付く場合は、`ledger.entryPath` が欠損していたため `sourceFile`（Sandbox Artifacts 配下の `*_ledger_entry.json`）から復元したことを示す。
 - Ledgerファイルが存在しない/削除済みの場合でも、`entryPath` がHTTP/HTTPSであれば `/review/ledger/download` がリモートをフェッチしてローカルにキャッシュする。取得できなかった場合は `missingReason: 'remote_unreachable'`、`remoteStatusCode`、`remoteError` を返してUIに通知する。
 - リモートフェッチに成功した場合は `X-Ledger-Remote: true`、`X-Ledger-Remote-Source`、`X-Ledger-Remote-Status`、`X-Ledger-Remote-Fetched-At` をヘッダーで返し、UI/CLIがキャッシュの経路を把握できる。ローカルFallbackを使った場合は従来どおり `X-Ledger-Fallback: true` を付与する。
+- HTTP送信が失敗したLedgerは `POST /review/ledger/resend` を叩くことで即座に再送できる。UIではCard上の「HTTP再送」ボタンからこのエンドポイントを呼び出し、成功時は最新の `/review/ledger/:id` を再取得して状態を同期する。
 
 ## 3. 利用フロー
 1. Reviewerは `/review/progress/:id` でAgent ID・LLM設定・ステージ状況を確認。

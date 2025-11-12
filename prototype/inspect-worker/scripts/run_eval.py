@@ -36,6 +36,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--agent-card", help="AgentCard JSON path used for Judge Panel question generation")
     parser.add_argument("--relay-endpoint", help="A2A Relay endpoint for executing judge questions")
     parser.add_argument("--relay-token", help="Bearer token for the A2A Relay endpoint")
+    parser.add_argument("--submission-id", help="Submission identifier used for Human Review deeplink")
     parser.add_argument("--judge-max-questions", type=int, default=int(os.environ.get("JUDGE_MAX_QUESTIONS", 5)))
     parser.add_argument("--judge-timeout", type=float, default=float(os.environ.get("JUDGE_TIMEOUT", 15.0)))
     parser.add_argument(
@@ -577,6 +578,11 @@ def _run_judge_panel(
     summary_path = judge_dir / "judge_summary.json"
     summary_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
 
+    review_ui_base = os.environ.get("HUMAN_REVIEW_BASE_URL") or os.environ.get("REVIEW_UI_BASE_URL")
+    review_ui_url = None
+    if review_ui_base and args.submission_id:
+        review_ui_url = f"{review_ui_base.rstrip('/')}/review/ui/{args.submission_id}"
+
     if wandb_config:
         questions_total = float(summary["questions"] or 0)
         reject_count = float(summary.get("rejected") or 0)
@@ -597,6 +603,9 @@ def _run_judge_panel(
             "judge_reject_ratio": (reject_count / questions_total) if questions_total else 0,
             "judge_relay_error_ratio": (relay_error_count / questions_total) if questions_total else 0,
             "judge_relay_retry_ratio": (relay_retry_count / questions_total) if questions_total else 0,
+            "judge_review_ui_url": review_ui_url,
+            "judge_report_path": str(report_path),
+            "judge_relay_path": str(relay_log_path)
         })
         log_artifact(wandb_config, report_path, name=f"judge-report-{wandb_config.run_id}")
         log_artifact(wandb_config, summary_path, name=f"judge-summary-{wandb_config.run_id}")

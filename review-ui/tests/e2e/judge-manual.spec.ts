@@ -6,6 +6,9 @@ import judgeReport from '../fixtures/judge-report.json';
 import judgeRelay from '../fixtures/judge-relay.json';
 import functionalReport from '../fixtures/functional-report.json';
 
+let lastRetryPayload: any = null;
+let lastDecisionPayload: any = null;
+
 const submissionId = 'demo';
 
 const jsonResponse = (data: unknown) => ({
@@ -15,6 +18,8 @@ const jsonResponse = (data: unknown) => ({
 });
 
 test.beforeEach(async ({ page }) => {
+  lastRetryPayload = null;
+  lastDecisionPayload = null;
   await page.route('**/review/progress/**', async (route) => {
     await route.fulfill(jsonResponse(progress));
   });
@@ -49,6 +54,14 @@ test.beforeEach(async ({ page }) => {
       }
     }
     await route.fulfill(jsonResponse({}));
+  });
+  await page.route('**/review/retry', async (route) => {
+    lastRetryPayload = JSON.parse(route.request().postData() ?? '{}');
+    await route.fulfill(jsonResponse({ status: 'retry_requested' }));
+  });
+  await page.route('**/review/decision', async (route) => {
+    lastDecisionPayload = JSON.parse(route.request().postData() ?? '{}');
+    await route.fulfill(jsonResponse({ status: 'decision_submitted' }));
   });
 });
 
@@ -151,4 +164,33 @@ test('functional diffビューとEmbeddingヒストグラムを表示する', as
   await expect(page.getByText('RAGTruth差分ビュー')).toBeVisible();
   await expect(page.getByText('Embedding距離ヒストグラム')).toBeVisible();
   await expect(page.getByText('0.10〜0.25')).toBeVisible();
+});
+
+test('manualフローでLLM overrideとHuman決裁を送信する', async ({ page }) => {
+  await page.goto('/');
+  await page.fill('label:has-text("Submission ID") >> input', submissionId);
+  const progressResponse = waitForProgress(page);
+  await page.getByRole('button', { name: '最新の進捗を取得' }).click();
+  await progressResponse;
+  await loadJudgeArtifacts(page);
+
+  await page.selectOption('label:has-text("対象ステージ") select', 'judge');
+  await page.getByRole('button', { name: 'LLM設定をプリセット' }).first().click();
+  await expect(page.getByLabel('LLM設定を上書きする')).toBeChecked();
+  await page.fill('label:has-text("理由") >> input', 'judge manual follow-up');
+
+  await page.getByRole('button', { name: '再実行を依頼' }).click();
+  await expect(page.getByText('再実行を依頼しました')).toBeVisible();
+  await expect.poll(() => lastRetryPayload).toMatchObject({
+    stage: 'judge',
+    llmOverride: {
+      provider: 'openai',
+      model: 'gpt-4o-mini'
+    }
+  });
+
+  await page.fill('label:has-text("メモ") >> textarea', 'looks good');
+  await page.getByRole('button', { name: '承認' }).click();
+  await expect(page.getByText('決定を送信しました')).toBeVisible();
+  await expect.poll(() => lastDecisionPayload).toMatchObject({ decision: 'approved' });
 });

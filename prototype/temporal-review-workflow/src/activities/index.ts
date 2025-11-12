@@ -257,7 +257,8 @@ export async function runJudgePanel(args: { submissionId: string; agentId: strin
     '--artifacts', path.join(SANDBOX_ARTIFACTS_DIR, args.agentRevisionId),
     '--manifest', path.join(PROJECT_ROOT, 'prompts', 'aisi', 'manifest.tier3.json'),
     '--enable-judge-panel',
-    '--agent-card', args.agentCardPath ?? path.join(SANDBOX_ARTIFACTS_DIR, args.agentRevisionId, 'agent_card.json')
+    '--agent-card', args.agentCardPath ?? path.join(SANDBOX_ARTIFACTS_DIR, args.agentRevisionId, 'agent_card.json'),
+    '--submission-id', args.submissionId
   ];
   appendWandbCliArgs(inspectArgs, args.wandbRun);
   if (args.relay?.endpoint) {
@@ -620,7 +621,7 @@ export async function recordJudgeLedger(args: {
   }
 }
 
-export async function recordStageEvent(args: { agentRevisionId: string; stage: StageName; event: string; data?: Record<string, unknown>; timestamp?: string; severity?: 'info' | 'warn' | 'error' }): Promise<void> {
+export async function recordStageEvent(args: { agentRevisionId: string; stage: StageName; event: string; data?: Record<string, unknown>; timestamp?: string; severity?: 'info' | 'warn' | 'error'; links?: Record<string, string> }): Promise<void> {
   const occurredAt = args.timestamp ?? new Date().toISOString();
   const eventData = args.data && Object.keys(args.data).length > 0 ? args.data : undefined;
   const payload: Record<string, unknown> = {
@@ -633,15 +634,19 @@ export async function recordStageEvent(args: { agentRevisionId: string; stage: S
   if (eventData) {
     payload.data = eventData;
   }
+  if (args.links) {
+    payload.links = args.links;
+  }
   await upsertStageMetadata(args.agentRevisionId, args.stage, {
     lastEvent: {
       event: args.event,
       timestamp: occurredAt,
-      ...(eventData ? { data: eventData } : {})
+      ...(eventData ? { data: eventData } : {}),
+      ...(args.links ? { links: args.links } : {})
     }
   });
   await appendWandbEvent(args.agentRevisionId, payload);
-  await logWandbStageEvent(args.agentRevisionId, args.stage, args.event, eventData, occurredAt, args.severity ?? 'info');
+  await logWandbStageEvent(args.agentRevisionId, args.stage, args.event, eventData, occurredAt, args.severity ?? 'info', args.links);
 }
 
 export async function recordHumanDecisionMetadata(args: { agentRevisionId: string; decision: 'approved' | 'rejected'; notes?: string; decidedAt?: string }): Promise<void> {
@@ -703,7 +708,7 @@ async function appendWandbEvent(agentRevisionId: string, event: Record<string, u
   }
 }
 
-async function logWandbStageEvent(agentRevisionId: string, stage: StageName, event: string, data: Record<string, unknown> | undefined, timestamp: string, severity: 'info' | 'warn' | 'error'): Promise<void> {
+async function logWandbStageEvent(agentRevisionId: string, stage: StageName, event: string, data: Record<string, unknown> | undefined, timestamp: string, severity: 'info' | 'warn' | 'error', links?: Record<string, string>): Promise<void> {
   try {
     const wandb = await resolveWandbInfo(agentRevisionId);
     if (!wandb?.runId || !wandb?.project || !wandb?.entity) {
@@ -724,6 +729,11 @@ async function logWandbStageEvent(agentRevisionId: string, stage: StageName, eve
         } else {
           payload[metricKey] = JSON.stringify(value);
         }
+      }
+    }
+    if (links) {
+      for (const [key, value] of Object.entries(links)) {
+        payload[`event/${stage}/${event}/link/${key}`] = value;
       }
     }
     await logWandbEvent(wandb, payload);

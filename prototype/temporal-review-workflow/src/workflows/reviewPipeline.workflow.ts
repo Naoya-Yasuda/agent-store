@@ -1,6 +1,9 @@
 import { proxyActivities, setHandler, defineSignal, defineQuery, workflowInfo, condition } from '@temporalio/workflow';
 import { TASK_QUEUE } from '../../temporal.config';
 
+const HUMAN_REVIEW_BASE_URL = normalizeBaseUrl(process.env.HUMAN_REVIEW_BASE_URL ?? process.env.REVIEW_UI_BASE_URL ?? process.env.REVIEW_DASHBOARD_URL ?? process.env.REVIEW_HTML_BASE_URL);
+const REVIEW_API_BASE_URL = normalizeBaseUrl(process.env.REVIEW_API_BASE_URL ?? process.env.REVIEW_BACKEND_BASE_URL ?? HUMAN_REVIEW_BASE_URL);
+
 export type LlmJudgeConfig = {
   enabled?: boolean;
   provider?: string;
@@ -69,7 +72,7 @@ type Activities = {
   runFunctionalAccuracy: (args: { submissionId: string; agentId: string; agentRevisionId: string; workflowId: string; workflowRunId: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string } }) => Promise<FunctionalAccuracyResult>;
   runJudgePanel: (args: { submissionId: string; agentId: string; agentRevisionId: string; promptVersion: string; workflowId: string; workflowRunId: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string }; llmJudge?: LlmJudgeConfig }) => Promise<JudgePanelResult>;
   notifyHumanReview: (args: { submissionId: string; agentId: string; agentRevisionId: string; reason: string; attachments?: string[] }) => Promise<'approved' | 'rejected'>;
-  recordStageEvent: (args: { agentRevisionId: string; stage: StageName; event: string; data?: Record<string, unknown>; timestamp?: string; severity?: 'info' | 'warn' | 'error' }) => Promise<void>;
+  recordStageEvent: (args: { agentRevisionId: string; stage: StageName; event: string; data?: Record<string, unknown>; timestamp?: string; severity?: 'info' | 'warn' | 'error'; links?: Record<string, string> }) => Promise<void>;
   recordHumanDecisionMetadata: (args: { agentRevisionId: string; decision: 'approved' | 'rejected'; notes?: string; decidedAt?: string }) => Promise<void>;
   publishAgent: (args: { submissionId: string; agentId: string; agentRevisionId: string }) => Promise<void>;
 };
@@ -123,6 +126,64 @@ export interface ReviewPipelineInput {
   };
   wandbRun?: WandbRunInfo;
   llmJudge?: LlmJudgeConfig;
+}
+
+function normalizeBaseUrl(value?: string | null): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  return value.endsWith('/') ? value.slice(0, -1) : value;
+}
+
+function buildHumanReviewUrl(submissionId: string): string | undefined {
+  if (!HUMAN_REVIEW_BASE_URL) {
+    return undefined;
+  }
+  return `${HUMAN_REVIEW_BASE_URL}/review/ui/${encodeURIComponent(submissionId)}`;
+}
+
+function buildApiUrl(pathname: string): string | undefined {
+  if (!REVIEW_API_BASE_URL) {
+    return undefined;
+  }
+  const normalizedPath = pathname.startsWith('/') ? pathname : `/${pathname}`;
+  return `${REVIEW_API_BASE_URL}${normalizedPath}`;
+}
+
+function buildArtifactLink(agentRevisionId: string, stage: StageName, type: string, agentId?: string): string | undefined {
+  const base = `/review/artifacts/${encodeURIComponent(agentRevisionId)}?stage=${encodeURIComponent(stage)}&type=${encodeURIComponent(type)}`;
+  const withAgent = agentId ? `${base}&agentId=${encodeURIComponent(agentId)}` : base;
+  return buildApiUrl(withAgent);
+}
+
+function buildJudgeLinks(params: { submissionId: string; agentRevisionId?: string; agentId?: string; wandbUrl?: string }): Record<string, string> | undefined {
+  const links: Record<string, string> = {};
+  const reviewUi = buildHumanReviewUrl(params.submissionId);
+  if (reviewUi) {
+    links.humanReview = reviewUi;
+  }
+  if (params.agentRevisionId) {
+    const reportLink = buildArtifactLink(params.agentRevisionId, 'judge', 'report', params.agentId);
+    if (reportLink) {
+      links.judgeReport = reportLink;
+    }
+    const relayLink = buildArtifactLink(params.agentRevisionId, 'judge', 'relay', params.agentId);
+    if (relayLink) {
+      links.relayLogs = relayLink;
+    }
+    const summaryLink = buildArtifactLink(params.agentRevisionId, 'judge', 'summary', params.agentId);
+    if (summaryLink) {
+      links.judgeSummary = summaryLink;
+    }
+  }
+  const ledgerDownload = buildApiUrl(`/review/ledger/download?submissionId=${encodeURIComponent(params.submissionId)}&stage=judge`);
+  if (ledgerDownload) {
+    links.ledgerDownload = ledgerDownload;
+  }
+  if (params.wandbUrl) {
+    links.wandbRun = params.wandbUrl;
+  }
+  return Object.keys(links).length ? links : undefined;
 }
 
 const retryStageSignal = defineSignal<[StageName, string]>('signalRetryStage');
@@ -208,14 +269,23 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
         llmJudge: config
       }
     });
+    const judgeLinks = buildJudgeLinks({
+      submissionId: context.submissionId,
+      agentRevisionId: context.agentRevisionId,
+      agentId: context.agentId,
+      wandbUrl: context.wandbRun?.url
+    });
     emitStageEvent('judge', 'llm_override_received', {
-      enabled: config?.enabled,
-      provider: config?.provider,
-      model: config?.model,
-      temperature: config?.temperature,
-      maxOutputTokens: config?.maxOutputTokens,
-      baseUrl: config?.baseUrl,
-      dryRun: config?.dryRun
+      data: {
+        enabled: config?.enabled,
+        provider: config?.provider,
+        model: config?.model,
+        temperature: config?.temperature,
+        maxOutputTokens: config?.maxOutputTokens,
+        baseUrl: config?.baseUrl,
+        dryRun: config?.dryRun
+      },
+      links: judgeLinks
     }).catch((err) => console.warn('[workflow] failed to log llm override event', err));
   });
 
@@ -244,13 +314,18 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
     if (ledgerInfo.ledgerHttpPosted === false || ledgerInfo.ledgerHttpError) {
       appendStageWarning(stage, 'Ledger upload failed: check network/endpoint');
       await emitStageEvent(stage, 'ledger_upload_failed', {
-        attempts: ledgerInfo.ledgerHttpAttempts,
-        error: ledgerInfo.ledgerHttpError
-      }, 'error');
+        data: {
+          attempts: ledgerInfo.ledgerHttpAttempts,
+          error: ledgerInfo.ledgerHttpError
+        },
+        severity: 'error'
+      });
     } else if (ledgerInfo.ledgerHttpPosted === true && ledgerInfo.ledgerHttpAttempts && ledgerInfo.ledgerHttpAttempts > 1) {
       await emitStageEvent(stage, 'ledger_upload_retry_succeeded', {
-        attempts: ledgerInfo.ledgerHttpAttempts
-      }, 'info');
+        data: {
+          attempts: ledgerInfo.ledgerHttpAttempts
+        }
+      });
     }
   }
 
@@ -278,14 +353,17 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
       const reason = retryReasons.get(stage);
       retryReasons.delete(stage);
       await emitStageEvent(stage, 'retry_requested', {
-        ...(reason ? { reason } : {}),
-        attempts: stageProgress[stage].attempts
-      }, 'warn');
+        data: {
+          ...(reason ? { reason } : {}),
+          attempts: stageProgress[stage].attempts
+        },
+        severity: 'warn'
+      });
       updateStage(stage, { status: 'pending', message: 'retry scheduled' });
     }
   }
 
-  async function emitStageEvent(stage: StageName, event: string, data?: Record<string, unknown>, severity: 'info' | 'warn' | 'error' = 'info'): Promise<void> {
+  async function emitStageEvent(stage: StageName, event: string, options?: { data?: Record<string, unknown>; severity?: 'info' | 'warn' | 'error'; links?: Record<string, string> }): Promise<void> {
     if (!context.agentRevisionId) {
       return;
     }
@@ -294,8 +372,9 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
         agentRevisionId: context.agentRevisionId,
         stage,
         event,
-        data,
-        severity
+        data: options?.data,
+        severity: options?.severity ?? 'info',
+        links: options?.links
       });
     } catch (err) {
       console.warn('[workflow] failed to record stage event', stage, event, err);
@@ -312,10 +391,15 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
         attachments: notes
       })
     );
+    const humanLinks = buildHumanReviewUrl(context.submissionId);
     await emitStageEvent(sourceStage, 'escalated_to_human', {
-      reason,
-      ...(notes ? { notes } : {})
-    }, 'warn');
+      data: {
+        reason,
+        ...(notes ? { notes } : {})
+      },
+      severity: 'warn',
+      links: humanLinks ? { humanReview: humanLinks } : undefined
+    });
     updateStage('human', {
       status: 'running',
       message: 'waiting for human decision',
@@ -325,9 +409,12 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
       }
     });
     await emitStageEvent('human', 'decision_pending', {
-      sourceStage,
-      reason
-    }, 'info');
+      data: {
+        sourceStage,
+        reason
+      },
+      links: humanLinks ? { humanReview: humanLinks } : undefined
+    });
     const decisionPayload = await waitForHumanDecision();
     const decision = decisionPayload.decision;
     const existingHumanDetails = stageProgress.human.details ?? {};
@@ -423,8 +510,11 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
     if (!security.passed) {
       updateStage('security', { status: 'failed', message: security.failReasons?.join(', ') ?? 'security gate failed' });
       await emitStageEvent('security', 'stage_failed', {
-        failReasons: security.failReasons
-      }, 'error');
+        data: {
+          failReasons: security.failReasons
+        },
+        severity: 'error'
+      });
       const decision = await escalateToHuman('security', 'security_gate_failure', security.failReasons);
       if (decision === 'rejected') {
         return;
@@ -467,8 +557,11 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
     if (!functional.passed) {
       updateStage('functional', { status: 'failed', message: functional.failReasons?.join(', ') ?? 'functional accuracy failed' });
       await emitStageEvent('functional', 'stage_failed', {
-        failReasons: functional.failReasons
-      }, 'error');
+        data: {
+          failReasons: functional.failReasons
+        },
+        severity: 'error'
+      });
       const decision = await escalateToHuman('functional', 'functional_accuracy_failure', functional.failReasons);
       if (decision === 'rejected') {
         return;
@@ -490,6 +583,12 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
     const judgeSummary = judge.summary as Record<string, unknown> | undefined;
     const judgeLlm = (judgeSummary?.llmJudge as LlmJudgeConfig | undefined) ?? context.llmJudge;
     context.llmJudge = judgeLlm;
+    const judgeLinks = buildJudgeLinks({
+      submissionId: context.submissionId,
+      agentRevisionId: context.agentRevisionId,
+      agentId: context.agentId,
+      wandbUrl: context.wandbRun?.url
+    });
     updateStage('judge', {
       message: `judge verdict: ${judge.verdict}`,
       details: {
@@ -500,6 +599,7 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
           summary: { stage: 'judge', type: 'summary', agentRevisionId: context.agentRevisionId, agentId: context.agentId },
           relayLogs: { stage: 'judge', type: 'relay', agentRevisionId: context.agentRevisionId, agentId: context.agentId }
         },
+        links: judgeLinks,
         ledger: judge.ledgerEntryPath
           ? {
               entryPath: judge.ledgerEntryPath,
@@ -514,21 +614,28 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
     });
     if (judgeLlm) {
       await emitStageEvent('judge', 'llm_override_applied', {
-        provider: judgeLlm.provider,
-        model: judgeLlm.model,
-        temperature: judgeLlm.temperature,
-        maxOutputTokens: judgeLlm.maxOutputTokens,
-        dryRun: judgeLlm.dryRun,
-        baseUrl: judgeLlm.baseUrl
-      }, 'info');
+        data: {
+          provider: judgeLlm.provider,
+          model: judgeLlm.model,
+          temperature: judgeLlm.temperature,
+          maxOutputTokens: judgeLlm.maxOutputTokens,
+          dryRun: judgeLlm.dryRun,
+          baseUrl: judgeLlm.baseUrl
+        },
+        links: judgeLinks
+      });
     }
     await handleLedgerStatus('judge', judge);
 
     if (judge.verdict === 'reject') {
       await emitStageEvent('judge', 'verdict_rejected', {
-        score: judge.score,
-        explanation: judge.explanation
-      }, 'error');
+        data: {
+          score: judge.score,
+          explanation: judge.explanation
+        },
+        severity: 'error',
+        links: judgeLinks
+      });
       updateStage('judge', { status: 'failed', message: judge.explanation ?? 'judge rejected submission' });
       terminalState = 'rejected';
       return;
@@ -536,9 +643,13 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
 
     if (judge.verdict === 'manual') {
       await emitStageEvent('judge', 'verdict_manual', {
-        score: judge.score,
-        explanation: judge.explanation
-      }, 'warn');
+        data: {
+          score: judge.score,
+          explanation: judge.explanation
+        },
+        severity: 'warn',
+        links: judgeLinks
+      });
       const decision = await escalateToHuman('judge', 'judge_manual_review', judge.explanation ? [judge.explanation] : undefined);
       if (decision === 'rejected') {
         return;

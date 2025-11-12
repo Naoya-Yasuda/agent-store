@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import path from 'path';
 import fs from 'fs';
-import { getWorkflowProgress, getLedgerSummary, getLedgerEntryFile, getStageEvents, requestHumanDecision, requestStageRetry } from '../services/reviewService';
+import { getWorkflowProgress, getLedgerSummary, getLedgerEntryFile, getStageEvents, requestHumanDecision, requestStageRetry, retryLedgerUpload } from '../services/reviewService';
 import { StageName, LlmJudgeOverride } from '../types/reviewTypes';
 
 const router = Router();
@@ -467,6 +467,20 @@ router.get('/review/ledger/download', async (req: Request, res: Response) => {
     }
     const message = err instanceof Error ? err.message : 'unknown_error';
     res.status(500).json({ error: 'ledger_download_failed', message });
+  }
+});
+
+router.post('/review/ledger/resend', async (req: Request, res: Response) => {
+  const { submissionId, stage } = req.body ?? {};
+  if (!submissionId || !stage || !isStageName(stage)) {
+    return res.status(400).json({ error: 'missing_params' });
+  }
+  try {
+    const result = await retryLedgerUpload(sanitizeSegment(submissionId, 'submission_id'), stage);
+    res.json(result);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'unknown_error';
+    res.status(500).json({ error: 'ledger_resend_failed', message });
   }
 });
 

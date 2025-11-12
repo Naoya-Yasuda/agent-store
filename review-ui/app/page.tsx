@@ -91,8 +91,12 @@ type LedgerEntrySummary = {
   downloadAvailable?: boolean;
   downloadFallback?: boolean;
   downloadRelativePath?: string;
-  downloadStatus?: 'primary' | 'fallback';
+  downloadStatus?: 'primary' | 'fallback' | 'remote';
   downloadMissingReason?: string;
+  remoteStatusCode?: number;
+  remoteLatencyMs?: number;
+  remoteReachable?: boolean;
+  remoteError?: string;
 };
 
 type StageEventEntry = {
@@ -198,6 +202,9 @@ export default function ReviewDashboard() {
   const [eventSearchTerm, setEventSearchTerm] = useState('');
   const [judgeCardLimit, setJudgeCardLimit] = useState(12);
   const [showRelayErrorsOnly, setShowRelayErrorsOnly] = useState(false);
+  const [functionalSearchTerm, setFunctionalSearchTerm] = useState('');
+  const [embeddingAlertThreshold, setEmbeddingAlertThreshold] = useState(0.5);
+  const [ledgerActionStatus, setLedgerActionStatus] = useState<Record<StageName, string | undefined>>({} as Record<StageName, string | undefined>);
   const manualSectionRef = useRef<HTMLDivElement | null>(null);
   const judgeCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [focusedJudgeQuestion, setFocusedJudgeQuestion] = useState<string | null>(null);
@@ -304,34 +311,41 @@ export default function ReviewDashboard() {
     }
   }, [retryStage]);
 
+  const refreshLedgerEntries = useCallback(async (signal?: AbortSignal) => {
+    if (!progress) {
+      setLedgerEntries([]);
+      setLedgerError(null);
+      return;
+    }
+    try {
+      const res = await fetch(`/review/ledger/${submissionId}`, { signal });
+      if (res.status === 404) {
+        setLedgerEntries([]);
+        setLedgerError(null);
+        return;
+      }
+      if (!res.ok) {
+        throw new Error(await res.text());
+      }
+      const payload = await res.json();
+      setLedgerEntries(payload.entries ?? []);
+      setLedgerError(null);
+    } catch (err) {
+      if (!(err instanceof DOMException && err.name === 'AbortError')) {
+        setLedgerError(err instanceof Error ? err.message : 'ledger_fetch_failed');
+      }
+    }
+  }, [progress, submissionId]);
+
   useEffect(() => {
     if (!progress) {
       setLedgerEntries([]);
       return;
     }
     const controller = new AbortController();
-    (async () => {
-      try {
-        const res = await fetch(`/review/ledger/${submissionId}`, { signal: controller.signal });
-        if (res.status === 404) {
-          setLedgerEntries([]);
-          setLedgerError(null);
-          return;
-        }
-        if (!res.ok) {
-          throw new Error(await res.text());
-        }
-        const payload = await res.json();
-        setLedgerEntries(payload.entries ?? []);
-        setLedgerError(null);
-      } catch (err) {
-        if (!(err instanceof DOMException && err.name === 'AbortError')) {
-          setLedgerError(err instanceof Error ? err.message : 'ledger_fetch_failed');
-        }
-      }
-    })();
+    refreshLedgerEntries(controller.signal);
     return () => controller.abort();
-  }, [progress, submissionId]);
+  }, [progress, refreshLedgerEntries]);
 
   const copyLedgerPath = useCallback(async (stage: StageName, value?: string) => {
     if (!value) {
@@ -354,6 +368,32 @@ export default function ReviewDashboard() {
       setLedgerCopyError('クリップボードへのコピーに失敗しました');
     }
   }, []);
+
+  const handleLedgerResend = useCallback(async (stage: StageName) => {
+    setLedgerActionStatus((prev) => ({ ...prev, [stage]: '再送中...' }));
+    try {
+      const res = await fetch('/review/ledger/resend', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ submissionId, stage })
+      });
+      const payload = await res.json();
+      setLedgerActionStatus((prev) => ({ ...prev, [stage]: res.ok ? '再送成功' : payload.error ?? '失敗しました' }));
+      if (res.ok) {
+        await refreshLedgerEntries();
+      }
+    } catch (err) {
+      setLedgerActionStatus((prev) => ({ ...prev, [stage]: err instanceof Error ? err.message : '通信エラー' }));
+    } finally {
+      setTimeout(() => {
+        setLedgerActionStatus((prev) => {
+          const next = { ...prev };
+          delete next[stage];
+          return next;
+        });
+      }, 4000);
+    }
+  }, [refreshLedgerEntries, submissionId]);
 
   useEffect(() => {
     if (!progress) {
@@ -1028,8 +1068,12 @@ export default function ReviewDashboard() {
     const failingRecords = reportData
       .filter((item) => item?.evaluation?.verdict && item.evaluation.verdict !== 'pass')
       .sort((a, b) => ((b?.evaluation?.distance ?? 0) - (a?.evaluation?.distance ?? 0)));
-    const topFailing = failingRecords.slice(0, 5);
-    const diffRecords = topFailing.slice(0, 3);
+    const searchTerm = functionalSearchTerm.trim().toLowerCase();
+    const filteredFailing = searchTerm
+      ? failingRecords.filter((item) => JSON.stringify(item).toLowerCase().includes(searchTerm))
+      : failingRecords;
+    const topFailing = filteredFailing.slice(0, 5);
+    const diffRecords = filteredFailing.slice(0, 3);
     const embeddingDistances = reportData
       .map((item) => {
         if (typeof item?.embeddingDistance === 'number') {
@@ -1041,9 +1085,42 @@ export default function ReviewDashboard() {
       .filter((value): value is number => typeof value === 'number');
     const embeddingHistogram = buildEmbeddingHistogram(embeddingDistances);
     const maxEmbeddingCount = embeddingHistogram.reduce((max, bucket) => Math.max(max, bucket.count), 0);
+    const alertRecords = failingRecords.filter((item) => {
+      const embeddingDistance = typeof item.embeddingDistance === 'number'
+        ? item.embeddingDistance
+        : typeof item?.evaluation?.embeddingDistance === 'number'
+          ? item.evaluation.embeddingDistance
+          : undefined;
+      return typeof embeddingDistance === 'number' && embeddingDistance >= embeddingAlertThreshold;
+    });
     return (
       <section style={{ display: 'grid', gap: 12 }}>
         <h3 style={{ margin: 0 }}>Functional Accuracy 統計</h3>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <label>
+            RAGTruth検索
+            <input value={functionalSearchTerm} onChange={(e) => setFunctionalSearchTerm(e.target.value)} placeholder="シナリオID/テキスト" />
+          </label>
+          <label>
+            Embeddingアラート閾値
+            <input
+              type="number"
+              min={0}
+              max={2}
+              step={0.05}
+              value={embeddingAlertThreshold}
+              onChange={(e) => {
+                const parsed = Number(e.target.value);
+                if (!Number.isNaN(parsed)) {
+                  setEmbeddingAlertThreshold(Math.min(Math.max(parsed, 0), 2));
+                }
+              }}
+            />
+          </label>
+          <div style={{ alignSelf: 'flex-end', fontSize: 12, color: alertRecords.length ? '#d1242f' : '#57606a' }}>
+            閾値超過: {alertRecords.length} 件
+          </div>
+        </div>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           <div style={{ border: '1px solid #d0d7de', borderRadius: 8, padding: 12, minWidth: 220 }}>
             <div>シナリオ数: {summary.total ?? '-'}</div>
@@ -1120,7 +1197,15 @@ export default function ReviewDashboard() {
                 </thead>
                 <tbody>
                   {topFailing.map((item) => (
-                    <tr key={`functional-fail-${item.scenarioId}`} style={{ borderTop: '1px solid #eaeef2' }}>
+                    <tr
+                      key={`functional-fail-${item.scenarioId}`}
+                      style={{
+                        borderTop: '1px solid #eaeef2',
+                        background: (typeof item.embeddingDistance === 'number' ? item.embeddingDistance : item?.evaluation?.embeddingDistance) >= embeddingAlertThreshold
+                          ? '#fff5f5'
+                          : 'transparent'
+                      }}
+                    >
                       <td style={{ padding: 4 }}>{item.scenarioId}</td>
                       <td style={{ padding: 4 }}>{item?.evaluation?.distance?.toFixed?.(3) ?? item?.evaluation?.distance ?? '-'}</td>
                       <td style={{ padding: 4 }}>{item?.evaluation?.verdict ?? 'needs_review'}</td>
@@ -1131,14 +1216,23 @@ export default function ReviewDashboard() {
             )}
           </div>
         </div>
-        {topFailing.length > 0 && (
-          <div>
-            <div style={{ fontWeight: 600, marginBottom: 4 }}>Fail詳細</div>
-            <div style={{ border: '1px solid #d0d7de', borderRadius: 8, maxHeight: 260, overflow: 'auto' }}>
-              {topFailing.map((item) => (
-                <div key={`functional-detail-${item.scenarioId}`} style={{ padding: 8, borderBottom: '1px solid #eaeef2' }}>
-                  <div style={{ fontWeight: 600 }}>{item.scenarioId} ({item.evaluation?.verdict})</div>
-                  <div style={{ fontSize: 12, color: '#57606a' }}>距離: {item.evaluation?.distance} / しきい値: {item.evaluation?.threshold}</div>
+            {topFailing.length > 0 && (
+              <div>
+                <div style={{ fontWeight: 600, marginBottom: 4 }}>Fail詳細</div>
+                <div style={{ border: '1px solid #d0d7de', borderRadius: 8, maxHeight: 260, overflow: 'auto' }}>
+                  {topFailing.map((item) => (
+                    <div
+                      key={`functional-detail-${item.scenarioId}`}
+                      style={{
+                        padding: 8,
+                        borderBottom: '1px solid #eaeef2',
+                        background: (typeof item.embeddingDistance === 'number' ? item.embeddingDistance : item?.evaluation?.embeddingDistance) >= embeddingAlertThreshold
+                          ? '#fff5f5'
+                          : 'transparent'
+                      }}
+                    >
+                      <div style={{ fontWeight: 600 }}>{item.scenarioId} ({item.evaluation?.verdict})</div>
+                      <div style={{ fontSize: 12, color: '#57606a' }}>距離: {item.evaluation?.distance} / しきい値: {item.evaluation?.threshold}</div>
                   {item.responseStatus && <div style={{ fontSize: 12 }}>status: {item.responseStatus}</div>}
                   {item.responseError && <div style={{ fontSize: 12, color: '#d1242f' }}>{item.responseError}</div>}
                   {item.expected && (
@@ -1165,10 +1259,11 @@ export default function ReviewDashboard() {
                 : typeof item?.evaluation?.embeddingDistance === 'number'
                   ? item.evaluation.embeddingDistance
                   : undefined;
+              const isAlert = typeof embeddingDistance === 'number' && embeddingDistance >= embeddingAlertThreshold;
               return (
                 <div key={`ragtruth-diff-${item.scenarioId ?? index}`} style={{ border: '1px solid #d0d7de', borderRadius: 8, padding: 8, marginBottom: 8 }}>
                   <div style={{ fontWeight: 600 }}>{item.scenarioId ?? `scenario-${index + 1}`} ({item.evaluation?.verdict ?? 'needs_review'})</div>
-                  <div style={{ fontSize: 12, color: '#57606a' }}>
+                  <div style={{ fontSize: 12, color: isAlert ? '#d1242f' : '#57606a' }}>
                     距離: {item.evaluation?.distance ?? '-'} / Embedding: {typeof embeddingDistance === 'number' ? embeddingDistance.toFixed(3) : '-'} / しきい値: {item.evaluation?.threshold ?? '-'}
                   </div>
                   <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', marginTop: 8 }}>
@@ -1276,7 +1371,7 @@ export default function ReviewDashboard() {
               <div>Generated: {entry.generatedAt ?? 'unknown'}</div>
               <div style={{ fontSize: 12, marginTop: 4 }}>
                 DL状態: {entry.downloadAvailable === true
-                  ? `利用可${entry.downloadStatus === 'fallback' ? ' (Fallback)' : ''}`
+                  ? `利用可${entry.downloadStatus === 'fallback' ? ' (Fallback)' : entry.downloadStatus === 'remote' ? ' (Remote cache)' : ''}`
                   : entry.downloadAvailable === false
                     ? `不可${entry.downloadMissingReason ? ` (${entry.downloadMissingReason})` : ''}`
                     : 'N/A'}
@@ -1288,6 +1383,16 @@ export default function ReviewDashboard() {
                     ? `失敗${entry.httpAttempts ? ` (${entry.httpAttempts}回)` : ''}${entry.httpError ? ` - ${entry.httpError}` : ''}`
                     : '未設定'}
               </div>
+              {(typeof entry.remoteStatusCode === 'number' || typeof entry.remoteReachable === 'boolean') && (
+                <div style={{ fontSize: 12, color: entry.remoteReachable === false ? '#d1242f' : '#57606a' }}>
+                  リモート: {entry.remoteReachable === false ? '到達不可' : '到達' }
+                  {entry.remoteStatusCode ? ` (HTTP ${entry.remoteStatusCode})` : ''}
+                  {typeof entry.remoteLatencyMs === 'number' ? ` / ${Math.round(entry.remoteLatencyMs)}ms` : ''}
+                </div>
+              )}
+              {entry.remoteError && (
+                <div style={{ fontSize: 12, color: '#d1242f' }}>Remote Error: {entry.remoteError}</div>
+              )}
               {entry.downloadMissingReason && (
                 <div style={{ fontSize: 12, color: '#d1242f' }}>
                   欠損理由: {entry.downloadMissingReason === 'primary_missing' ? 'primaryファイルが存在しません' : 'fallbackファイルが存在しません'}
@@ -1315,6 +1420,15 @@ export default function ReviewDashboard() {
                   Ledgerをダウンロード
                 </a>
               )}
+              <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {entry.httpPosted === false && (
+                  <button type="button" onClick={() => handleLedgerResend(entry.stage)}>HTTP再送</button>
+                )}
+                {entry.remoteReachable === false && (
+                  <button type="button" onClick={() => refreshLedgerEntries()}>ヘルス再チェック</button>
+                )}
+                {ledgerActionStatus[entry.stage] && <span style={{ fontSize: 12 }}>{ledgerActionStatus[entry.stage]}</span>}
+              </div>
             </div>
           ))}
           {!ledgerEntries.length && !ledgerError && <span>Ledger情報はまだありません。</span>}
