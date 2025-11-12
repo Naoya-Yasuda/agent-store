@@ -84,6 +84,7 @@ flowchart TD
 # 1. 環境変数の設定（オプション）
 cp .env.example .env
 # 必要に応じて .env を編集
+> `.env.example` には `POSTGRES_PASSWORD` / `DATABASE_URL` / `ALLOWED_ORIGINS` / `RATE_LIMIT_*` などの機微情報が含まれます。環境に合わせて書き換え、Secrets Manager等で管理してください。
 
 # 2. AdvBenchデータセットのセットアップ
 bash scripts/setup_aisev.sh
@@ -102,6 +103,8 @@ docker compose down
 
 # 7. データを含めて完全に削除
 docker compose down -v
+
+> Docker Composeは `.env` に定義した `DATABASE_URL` / `TEMPORAL_ADDRESS` / `WANDB_*` / `ALLOWED_ORIGINS` / `RATE_LIMIT_*` などの値をそのまま各コンテナへ渡します。本番環境ではSecretsストアを利用し、公開リポジトリに値を残さないようにしてください。
 ```
 
 起動後、以下のURLでアクセスできます：

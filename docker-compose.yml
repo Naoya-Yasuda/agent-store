@@ -5,10 +5,12 @@ services:
   postgres:
     image: postgres:15-alpine
     container_name: agent-store-postgres
+    env_file:
+      - .env
     environment:
-      POSTGRES_USER: agent_store_user
-      POSTGRES_PASSWORD: agent_store_pass
-      POSTGRES_DB: agent_store
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-agent_store}
     ports:
       - "5432:5432"
     volumes:
@@ -46,9 +48,11 @@ services:
       context: ./prototype/temporal-review-workflow
       dockerfile: ../../docker/temporal-worker/Dockerfile
     container_name: agent-store-temporal-worker
+    env_file:
+      - .env
     environment:
-      - TEMPORAL_ADDRESS=temporal:7233
-      - NODE_ENV=production
+      TEMPORAL_ADDRESS: ${TEMPORAL_ADDRESS:-temporal:7233}
+      NODE_ENV: ${NODE_ENV:-production}
     depends_on:
       temporal:
         condition: service_healthy
@@ -64,14 +68,20 @@ services:
       context: .
       dockerfile: docker/api/Dockerfile
     container_name: agent-store-api
+    env_file:
+      - .env
     environment:
-      - NODE_ENV=production
-      - DATABASE_URL=postgresql://agent_store_user:agent_store_pass@postgres:5432/agent_store
-      - TEMPORAL_ADDRESS=temporal:7233
-      - PORT=3000
-      - WANDB_DISABLED=false
-      - WANDB_PROJECT=agent-store-sandbox
-      - WANDB_ENTITY=local
+      NODE_ENV: ${NODE_ENV:-production}
+      DATABASE_URL: ${DATABASE_URL}
+      TEMPORAL_ADDRESS: ${TEMPORAL_ADDRESS:-temporal:7233}
+      PORT: ${PORT:-3000}
+      WANDB_DISABLED: ${WANDB_DISABLED:-false}
+      WANDB_PROJECT: ${WANDB_PROJECT:-agent-store-sandbox}
+      WANDB_ENTITY: ${WANDB_ENTITY:-local}
+      WANDB_BASE_URL: ${WANDB_BASE_URL:-https://wandb.ai}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:3001}
+      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-60000}
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-120}
     ports:
       - "3000:3000"
     depends_on:
@@ -91,9 +101,11 @@ services:
       context: .
       dockerfile: docker/review-ui/Dockerfile
     container_name: agent-store-review-ui
+    env_file:
+      - .env
     environment:
-      - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=http://localhost:3000
+      NODE_ENV: ${NODE_ENV:-production}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000}
     ports:
       - "3001:3000"
     depends_on:
@@ -106,11 +118,13 @@ services:
       context: .
       dockerfile: docker/inspect-worker/Dockerfile
     container_name: agent-store-inspect-worker
+    env_file:
+      - .env
     environment:
-      - WANDB_DISABLED=false
-      - WANDB_PROJECT=agent-store-sandbox
-      - WANDB_ENTITY=local
-      - AISEV_HOME=/app/third_party/aisev
+      WANDB_DISABLED: ${WANDB_DISABLED:-false}
+      WANDB_PROJECT: ${WANDB_PROJECT:-agent-store-sandbox}
+      WANDB_ENTITY: ${WANDB_ENTITY:-local}
+      AISEV_HOME: /app/third_party/aisev
     depends_on:
       - api
     networks:

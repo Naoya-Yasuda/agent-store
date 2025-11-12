@@ -331,6 +331,9 @@ router.get('/review/ledger/download', async (req: Request, res: Response) => {
   if (!submissionId || !stage) {
     return res.status(400).json({ error: 'missing_params' });
   }
+  if (!isStageName(stage)) {
+    return res.status(400).json({ error: 'invalid_stage' });
+  }
   try {
     const fileHandle = await getLedgerEntryFile(submissionId, stage as StageName);
     if (!fileHandle) {
@@ -423,3 +426,8 @@ router.get('/review/artifacts/:agentRevisionId', async (req: Request, res: Respo
 });
 
 export default router;
+const stageNameList: StageName[] = ['precheck', 'security', 'functional', 'judge', 'human', 'publish'];
+
+function isStageName(value: string): value is StageName {
+  return stageNameList.includes(value as StageName);
+}
