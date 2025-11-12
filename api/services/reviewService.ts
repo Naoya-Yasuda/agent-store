@@ -33,6 +33,9 @@ type LedgerEntry = {
   httpPosted?: boolean;
   httpAttempts?: number;
   httpError?: string;
+  downloadAvailable?: boolean;
+  downloadRelativePath?: string;
+  downloadFallback?: boolean;
 };
 
 export type LedgerFileHandle = {
@@ -51,8 +54,8 @@ export type StageEventRecord = {
   data?: Record<string, unknown>;
 };
 
-export async function getLedgerSummary(submissionId: string): Promise<LedgerEntry[]> {
-  const progress = await fetchProgress(submissionId);
+export async function getLedgerSummary(submissionId: string, options?: { progress?: any }): Promise<LedgerEntry[]> {
+  const progress = options?.progress ?? await fetchProgress(submissionId);
   if (!progress) {
     return [];
   }
@@ -65,6 +68,7 @@ export async function getLedgerSummary(submissionId: string): Promise<LedgerEntr
         ? ledger.sourceFile
         : undefined;
       const sourceRelative = resolvedSource ? path.relative(REPO_ROOT, resolvedSource) : relativePath;
+      const downloadHandle = await getLedgerEntryFile(submissionId, stage, { progress });
       entries.push({
         stage,
         entryPath: ledger.entryPath,
@@ -76,6 +80,9 @@ export async function getLedgerSummary(submissionId: string): Promise<LedgerEntr
         httpPosted: ledger.httpPosted,
         httpAttempts: ledger.httpAttempts,
         httpError: ledger.httpError,
+        downloadAvailable: downloadHandle?.exists,
+        downloadRelativePath: downloadHandle?.relativePath,
+        downloadFallback: downloadHandle?.fallback,
         downloadUrl: ledger.entryPath && !isRemotePath(ledger.entryPath)
           ? `/review/ledger/download?submissionId=${submissionId}&stage=${stage}`
           : ledger.entryPath

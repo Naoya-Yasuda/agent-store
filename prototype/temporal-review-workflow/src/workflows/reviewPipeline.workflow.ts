@@ -69,7 +69,7 @@ type Activities = {
   runFunctionalAccuracy: (args: { submissionId: string; agentId: string; agentRevisionId: string; workflowId: string; workflowRunId: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string } }) => Promise<FunctionalAccuracyResult>;
   runJudgePanel: (args: { submissionId: string; agentId: string; agentRevisionId: string; promptVersion: string; workflowId: string; workflowRunId: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string }; llmJudge?: LlmJudgeConfig }) => Promise<JudgePanelResult>;
   notifyHumanReview: (args: { submissionId: string; agentId: string; agentRevisionId: string; reason: string; attachments?: string[] }) => Promise<'approved' | 'rejected'>;
-  recordStageEvent: (args: { agentRevisionId: string; stage: StageName; event: string; data?: Record<string, unknown>; timestamp?: string }) => Promise<void>;
+  recordStageEvent: (args: { agentRevisionId: string; stage: StageName; event: string; data?: Record<string, unknown>; timestamp?: string; severity?: 'info' | 'warn' | 'error' }) => Promise<void>;
   recordHumanDecisionMetadata: (args: { agentRevisionId: string; decision: 'approved' | 'rejected'; notes?: string; decidedAt?: string }) => Promise<void>;
   publishAgent: (args: { submissionId: string; agentId: string; agentRevisionId: string }) => Promise<void>;
 };
@@ -241,11 +241,11 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
       await emitStageEvent(stage, 'ledger_upload_failed', {
         attempts: ledgerInfo.ledgerHttpAttempts,
         error: ledgerInfo.ledgerHttpError
-      });
+      }, 'error');
     } else if (ledgerInfo.ledgerHttpPosted === true && ledgerInfo.ledgerHttpAttempts && ledgerInfo.ledgerHttpAttempts > 1) {
       await emitStageEvent(stage, 'ledger_upload_retry_succeeded', {
         attempts: ledgerInfo.ledgerHttpAttempts
-      });
+      }, 'info');
     }
   }
 
@@ -275,12 +275,12 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
       await emitStageEvent(stage, 'retry_requested', {
         ...(reason ? { reason } : {}),
         attempts: stageProgress[stage].attempts
-      });
+      }, 'warn');
       updateStage(stage, { status: 'pending', message: 'retry scheduled' });
     }
   }
 
-  async function emitStageEvent(stage: StageName, event: string, data?: Record<string, unknown>): Promise<void> {
+  async function emitStageEvent(stage: StageName, event: string, data?: Record<string, unknown>, severity: 'info' | 'warn' | 'error' = 'info'): Promise<void> {
     if (!context.agentRevisionId) {
       return;
     }
@@ -289,7 +289,8 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
         agentRevisionId: context.agentRevisionId,
         stage,
         event,
-        data
+        data,
+        severity
       });
     } catch (err) {
       console.warn('[workflow] failed to record stage event', stage, event, err);
@@ -309,7 +310,7 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
     await emitStageEvent(sourceStage, 'escalated_to_human', {
       reason,
       ...(notes ? { notes } : {})
-    });
+    }, 'warn');
     updateStage('human', {
       status: 'running',
       message: 'waiting for human decision',
@@ -321,7 +322,7 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
     await emitStageEvent('human', 'decision_pending', {
       sourceStage,
       reason
-    });
+    }, 'info');
     const decisionPayload = await waitForHumanDecision();
     const decision = decisionPayload.decision;
     const existingHumanDetails = stageProgress.human.details ?? {};
@@ -418,7 +419,7 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
       updateStage('security', { status: 'failed', message: security.failReasons?.join(', ') ?? 'security gate failed' });
       await emitStageEvent('security', 'stage_failed', {
         failReasons: security.failReasons
-      });
+      }, 'error');
       const decision = await escalateToHuman('security', 'security_gate_failure', security.failReasons);
       if (decision === 'rejected') {
         return;
@@ -462,7 +463,7 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
       updateStage('functional', { status: 'failed', message: functional.failReasons?.join(', ') ?? 'functional accuracy failed' });
       await emitStageEvent('functional', 'stage_failed', {
         failReasons: functional.failReasons
-      });
+      }, 'error');
       const decision = await escalateToHuman('functional', 'functional_accuracy_failure', functional.failReasons);
       if (decision === 'rejected') {
         return;
@@ -512,7 +513,7 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
       await emitStageEvent('judge', 'verdict_rejected', {
         score: judge.score,
         explanation: judge.explanation
-      });
+      }, 'error');
       updateStage('judge', { status: 'failed', message: judge.explanation ?? 'judge rejected submission' });
       terminalState = 'rejected';
       return;
@@ -522,7 +523,7 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
       await emitStageEvent('judge', 'verdict_manual', {
         score: judge.score,
         explanation: judge.explanation
-      });
+      }, 'warn');
       const decision = await escalateToHuman('judge', 'judge_manual_review', judge.explanation ? [judge.explanation] : undefined);
       if (decision === 'rejected') {
         return;

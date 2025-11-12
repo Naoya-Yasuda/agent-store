@@ -61,3 +61,4 @@ Functional Accuracyの場合は、RAGTruth突合の `functional_summary.json` / 
 - Ledgerのエントリパスに加えて、原本 (`sandbox-runner/artifacts/<rev>/<stage>_ledger_entry.json`) への `sourceFile` をStage Metadataに保持し、`/review/ledger/download` がローカルLedger欠損時にFallback配信できるようにした。
 - Pending: Ledger API障害時のリトライ/警告UI出力。
 - Update (2025-11-12): `publishToLedger` はHTTP送信を最大3回リトライし、失敗してもワークフローを止めずに `httpPosted=false` / `httpAttempts` / `httpError` をStage detailsへ書き込みます。Human Review UI・`/review/ledger` API・W&Bメタデータは同フラグを表示するため、Ledger障害を即座に検知できます。
+- Update (2025-11-12): `/review/ui/:id` では `getLedgerSummary` ベースでローカルLedgerファイルの存在確認を行い、`/review/ledger/download` が返せない（削除・パーミッション喪失）場合は「ダウンロード: 不可」と赤枠で通知します。Fallbackファイルが存在する場合はそのパスを表示し、監査担当が即座に復旧経路を辿れるようにしました。

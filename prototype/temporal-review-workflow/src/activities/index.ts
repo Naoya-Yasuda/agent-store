@@ -620,14 +620,15 @@ export async function recordJudgeLedger(args: {
   }
 }
 
-export async function recordStageEvent(args: { agentRevisionId: string; stage: StageName; event: string; data?: Record<string, unknown>; timestamp?: string }): Promise<void> {
+export async function recordStageEvent(args: { agentRevisionId: string; stage: StageName; event: string; data?: Record<string, unknown>; timestamp?: string; severity?: 'info' | 'warn' | 'error' }): Promise<void> {
   const occurredAt = args.timestamp ?? new Date().toISOString();
   const eventData = args.data && Object.keys(args.data).length > 0 ? args.data : undefined;
   const payload: Record<string, unknown> = {
     stage: args.stage,
     event: args.event,
     type: args.event,
-    timestamp: occurredAt
+    timestamp: occurredAt,
+    severity: args.severity ?? 'info'
   };
   if (eventData) {
     payload.data = eventData;
@@ -640,7 +641,7 @@ export async function recordStageEvent(args: { agentRevisionId: string; stage: S
     }
   });
   await appendWandbEvent(args.agentRevisionId, payload);
-  await logWandbStageEvent(args.agentRevisionId, args.stage, args.event, eventData, occurredAt);
+  await logWandbStageEvent(args.agentRevisionId, args.stage, args.event, eventData, occurredAt, args.severity ?? 'info');
 }
 
 export async function recordHumanDecisionMetadata(args: { agentRevisionId: string; decision: 'approved' | 'rejected'; notes?: string; decidedAt?: string }): Promise<void> {
@@ -702,7 +703,7 @@ async function appendWandbEvent(agentRevisionId: string, event: Record<string, u
   }
 }
 
-async function logWandbStageEvent(agentRevisionId: string, stage: StageName, event: string, data: Record<string, unknown> | undefined, timestamp: string): Promise<void> {
+async function logWandbStageEvent(agentRevisionId: string, stage: StageName, event: string, data: Record<string, unknown> | undefined, timestamp: string, severity: 'info' | 'warn' | 'error'): Promise<void> {
   try {
     const wandb = await resolveWandbInfo(agentRevisionId);
     if (!wandb?.runId || !wandb?.project || !wandb?.entity) {
@@ -712,7 +713,8 @@ async function logWandbStageEvent(agentRevisionId: string, stage: StageName, eve
       'event/stage': stage,
       'event/name': event,
       'event/timestamp': timestamp,
-      [`events/${stage}/${event}`]: 1
+      [`events/${stage}/${event}`]: 1,
+      'event/severity': severity
     };
     if (data) {
       for (const [key, value] of Object.entries(data)) {

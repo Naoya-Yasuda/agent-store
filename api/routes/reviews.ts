@@ -99,6 +99,7 @@ router.get('/review/ui/:submissionId', async (req: Request, res: Response) => {
     if (!progress) {
       return res.status(404).send('workflow not found');
     }
+    const ledgerSummary = await getLedgerSummary(submissionId, { progress });
     const stagesEntries = Object.entries(progress.stages ?? {}) as [string, any][];
     const stageRows = stagesEntries.map(([stage, info]) => `<tr><td>${escapeHtml(stage)}</td><td>${escapeHtml(info?.status ?? 'unknown')}</td><td>${escapeHtml(info?.attempts ?? 0)}</td><td>${escapeHtml(info?.message ?? '')}</td></tr>`).join('');
     const stageOptions = stagesEntries.map(([stage]) => `<option value="${escapeHtml(stage)}">${escapeHtml(stage)}</option>`).join('');
@@ -176,46 +177,63 @@ router.get('/review/ui/:submissionId', async (req: Request, res: Response) => {
     const judgeInsights = judgeCardsHtml || relayPreviewHtml
       ? `<section style="margin-top:16px;">${judgeCardsHtml}${relayPreviewHtml}</section>`
       : '';
-    const ledgerEntries = stagesEntries
+    const ledgerEntries = (ledgerSummary.length ? ledgerSummary : stagesEntries
       .map(([stage, info]) => {
         const ledger = info?.details?.ledger;
         if (!ledger?.entryPath && !ledger?.digest) {
           return null;
         }
-        return { stage, ledger };
+        return {
+          stage,
+          entryPath: ledger.entryPath,
+          digest: ledger.digest,
+          sourceFile: ledger.sourceFile,
+          httpPosted: ledger.httpPosted,
+          httpAttempts: ledger.httpAttempts,
+          httpError: ledger.httpError
+        };
       })
-      .filter(Boolean) as { stage: string; ledger: { entryPath?: string; digest?: string; sourceFile?: string; httpPosted?: boolean; httpAttempts?: number; httpError?: string } }[];
+      .filter(Boolean)) as Array<{ stage: string; entryPath?: string; digest?: string; sourceFile?: string; httpPosted?: boolean; httpAttempts?: number; httpError?: string; downloadAvailable?: boolean; downloadRelativePath?: string; downloadFallback?: boolean; downloadUrl?: string }>;
     const ledgerHtml = ledgerEntries.length
       ? `<section style="margin-top:16px;">
           <h3>Ledger 記録</h3>
           <div class="ledger-grid">
             ${ledgerEntries.map((entry) => {
-              const entryPath = entry.ledger.entryPath ?? '';
-              const digest = entry.ledger.digest ? `<code>${escapeHtml(entry.ledger.digest)}</code>` : 'N/A';
+              const entryPath = entry.entryPath ?? '';
+              const digest = entry.digest ? `<code>${escapeHtml(entry.digest)}</code>` : 'N/A';
               const isRemote = entryPath.startsWith('http://') || entryPath.startsWith('https://');
               const link = entryPath
                 ? (isRemote
                     ? `<a href="${escapeHtml(entryPath)}" target="_blank" rel="noreferrer">Ledger Link</a>`
                     : `<code>${escapeHtml(entryPath)}</code>`)
                 : 'N/A';
+              const downloadHref = entry.downloadUrl ?? `/review/ledger/download?submissionId=${encodeURIComponent(submissionId)}&stage=${encodeURIComponent(entry.stage)}`;
               const downloadLink = entryPath && !isRemote
-                ? `<div><a href="/review/ledger/download?submissionId=${escapeHtml(submissionId)}&stage=${escapeHtml(entry.stage)}" target="_blank" rel="noreferrer">ダウンロード</a></div>`
+                ? `<div><a href="${escapeHtml(downloadHref)}" target="_blank" rel="noreferrer">ダウンロード</a></div>`
                 : '';
-              const httpStatus = entry.ledger.httpPosted === true
-                ? `HTTP送信: 成功${entry.ledger.httpAttempts ? ` (${escapeHtml(String(entry.ledger.httpAttempts))}回)` : ''}`
-                : entry.ledger.httpPosted === false
-                  ? `HTTP送信: 失敗${entry.ledger.httpAttempts ? ` (${escapeHtml(String(entry.ledger.httpAttempts))}回)` : ''}${entry.ledger.httpError ? `<div class="ledger-card__error">${escapeHtml(entry.ledger.httpError)}</div>` : ''}`
+              const downloadStatus = entry.downloadAvailable === true
+                ? `ダウンロード: 利用可${entry.downloadFallback ? ' (Fallback)' : ''}`
+                : entry.downloadAvailable === false
+                  ? `ダウンロード: 不可${entry.downloadFallback ? ' (Fallbackも欠損)' : ''}`
+                  : 'ダウンロード: N/A (リモートのみ)';
+              const httpStatus = entry.httpPosted === true
+                ? `HTTP送信: 成功${entry.httpAttempts ? ` (${escapeHtml(String(entry.httpAttempts))}回)` : ''}`
+                : entry.httpPosted === false
+                  ? `HTTP送信: 失敗${entry.httpAttempts ? ` (${escapeHtml(String(entry.httpAttempts))}回)` : ''}${entry.httpError ? `<div class="ledger-card__error">${escapeHtml(entry.httpError)}</div>` : ''}`
                   : 'HTTP送信: 未設定';
-              const source = entry.ledger.sourceFile ? `<div>Source: <code>${escapeHtml(entry.ledger.sourceFile)}</code></div>` : '';
-              const errorClass = entry.ledger.httpPosted === false ? ' ledger-card--error' : '';
+              const source = entry.sourceFile ? `<div>Source: <code>${escapeHtml(entry.sourceFile)}</code></div>` : '';
+              const downloadPath = entry.downloadRelativePath ? `<div>Local: <code>${escapeHtml(entry.downloadRelativePath)}</code></div>` : '';
+              const errorClass = entry.httpPosted === false || entry.downloadAvailable === false ? ' ledger-card--error' : '';
               return `
                 <div class="ledger-card${errorClass}">
                   <div class="ledger-card__title">${escapeHtml(stageLabels[entry.stage as keyof typeof stageLabels] ?? entry.stage)}</div>
                   <div>Entry: ${link}</div>
                   <div>Digest: ${digest}</div>
+                  <div>${downloadStatus}</div>
                   <div>${httpStatus}</div>
                   ${downloadLink}
                   ${source}
+                  ${downloadPath}
                 </div>`;
             }).join('')}
           </div>
