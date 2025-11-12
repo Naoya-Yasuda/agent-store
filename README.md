@@ -88,17 +88,20 @@ cp .env.example .env
 # 2. AdvBenchデータセットのセットアップ
 bash scripts/setup_aisev.sh
 
-# 3. 全サービスを起動
-docker-compose up -d
+# 3. コンテナをビルド（CIと同じコマンド）
+docker compose build api review-ui temporal-worker inspect-worker
 
-# 4. ログの確認
-docker-compose logs -f
+# 4. 全サービスを起動
+docker compose up -d
 
-# 5. サービスの停止
-docker-compose down
+# 5. ログの確認
+docker compose logs -f
 
-# 6. データを含めて完全に削除
-docker-compose down -v
+# 6. サービスの停止
+docker compose down
+
+# 7. データを含めて完全に削除
+docker compose down -v
 ```
 
 起動後、以下のURLでアクセスできます：

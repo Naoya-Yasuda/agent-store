@@ -88,8 +88,8 @@ services:
   # Next.js Review UI
   review-ui:
     build:
-      context: ./review-ui
-      dockerfile: ../docker/review-ui/Dockerfile
+      context: .
+      dockerfile: docker/review-ui/Dockerfile
     container_name: agent-store-review-ui
     environment:
       - NODE_ENV=production
@@ -101,22 +101,22 @@ services:
     networks:
       - agent-store-network
 
-  # Sandbox Runner (optional, for testing)
-  # sandbox-runner:
-  #   build:
-  #     context: ./sandbox-runner
-  #     dockerfile: Dockerfile
-  #   container_name: agent-store-sandbox-runner
-  #   environment:
-  #     - WANDB_DISABLED=false
-  #     - WANDB_PROJECT=agent-store-sandbox
-  #     - WANDB_ENTITY=local
-  #   volumes:
-  #     - ./sandbox-runner/artifacts:/app/artifacts
-  #     - ./third_party:/app/third_party:ro
-  #   networks:
-  #     - agent-store-network
-  #   command: ["--help"]
+  inspect-worker:
+    build:
+      context: .
+      dockerfile: docker/inspect-worker/Dockerfile
+    container_name: agent-store-inspect-worker
+    environment:
+      - WANDB_DISABLED=false
+      - WANDB_PROJECT=agent-store-sandbox
+      - WANDB_ENTITY=local
+      - AISEV_HOME=/app/third_party/aisev
+    depends_on:
+      - api
+    networks:
+      - agent-store-network
+    volumes:
+      - ./sandbox-runner/artifacts:/app/sandbox-runner/artifacts
 
 volumes:
   postgres_data:

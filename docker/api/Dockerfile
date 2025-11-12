@@ -16,11 +16,10 @@ COPY api/ /app/api/
 COPY schemas/ /app/schemas/
 COPY db/ /app/db/
 
-# Install Node.js dependencies for API routes
+# Install Node.js dependencies required to run the TypeScript routes via ts-node
 WORKDIR /app
-RUN if [ -f api/package.json ]; then \
-    cd api && npm install --production; \
-    fi
+RUN npm init -y >/dev/null 2>&1 \
+    && npm install --no-save express ts-node typescript @types/express @types/node
 
 # Create a simple Express server wrapper
 RUN cat > /app/server.js << 'EOF'
@@ -50,6 +49,9 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Enable ts-node so that .ts files under /app/api/** can be required directly
+require('ts-node/register/transpile-only');
+
 // API routes
 try {
   const agentCardsRouter = require('./api/routes/agentCards');
@@ -76,9 +78,6 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`Database: ${process.env.DATABASE_URL ? 'Connected' : 'Not configured'}`);
 });
 EOF
-
-# Install Express if not already installed
-RUN npm install express
 
 EXPOSE 3000
 

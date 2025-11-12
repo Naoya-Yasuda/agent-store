@@ -2,9 +2,9 @@
 FROM node:20-alpine AS deps
 WORKDIR /app
 
-# Install dependencies
+# Install full dependency tree for build
 COPY review-ui/package*.json ./
-RUN npm ci --production
+RUN npm ci
 
 FROM node:20-alpine AS builder
 WORKDIR /app
