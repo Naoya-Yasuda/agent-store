@@ -232,6 +232,31 @@ export default function ReviewDashboard() {
     fetchProgress();
   }, [fetchProgress]);
 
+  const applyLlmOverridePreset = useCallback((source?: Partial<LlmJudgeConfig>) => {
+    if (!source) {
+      return;
+    }
+    setLlmOverrideEnabled(true);
+    setRetryLlmProvider(source.provider ?? '');
+    setRetryLlmModel(source.model ?? '');
+    if (typeof source.temperature === 'number') {
+      setRetryLlmTemperature(String(source.temperature));
+    } else if (typeof (source as any)?.temperature === 'string') {
+      setRetryLlmTemperature((source as any).temperature as string);
+    }
+    if (typeof source.maxOutputTokens === 'number') {
+      setRetryLlmMaxTokens(String(source.maxOutputTokens));
+    } else if (typeof (source as any)?.maxOutputTokens === 'string') {
+      setRetryLlmMaxTokens((source as any).maxOutputTokens as string);
+    }
+    setRetryLlmBaseUrl(source.baseUrl ?? '');
+    if (typeof source.dryRun === 'boolean') {
+      setRetryLlmDryRun(source.dryRun);
+    } else {
+      setRetryLlmDryRun('inherit');
+    }
+  }, []);
+
   useEffect(() => {
     setJudgeCardLimit(12);
   }, [submissionId, progress?.agentRevisionId]);
@@ -354,20 +379,6 @@ export default function ReviewDashboard() {
     }
   }, [selectedEvidenceStage, selectedArtifactType]);
 
-  useEffect(() => {
-    if (!progress?.stages?.judge?.details?.artifacts) {
-      return;
-    }
-    const judgeArtifacts = progress.stages.judge.details.artifacts;
-    (['summary', 'report', 'relay'] as const).forEach((artifactKey) => {
-      const descriptor = judgeArtifacts[artifactKey];
-      const cacheKey = `judge:${artifactKey}`;
-      if (descriptor && !artifactStates[cacheKey]) {
-        loadArtifact(descriptor, cacheKey);
-      }
-    });
-  }, [artifactStates, loadArtifact, progress]);
-
   const buildArtifactUrl = useCallback((descriptor: ArtifactDescriptor) => {
     const params = new URLSearchParams({ stage: descriptor.stage, type: descriptor.type });
     if (descriptor.agentId) {
@@ -419,6 +430,20 @@ export default function ReviewDashboard() {
       }));
     }
   }, [buildArtifactUrl]);
+
+  useEffect(() => {
+    if (!progress?.stages?.judge?.details?.artifacts) {
+      return;
+    }
+    const judgeArtifacts = progress.stages.judge.details.artifacts;
+    (['summary', 'report', 'relay'] as const).forEach((artifactKey) => {
+      const descriptor = judgeArtifacts[artifactKey];
+      const cacheKey = `judge:${artifactKey}`;
+      if (descriptor && !artifactStates[cacheKey]) {
+        loadArtifact(descriptor, cacheKey);
+      }
+    });
+  }, [artifactStates, loadArtifact, progress]);
 
   const handleRetry = async () => {
     const trimmedReason = retryReason.trim();
@@ -522,14 +547,6 @@ export default function ReviewDashboard() {
     const relayErrorCount = relayData.filter((item) => item?.error).length;
     const displayedReport = reportData.slice(0, Math.min(judgeCardLimit, reportData.length));
     const hasMoreCards = reportData.length > judgeCardLimit;
-    const scrollToJudgeCard = (questionId?: string) => {
-      if (!questionId) return;
-      setFocusedJudgeQuestion(questionId);
-      setTimeout(() => {
-        const target = judgeCardRefs.current[questionId];
-        target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }, 50);
-    };
     const llmOverrideHistory = stageEvents.filter((evt) => evt.stage === 'judge' && evt.event === 'llm_override_received');
     const manualRecords = reportData.filter((item) => item.verdict === 'manual');
     const rejectedRecords = reportData.filter((item) => item.verdict === 'reject');
@@ -562,6 +579,20 @@ export default function ReviewDashboard() {
       setTimeout(() => {
         artifactSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }, 60);
+    };
+
+    const presetOverrideFromCard = (item: Record<string, any>) => {
+      const overrideSource: Partial<LlmJudgeConfig> = {
+        provider: item.llmProvider ?? item.provider ?? llm?.provider,
+        model: item.llmModel ?? item.model ?? llm?.model,
+        temperature: typeof item.llmTemperature === 'number' ? item.llmTemperature : llm?.temperature,
+        maxOutputTokens: typeof item.llmMaxOutputTokens === 'number' ? item.llmMaxOutputTokens : llm?.maxOutputTokens,
+        baseUrl: item.llmBaseUrl ?? llm?.baseUrl,
+        dryRun: typeof item.llmDryRun === 'boolean' ? item.llmDryRun : llm?.dryRun
+      };
+      applyLlmOverridePreset(overrideSource);
+      handlePrefillRetry(`judge manual follow-up: ${item.questionId}`);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
     return (
@@ -660,6 +691,10 @@ export default function ReviewDashboard() {
                       <pre style={{ whiteSpace: 'pre-wrap', background: '#0f172a', color: '#e2e8f0', padding: 8, borderRadius: 6 }}>{item.llmRationale}</pre>
                     </details>
                   )}
+                  <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <button type="button" onClick={() => presetOverrideFromCard(item)}>LLM設定をプリセット</button>
+                    <button type="button" onClick={() => focusJudgeEvidence(item.questionId)}>証拠ビュー</button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -721,6 +756,7 @@ export default function ReviewDashboard() {
                         <td style={{ padding: 6 }}>
                           <button onClick={() => handlePrefillRetry(`judge manual follow-up: ${item.questionId}`)}>再実行理由にコピー</button>
                           <button onClick={() => scrollToJudgeCard(item.questionId)}>カードを表示</button>
+                          <button onClick={() => presetOverrideFromCard(item)}>LLMプリセット</button>
                           <button onClick={() => focusJudgeEvidence(item.questionId)}>証拠ビュー</button>
                         </td>
                       </tr>
@@ -748,6 +784,7 @@ export default function ReviewDashboard() {
                         <td style={{ padding: 6 }}>
                           <button onClick={() => handlePrefillRetry(`judge reject follow-up: ${item.questionId}`)}>再実行理由にコピー</button>
                           <button onClick={() => scrollToJudgeCard(item.questionId)}>カードを表示</button>
+                          <button onClick={() => presetOverrideFromCard(item)}>LLMプリセット</button>
                           <button onClick={() => focusJudgeEvidence(item.questionId)}>証拠ビュー</button>
                         </td>
                       </tr>

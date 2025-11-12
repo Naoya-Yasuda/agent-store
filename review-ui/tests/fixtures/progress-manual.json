@@ -1,0 +1,45 @@
+{
+  "terminalState": "running",
+  "agentId": "demo-agent",
+  "agentRevisionId": "demo-rev",
+  "wandbRun": { "url": "https://wandb.ai/local/demo/runs/abc123" },
+  "stages": {
+    "precheck": { "status": "completed", "attempts": 1, "message": "done" },
+    "security": { "status": "completed", "attempts": 1, "message": "passed" },
+    "functional": { "status": "completed", "attempts": 1, "message": "ok" },
+    "judge": {
+      "status": "failed",
+      "attempts": 1,
+      "message": "manual verdict",
+      "warnings": ["manual review awaiting human"],
+      "details": {
+        "summary": {
+          "questions": 2,
+          "approved": 1,
+          "manual": 1,
+          "rejected": 0,
+          "verdict": "manual",
+          "manualReason": "LLM disagreement"
+        },
+        "llmJudge": {
+          "enabled": true,
+          "provider": "openai",
+          "model": "gpt-4o-mini",
+          "temperature": 0.2,
+          "maxOutputTokens": 1024,
+          "dryRun": false
+        },
+        "artifacts": {
+          "report": { "stage": "judge", "type": "report", "agentRevisionId": "demo-rev", "agentId": "demo-agent" },
+          "relay": { "stage": "judge", "type": "relay", "agentRevisionId": "demo-rev", "agentId": "demo-agent" }
+        }
+      }
+    },
+    "human": {
+      "status": "pending",
+      "attempts": 0,
+      "details": { "reason": "judge_manual_review" }
+    },
+    "publish": { "status": "pending", "attempts": 0 }
+  }
+}
