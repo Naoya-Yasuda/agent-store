@@ -728,6 +728,80 @@ export default function ReviewDashboard() {
     );
   };
 
+  const renderFunctionalInsights = () => {
+    if (selectedEvidenceStage !== 'functional' || !progress) {
+      return null;
+    }
+    const functionalDetails = progress.stages.functional?.details;
+    const metrics = (functionalDetails?.metrics as Record<string, number>) ?? {};
+    const summary = (functionalDetails?.summary as Record<string, any>) ?? {};
+    const reportData = (artifactStates['functional:report']?.data as any[]) ?? [];
+    const failingRecords = reportData
+      .filter((item) => item?.evaluation?.verdict && item.evaluation.verdict !== 'pass')
+      .sort((a, b) => ((b?.evaluation?.distance ?? 0) - (a?.evaluation?.distance ?? 0)));
+    const topFailing = failingRecords.slice(0, 5);
+    return (
+      <section style={{ display: 'grid', gap: 12 }}>
+        <h3 style={{ margin: 0 }}>Functional Accuracy 統計</h3>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <div style={{ border: '1px solid #d0d7de', borderRadius: 8, padding: 12, minWidth: 220 }}>
+            <div>シナリオ数: {summary.total ?? '-'}</div>
+            <div>Pass: {summary.passed ?? '-'}</div>
+            <div>Needs Review: {summary.needsReview ?? summary.needs_review ?? '-'}</div>
+            <div>Errors: {summary.errors ?? summary.errorCount ?? '-'}</div>
+            <div>Avg Distance: {typeof metrics.averageDistance === 'number' ? metrics.averageDistance.toFixed(3) : '-'}</div>
+            <div>Embedding Avg: {typeof metrics.embeddingAverageDistance === 'number' ? metrics.embeddingAverageDistance.toFixed(3) : '-'}</div>
+            <div>Embedding Max: {typeof metrics.embeddingMaxDistance === 'number' ? metrics.embeddingMaxDistance.toFixed(3) : '-'}</div>
+          </div>
+          <div style={{ border: '1px solid #d0d7de', borderRadius: 8, padding: 12, minWidth: 240 }}>
+            <div style={{ fontWeight: 600, marginBottom: 4 }}>Failしたシナリオ上位</div>
+            {topFailing.length === 0 ? (
+              <span style={{ color: '#57606a' }}>データなし</span>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: 'left', padding: 4 }}>Scenario</th>
+                    <th style={{ textAlign: 'left', padding: 4 }}>Distance</th>
+                    <th style={{ textAlign: 'left', padding: 4 }}>Verdict</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {topFailing.map((item) => (
+                    <tr key={`functional-fail-${item.scenarioId}`} style={{ borderTop: '1px solid #eaeef2' }}>
+                      <td style={{ padding: 4 }}>{item.scenarioId}</td>
+                      <td style={{ padding: 4 }}>{item?.evaluation?.distance?.toFixed?.(3) ?? item?.evaluation?.distance ?? '-'}</td>
+                      <td style={{ padding: 4 }}>{item?.evaluation?.verdict ?? 'needs_review'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+        {topFailing.length > 0 && (
+          <div>
+            <div style={{ fontWeight: 600, marginBottom: 4 }}>Fail詳細</div>
+            <div style={{ border: '1px solid #d0d7de', borderRadius: 8, maxHeight: 260, overflow: 'auto' }}>
+              {topFailing.map((item) => (
+                <div key={`functional-detail-${item.scenarioId}`} style={{ padding: 8, borderBottom: '1px solid #eaeef2' }}>
+                  <div style={{ fontWeight: 600 }}>{item.scenarioId} ({item.evaluation?.verdict})</div>
+                  <div style={{ fontSize: 12, color: '#57606a' }}>距離: {item.evaluation?.distance} / しきい値: {item.evaluation?.threshold}</div>
+                  {item.responseStatus && <div style={{ fontSize: 12 }}>status: {item.responseStatus}</div>}
+                  {item.responseError && <div style={{ fontSize: 12, color: '#d1242f' }}>{item.responseError}</div>}
+                  <details style={{ marginTop: 6 }}>
+                    <summary>回答</summary>
+                    <pre style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{item.response ?? '(empty)'}</pre>
+                  </details>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </section>
+    );
+  };
+
   const statusColor = (status: string) => {
     switch (status) {
       case 'completed':
@@ -925,6 +999,50 @@ export default function ReviewDashboard() {
     );
   };
 
+  const renderHumanInsights = () => {
+    if (!progress) {
+      return null;
+    }
+    const humanStage = progress.stages.human;
+    const details = humanStage?.details as Record<string, any> | undefined;
+    const reason = details?.reason;
+    const decision = details?.decision;
+    const decisionNotes = details?.decisionNotes ?? details?.notes;
+    const attachments = Array.isArray(details?.attachments) ? details?.attachments : undefined;
+    const awaitingJudge = reason === 'judge_manual_review';
+    if (!reason && !decision && !decisionNotes && !attachments) {
+      return null;
+    }
+    return (
+      <section style={{ border: '1px solid #d0d7de', borderRadius: 8, padding: 12, background: awaitingJudge ? '#fffbe6' : '#fff' }}>
+        <h3 style={{ marginTop: 0 }}>Human Review 状態</h3>
+        {awaitingJudge && (
+          <div style={{ color: '#bf8700', fontWeight: 600, marginBottom: 8 }}>
+            Judge Panel が manual 判定を返し、人手確認を待っています。
+          </div>
+        )}
+        {reason && <div>Reason: <code>{reason}</code></div>}
+        {decision && <div>Decision: <strong>{decision}</strong></div>}
+        {decisionNotes && (
+          <div style={{ marginTop: 4 }}>
+            メモ:
+            <pre style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{decisionNotes}</pre>
+          </div>
+        )}
+        {attachments && attachments.length > 0 && (
+          <div style={{ marginTop: 4 }}>
+            添付:
+            <ul>
+              {attachments.map((item: string) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </section>
+    );
+  };
+
   return (
     <main style={{ fontFamily: 'system-ui, sans-serif', padding: 24, display: 'flex', flexDirection: 'column', gap: 24 }}>
       <header style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -1007,7 +1125,9 @@ export default function ReviewDashboard() {
       </section>
 
       {renderSecurityInsights()}
+      {renderFunctionalInsights()}
       {renderJudgeInsights()}
+      {renderHumanInsights()}
       {renderLedgerSection()}
       {renderStageEvents()}
 

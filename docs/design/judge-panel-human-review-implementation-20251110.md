@@ -53,8 +53,10 @@
 - **W&Bメトリクス**
   - `judge/questions`, `judge/approved`, `judge/manual`, `judge/rejected`, `judge/flagged`, `judge/llm_calls`, `judge/relay_errors` を出力し、QAトレースとプロセス健全性を可視化。
 - **Temporal Activities**
-- `prototype/temporal-review-workflow/src/activities/index.ts` で `runJudgePanel` がInspect Worker CLIを実行し、`recordJudgeLedger` によって summary/report/relayログのハッシュ＋LLM設定をLedgerへPOST。Security Gate同様に `details.ledger` を`queryProgress`へ返す。
-- Human Reviewの決定結果（承認/差戻し）は `signalHumanDecision` を通じてWorkflowへ伝搬し、`escalateToHuman` がシグナルを待ってHumanステージ/Terminal Stateを更新する（APIは `/review/decision` → `sendHumanDecision` → Temporal Signal という経路）。Judgeステージでは `signalUpdateLlmJudge` を受け取った際に `recordStageEvent('llm_override_received', …)` を呼び、UI/W&BのタイムラインにLLM override履歴が残る。
+- `prototype/temporal-review-workflow/src/activities/index.ts` で `runJudgePanel` がInspect Worker CLIを実行し、`recordJudgeLedger` によって summary/report/relayログのハッシュ＋LLM設定をLedgerへPOST。Security Gate同様に `details.ledger` を`queryProgress`へ返し、UI／`/review/ledger/download` が `sourceFile` をフォールバックとして参照できる。
+- Judge verdict が `manual` / `reject` になった場合は `emitStageEvent('judge', 'verdict_manual|verdict_rejected', …)` を記録し、`escalateToHuman('judge', 'judge_manual_review', …)` を通じてHumanステージを待機状態にする。イベントデータは `/review/events/:submissionId` とW&B Runのタイムラインに出力される。
+- `signalUpdateLlmJudge` を受け取ると `recordStageEvent('llm_override_received', …)` とStage metadataの更新を行い、LLM override履歴をUI/W&B双方で追跡できる。
+- Human Reviewの決定結果（承認/差戻し）は `signalHumanDecision` を通じてWorkflowへ伝搬し、`recordHumanDecisionMetadata` が `sandbox-runner/artifacts/<rev>/metadata.json` とW&B Runに決裁イベントを残す（REST API: `/review/decision` → `sendHumanDecision`）。
 - **UI/API**
   - `api/routes/reviews.ts` (新規) でHuman Review用のREST API（進捗取得、証拠取得、再実行リクエスト、承認/差戻し）を提供。
   - フロントエンド（別リポジトリ想定）の要件として、観点フィルタ・差戻し理由入力・W&Bリンク表示を記述。
