@@ -11,15 +11,17 @@ RUN apk add --no-cache \
     g++ \
     postgresql-client
 
+# Install API dependencies using package manifest for caching
+COPY api/package*.json /app/api/
+RUN cd /app/api && npm install --production && ln -s /app/api/node_modules /app/node_modules
+
 # Copy API code
 COPY api/ /app/api/
 COPY schemas/ /app/schemas/
 COPY db/ /app/db/
 
-# Install Node.js dependencies required to run the TypeScript routes via ts-node
+# Install tooling used by the lightweight server wrapper (ts-node already installed under api/)
 WORKDIR /app
-RUN npm init -y >/dev/null 2>&1 \
-    && npm install --no-save express ts-node typescript @types/express @types/node
 
 # Create a simple Express server wrapper
 RUN cat > /app/server.js << 'EOF'
