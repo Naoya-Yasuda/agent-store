@@ -205,22 +205,22 @@ Docker Composeを使わずに個別に起動する場合：
 - `prototype/inspect-worker/`: AISI Inspectワークフローと連携し、Judgeエージェントの結果をリプレイ。
 - `docs/`: 設計メモと研究検討資料。Functional DSL/RAGTruth運用は [docs/design/functional-dsl-plan.md](docs/design/functional-dsl-plan.md)、Security Gate監査連携は [docs/design/security-gate-ledger-plan.md](docs/design/security-gate-ledger-plan.md) と [docs/design/sandbox-runner-implementation-plan.md](docs/design/sandbox-runner-implementation-plan.md) を参照。
 
-## 実装ステータス (2025-11-11時点)
+## 実装ステータス (2025-11-12時点)
 | 機能領域 | 状態 | メモ |
 | --- | --- | --- |
 | Submission API（提出〜スナップショット保存） | ✅ 実装済み | JSON Schema/署名/Manifest検証とDB保存を完了。Temporal連携イベントも送出。 |
 | Temporalワークフロー（PreCheck→Publish） | ✅ 実装済み | `runSecurityGate`/`runFunctionalAccuracy`/`runJudgePanel` が実CLIを叩き、`queryProgress`へW&B/アーティファクト情報を返却。 |
 | Sandbox RunnerのAdvBench統合 | ✅ 実装済み | AgentCard語彙を差し込んだ攻撃テンプレ生成・Relay実行・カテゴリ別統計・W&B/Temporal連携まで完了。 |
 | Functional DSL + RAGTruth突合 | ✅ 実装済み | AgentCardシナリオ生成 → Relay実行 → RAGTruth照合に加え、Embedding距離メトリクスとLedger（`functional_ledger_entry.json`）を生成し、Temporal/UI/W&Bへ返却。 |
-| Judge Panel (MCTS-Judge) | 🚧 部分実装 | Inspect Worker CLIでRelayログ＋MCTS評価＋LLM判定を実行し、Ledger（summary/report/relayハッシュ）、LLM override履歴イベント、Trace ID付きJudgeカード/Relayログ表示をHuman Review UIへ供給済み。今後はW&Bイベント露出とManual判定UIの仕上げを進行（詳細: [judge-panel-human-review-implementation-20251110.md](docs/design/judge-panel-human-review-implementation-20251110.md)）。 |
+| Judge Panel (MCTS-Judge) | 🚧 部分実装 | Inspect Worker CLIでRelayログ＋MCTS評価＋LLM判定を実行し、Ledger（summary/report/relayハッシュ）、LLM override履歴イベント、Trace ID付きJudgeカード/Relayログ表示をHuman Review UIへ供給済み。Ledgerアップロード失敗や再実行Mrnに応じた `warnings` がTemporal／API／Next.jsに伝播するようになった。残課題: manual判定時のUIフロー仕上げ、Judge verdictのW&Bスクリーンショット連携、CIでのinspect-worker統合テスト強化（詳細: [judge-panel-human-review-implementation-20251110.md](docs/design/judge-panel-human-review-implementation-20251110.md)）。 |
 | Human Review UI連携 | ✅ 実装済み | `/review/*` RESTとNext.jsダッシュボードを実装。証拠JSON整形表示・再実行・承認/差戻しが可能。 |
 | W&B MCPトレース連携 | ✅ 実装済み | Security/Functional/Judge/Human各ステージのサマリ・Ledger・LLM設定を `metadata.json` / `wandbMcp.stages` に集約し、`/review/ledger` とW&B Runの両方からリプレイできる。 |
 
 > ※実装や設計の更新を行った際は、必ず本READMEのステータステーブルと該当セクションを更新してください。
 
 ## 今後の優先タスク
-1. **Judge Panel仕上げ**: Inspect WorkerのMCTS-Judge結果をUIに完全表示し、LLM override履歴・RelayエラーをLedger/W&B両方で追跡できるよう [docs/design/judge-panel-human-review-implementation-20251110.md](docs/design/judge-panel-human-review-implementation-20251110.md) を更新する。
-2. **Ledger耐障害性の強化**: `/review/ledger/download` の存在チェック/リトライ、HTTPアップロード失敗時の再送制御を追加し、[security-gate-ledger-plan.md](docs/design/security-gate-ledger-plan.md) に運用手順を追記する。
+1. **Judge Panel仕上げ**: Inspect WorkerのMCTS-Judge結果をUIに完全表示し、manual判定理由・Human承認までのフローをNext.js側で仕上げる（LLM overrideフォームのE2E検証やW&Bスクリーンショット連携も含む）。加えて、manual判定を受けたステージでHuman Reviewバナー/再実行リンク/LLM設定引き継ぎがUI上でシームレスに動作するようにする。詳細: [docs/design/judge-panel-human-review-implementation-20251110.md](docs/design/judge-panel-human-review-implementation-20251110.md)。
+2. **Ledger耐障害性の強化（残タスク）**: `/review/ledger/download` の詳細エラーコードは実装済み。今後は自動再送制御や外部Ledger APIのヘルスチェックを追加し、[security-gate-ledger-plan.md](docs/design/security-gate-ledger-plan.md) の運用指針を拡張する。
 3. **FunctionalリプレイUI**: Functional AccuracyステージのEmbedding距離やRAGTruth照合結果をHuman Review UIで比較表示し、Functional Ledgerと同期した差分ビューを提供する。
 4. **Inspect Workerトレーサビリティ**: Judge Panel CLIがW&BタイムラインやイベントAPIと整合するよう、LLM呼び出し/RelayリトライのトレースIDをArtifacts・Ledgerへ書き込み、UIで辿れるようにする。
 

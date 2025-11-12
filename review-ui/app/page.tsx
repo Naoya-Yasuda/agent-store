@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { buildLlmOverride, LlmOverrideResult } from '../src/lib/judgeOverride';
 
 type StageName = 'precheck' | 'security' | 'functional' | 'judge' | 'human' | 'publish';
@@ -152,6 +152,7 @@ export default function ReviewDashboard() {
   const [eventSearchTerm, setEventSearchTerm] = useState('');
   const [judgeCardLimit, setJudgeCardLimit] = useState(12);
   const [showRelayErrorsOnly, setShowRelayErrorsOnly] = useState(false);
+  const manualSectionRef = useRef<HTMLDivElement | null>(null);
 
   const llmOverrideResult = useMemo<LlmOverrideResult>(() => {
     if (!llmOverrideEnabled) {
@@ -512,10 +513,38 @@ export default function ReviewDashboard() {
     const llmOverrideHistory = stageEvents.filter((evt) => evt.stage === 'judge' && evt.event === 'llm_override_received');
     const manualRecords = reportData.filter((item) => item.verdict === 'manual');
     const rejectedRecords = reportData.filter((item) => item.verdict === 'reject');
+    const judgeStage = progress.stages.judge;
+    const verdict = typeof summary.verdict === 'string' ? summary.verdict : undefined;
+    const awaitingHuman = progress.stages.human?.details?.reason === 'judge_manual_review';
+    const manualBannerVisible = verdict === 'manual' || awaitingHuman || manualRecords.length > 0;
+    const manualReason = summary.manualReason || judgeStage?.message;
+    const primaryManualId = manualRecords[0]?.questionId;
+    const handleManualRetry = (questionId?: string) => {
+      handlePrefillRetry(`judge manual follow-up: ${questionId ?? 'manual review'}`);
+      setLlmOverrideEnabled(true);
+    };
+    const jumpToManualList = () => {
+      manualSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
 
     return (
       <section style={{ display: 'grid', gap: 12 }}>
         <h3 style={{ margin: 0 }}>Judge 詳細</h3>
+        {manualBannerVisible && (
+          <div style={{ border: '1px solid #bf8700', background: '#fff4ce', borderRadius: 10, padding: 12, display: 'grid', gap: 6 }}>
+            <div style={{ fontWeight: 600, color: '#744500' }}>Judge Panel からの manual 判定</div>
+            <div style={{ fontSize: 13 }}>Judge verdict: {verdict ?? judgeStage?.status ?? 'unknown'} / Human Review {awaitingHuman ? '対応待ち' : 'へエスカレーション済み'}</div>
+            {manualReason && <div style={{ fontSize: 13 }}>説明: {manualReason}</div>}
+            {manualRecords.length > 0 && (
+              <div style={{ fontSize: 12 }}>該当質問: {manualRecords.map((item) => item.questionId).join(', ')}</div>
+            )}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button type="button" onClick={() => handlePrefillRetry(`judge manual follow-up: ${primaryManualId ?? 'manual review'}`)}>再実行フォームに理由をコピー</button>
+              <button type="button" onClick={() => handleManualRetry(primaryManualId)}>LLM設定を見直して再実行</button>
+              {manualRecords.length > 0 && <button type="button" onClick={jumpToManualList}>該当カードへ移動</button>}
+            </div>
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           <div style={{ border: '1px solid #d0d7de', borderRadius: 8, padding: 12, minWidth: 220 }}>
             <div style={{ fontWeight: 600, marginBottom: 8 }}>集計</div>
@@ -535,13 +564,21 @@ export default function ReviewDashboard() {
             <div>Dry Run: {llm?.dryRun ? 'true' : 'false'}</div>
           </div>
         </div>
-        {reportData.length > 0 && (
-          <div>
-            <div style={{ fontWeight: 600, marginBottom: 4 }}>質問別LLM判定カード</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
-              {displayedReport.map((item) => (
-                <div key={item.questionId} style={{ border: '1px solid #d0d7de', borderRadius: 10, padding: 12, background: '#fff' }}>
-                  <div style={{ fontWeight: 600 }}>{item.questionId}</div>
+            {reportData.length > 0 && (
+              <div>
+                <div style={{ fontWeight: 600, marginBottom: 4 }}>質問別LLM判定カード</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+                  {displayedReport.map((item) => (
+                    <div
+                      key={item.questionId}
+                      style={{
+                        border: `1px solid ${item.verdict === 'manual' ? '#bf8700' : item.verdict === 'reject' ? '#d1242f' : '#d0d7de'}`,
+                        borderRadius: 10,
+                        padding: 12,
+                        background: item.verdict === 'manual' ? '#fff8e7' : item.verdict === 'reject' ? '#fff5f5' : '#fff'
+                      }}
+                    >
+                      <div style={{ fontWeight: 600 }}>{item.questionId}</div>
                   {item.traceId && (
                     <div style={{ fontSize: 12, color: '#57606a', wordBreak: 'break-all' }}>Trace ID: <code>{item.traceId}</code></div>
                   )}
@@ -600,7 +637,7 @@ export default function ReviewDashboard() {
         {(manualRecords.length > 0 || rejectedRecords.length > 0) && (
           <div style={{ display: 'grid', gap: 8 }}>
             {manualRecords.length > 0 && (
-              <div style={{ border: '1px solid #d0d7de', borderRadius: 8, padding: 12 }}>
+              <div ref={manualSectionRef} style={{ border: '1px solid #d0d7de', borderRadius: 8, padding: 12 }}>
                 <div style={{ fontWeight: 600, marginBottom: 4 }}>Manual 判定一覧</div>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
