@@ -31,7 +31,14 @@ async function main(): Promise<void> {
     httpEndpoint: endpoint,
     httpToken: token
   });
-  console.log(`Ledger entry stored at ${output}`);
+  console.log(`Ledger entry stored at ${output.entryPath}`);
+  if (output.httpPosted === true) {
+    console.log(`HTTP upload succeeded${output.httpAttempts ? ` in ${output.httpAttempts} attempt(s)` : ''}`);
+  } else if (output.httpPosted === false) {
+    console.warn(`HTTP upload failed after ${output.httpAttempts ?? 0} attempt(s): ${output.httpError ?? 'unknown error'}`);
+  } else if (endpoint) {
+    console.log('HTTP upload skipped (endpoint configured but result unknown)');
+  }
 }
 
 main().catch((err) => {

@@ -30,6 +30,9 @@ type LedgerEntry = {
   generatedAt?: string;
   downloadUrl?: string;
   sourceFile?: string;
+  httpPosted?: boolean;
+  httpAttempts?: number;
+  httpError?: string;
 };
 
 export type LedgerFileHandle = {
@@ -70,6 +73,9 @@ export async function getLedgerSummary(submissionId: string): Promise<LedgerEntr
         workflowRunId: metadata?.runId,
         generatedAt: metadata?.exportedAt ?? metadata?.generatedAt,
         sourceFile: sourceRelative,
+        httpPosted: ledger.httpPosted,
+        httpAttempts: ledger.httpAttempts,
+        httpError: ledger.httpError,
         downloadUrl: ledger.entryPath && !isRemotePath(ledger.entryPath)
           ? `/review/ledger/download?submissionId=${submissionId}&stage=${stage}`
           : ledger.entryPath

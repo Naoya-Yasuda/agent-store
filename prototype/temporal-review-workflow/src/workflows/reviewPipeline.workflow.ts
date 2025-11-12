@@ -23,6 +23,9 @@ type SecurityGateResult = {
   ledgerEntryPath?: string;
   ledgerDigest?: string;
   ledgerSourceFile?: string;
+  ledgerHttpPosted?: boolean;
+  ledgerHttpAttempts?: number;
+  ledgerHttpError?: string;
 };
 
 type FunctionalAccuracyResult = {
@@ -38,6 +41,9 @@ type FunctionalAccuracyResult = {
   ledgerEntryPath?: string;
   ledgerDigest?: string;
   ledgerSourceFile?: string;
+  ledgerHttpPosted?: boolean;
+  ledgerHttpAttempts?: number;
+  ledgerHttpError?: string;
 };
 
 type JudgePanelResult = {
@@ -52,6 +58,9 @@ type JudgePanelResult = {
   ledgerEntryPath?: string;
   ledgerDigest?: string;
   ledgerSourceFile?: string;
+  ledgerHttpPosted?: boolean;
+  ledgerHttpAttempts?: number;
+  ledgerHttpError?: string;
 };
 
 type Activities = {
@@ -370,7 +379,16 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
           metadata: { stage: 'security', type: 'metadata', agentRevisionId: context.agentRevisionId },
           prompts: { stage: 'security', type: 'prompts', agentRevisionId: context.agentRevisionId }
         },
-        ledger: security.ledgerEntryPath ? { entryPath: security.ledgerEntryPath, digest: security.ledgerDigest, sourceFile: security.ledgerSourceFile } : undefined
+        ledger: security.ledgerEntryPath
+          ? {
+              entryPath: security.ledgerEntryPath,
+              digest: security.ledgerDigest,
+              sourceFile: security.ledgerSourceFile,
+              httpPosted: security.ledgerHttpPosted,
+              httpAttempts: security.ledgerHttpAttempts,
+              httpError: security.ledgerHttpError
+            }
+          : undefined
       }
     });
     if (!security.passed) {
@@ -404,7 +422,16 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
           summary: { stage: 'functional', type: 'summary', agentRevisionId: context.agentRevisionId },
           prompts: { stage: 'functional', type: 'prompts', agentRevisionId: context.agentRevisionId }
         },
-        ledger: functional.ledgerEntryPath ? { entryPath: functional.ledgerEntryPath, digest: functional.ledgerDigest, sourceFile: functional.ledgerSourceFile } : undefined
+        ledger: functional.ledgerEntryPath
+          ? {
+              entryPath: functional.ledgerEntryPath,
+              digest: functional.ledgerDigest,
+              sourceFile: functional.ledgerSourceFile,
+              httpPosted: functional.ledgerHttpPosted,
+              httpAttempts: functional.ledgerHttpAttempts,
+              httpError: functional.ledgerHttpError
+            }
+          : undefined
       }
     });
     if (!functional.passed) {
@@ -443,7 +470,16 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
           summary: { stage: 'judge', type: 'summary', agentRevisionId: context.agentRevisionId, agentId: context.agentId },
           relayLogs: { stage: 'judge', type: 'relay', agentRevisionId: context.agentRevisionId, agentId: context.agentId }
         },
-        ledger: judge.ledgerEntryPath ? { entryPath: judge.ledgerEntryPath, digest: judge.ledgerDigest, sourceFile: judge.ledgerSourceFile } : undefined
+        ledger: judge.ledgerEntryPath
+          ? {
+              entryPath: judge.ledgerEntryPath,
+              digest: judge.ledgerDigest,
+              sourceFile: judge.ledgerSourceFile,
+              httpPosted: judge.ledgerHttpPosted,
+              httpAttempts: judge.ledgerHttpAttempts,
+              httpError: judge.ledgerHttpError
+            }
+          : undefined
       }
     });
 

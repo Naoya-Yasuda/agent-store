@@ -83,7 +83,7 @@ export async function preCheckSubmission(args: { submissionId: string }): Promis
   };
 }
 
-export async function runSecurityGate(args: { submissionId: string; agentId: string; agentRevisionId: string; workflowId: string; workflowRunId: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string } }): Promise<{ passed: boolean; artifactsPath: string; summaryPath: string; reportPath: string; promptsPath: string; metadataPath: string; summary?: Record<string, unknown>; wandb?: WandbRunInfo; failReasons?: string[]; ledgerEntryPath?: string; ledgerDigest?: string }> {
+export async function runSecurityGate(args: { submissionId: string; agentId: string; agentRevisionId: string; workflowId: string; workflowRunId: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string } }): Promise<{ passed: boolean; artifactsPath: string; summaryPath: string; reportPath: string; promptsPath: string; metadataPath: string; summary?: Record<string, unknown>; wandb?: WandbRunInfo; failReasons?: string[]; ledgerEntryPath?: string; ledgerDigest?: string; ledgerSourceFile?: string; ledgerHttpPosted?: boolean; ledgerHttpAttempts?: number; ledgerHttpError?: string }> {
   console.log(`[activities] runSecurityGate submission=${args.submissionId}`);
   const artifactsPath = await ensureSandboxArtifacts(args.agentRevisionId);
   const cliArgs = [
@@ -128,7 +128,16 @@ export async function runSecurityGate(args: { submissionId: string; agentId: str
   });
   await upsertStageMetadata(args.agentRevisionId, 'security', {
     summary,
-    ledger: ledgerInfo.entryPath ? { entryPath: ledgerInfo.entryPath, digest: ledgerInfo.digest, sourceFile: ledgerInfo.sourceFile } : undefined
+    ledger: ledgerInfo.entryPath
+      ? {
+          entryPath: ledgerInfo.entryPath,
+          digest: ledgerInfo.digest,
+          sourceFile: ledgerInfo.sourceFile,
+          httpPosted: ledgerInfo.httpPosted,
+          httpAttempts: ledgerInfo.httpAttempts,
+          httpError: ledgerInfo.httpError
+        }
+      : undefined
   });
   return {
     passed,
@@ -142,6 +151,9 @@ export async function runSecurityGate(args: { submissionId: string; agentId: str
     ledgerEntryPath: ledgerInfo.entryPath,
     ledgerDigest: ledgerInfo.digest,
     ledgerSourceFile: ledgerInfo.sourceFile,
+    ledgerHttpPosted: ledgerInfo.httpPosted,
+    ledgerHttpAttempts: ledgerInfo.httpAttempts,
+    ledgerHttpError: ledgerInfo.httpError,
     failReasons: (summary as any).error
       ? [(summary as any).error]
       : needsReview && needsReview > 0
@@ -150,7 +162,7 @@ export async function runSecurityGate(args: { submissionId: string; agentId: str
   };
 }
 
-export async function runFunctionalAccuracy(args: { submissionId: string; agentId: string; agentRevisionId: string; workflowId: string; workflowRunId: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string } }): Promise<{ passed: boolean; metrics: { averageDistance?: number; embeddingAverageDistance?: number; embeddingMaxDistance?: number }; artifactsPath: string; summaryPath: string; reportPath: string; promptsPath: string; metadataPath: string; summary?: Record<string, unknown>; wandb?: WandbRunInfo; failReasons?: string[]; ledgerEntryPath?: string; ledgerDigest?: string }> {
+export async function runFunctionalAccuracy(args: { submissionId: string; agentId: string; agentRevisionId: string; workflowId: string; workflowRunId: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string } }): Promise<{ passed: boolean; metrics: { averageDistance?: number; embeddingAverageDistance?: number; embeddingMaxDistance?: number }; artifactsPath: string; summaryPath: string; reportPath: string; promptsPath: string; metadataPath: string; summary?: Record<string, unknown>; wandb?: WandbRunInfo; failReasons?: string[]; ledgerEntryPath?: string; ledgerDigest?: string; ledgerSourceFile?: string; ledgerHttpPosted?: boolean; ledgerHttpAttempts?: number; ledgerHttpError?: string }> {
   console.log(`[activities] runFunctionalAccuracy submission=${args.submissionId}`);
   const artifactsPath = await ensureSandboxArtifacts(args.agentRevisionId);
   const cliArgs = [
@@ -200,7 +212,16 @@ export async function runFunctionalAccuracy(args: { submissionId: string; agentI
       embeddingAverageDistance: (summary as any).embeddingAverageDistance,
       embeddingMaxDistance: (summary as any).embeddingMaxDistance
     },
-    ledger: ledgerInfo.entryPath ? { entryPath: ledgerInfo.entryPath, digest: ledgerInfo.digest, sourceFile: ledgerInfo.sourceFile } : undefined
+    ledger: ledgerInfo.entryPath
+      ? {
+          entryPath: ledgerInfo.entryPath,
+          digest: ledgerInfo.digest,
+          sourceFile: ledgerInfo.sourceFile,
+          httpPosted: ledgerInfo.httpPosted,
+          httpAttempts: ledgerInfo.httpAttempts,
+          httpError: ledgerInfo.httpError
+        }
+      : undefined
   });
   return {
     passed,
@@ -219,11 +240,14 @@ export async function runFunctionalAccuracy(args: { submissionId: string; agentI
     failReasons: (summary as any).error ? [(summary as any).error] : undefined,
     ledgerEntryPath: ledgerInfo.entryPath,
     ledgerDigest: ledgerInfo.digest,
-    ledgerSourceFile: ledgerInfo.sourceFile
+    ledgerSourceFile: ledgerInfo.sourceFile,
+    ledgerHttpPosted: ledgerInfo.httpPosted,
+    ledgerHttpAttempts: ledgerInfo.httpAttempts,
+    ledgerHttpError: ledgerInfo.httpError
   };
 }
 
-export async function runJudgePanel(args: { submissionId: string; agentId: string; agentRevisionId: string; promptVersion: string; workflowId: string; workflowRunId: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string }; llmJudge?: LlmJudgeConfig }): Promise<{ verdict: 'approve' | 'reject' | 'manual'; score: number; explanation?: string; artifactsPath: string; reportPath: string; summaryPath: string; relayLogPath: string; summary?: Record<string, unknown>; ledgerEntryPath?: string; ledgerDigest?: string }> {
+export async function runJudgePanel(args: { submissionId: string; agentId: string; agentRevisionId: string; promptVersion: string; workflowId: string; workflowRunId: string; wandbRun?: WandbRunInfo; agentCardPath?: string; relay?: { endpoint?: string; token?: string }; llmJudge?: LlmJudgeConfig }): Promise<{ verdict: 'approve' | 'reject' | 'manual'; score: number; explanation?: string; artifactsPath: string; reportPath: string; summaryPath: string; relayLogPath: string; summary?: Record<string, unknown>; ledgerEntryPath?: string; ledgerDigest?: string; ledgerSourceFile?: string; ledgerHttpPosted?: boolean; ledgerHttpAttempts?: number; ledgerHttpError?: string }> {
   console.log(`[activities] runJudgePanel submission=${args.submissionId} prompt=${args.promptVersion}`);
   const outDir = path.join(INSPECT_OUT_DIR, args.agentId, args.agentRevisionId);
   await fs.mkdir(outDir, { recursive: true });
@@ -280,7 +304,16 @@ export async function runJudgePanel(args: { submissionId: string; agentId: strin
   await upsertStageMetadata(args.agentRevisionId, 'judge', {
     summary,
     llmJudge: llmSummary,
-    ledger: ledgerInfo.entryPath ? { entryPath: ledgerInfo.entryPath, digest: ledgerInfo.digest, sourceFile: ledgerInfo.sourceFile } : undefined
+    ledger: ledgerInfo.entryPath
+      ? {
+          entryPath: ledgerInfo.entryPath,
+          digest: ledgerInfo.digest,
+          sourceFile: ledgerInfo.sourceFile,
+          httpPosted: ledgerInfo.httpPosted,
+          httpAttempts: ledgerInfo.httpAttempts,
+          httpError: ledgerInfo.httpError
+        }
+      : undefined
   });
 
   return {
@@ -294,7 +327,10 @@ export async function runJudgePanel(args: { submissionId: string; agentId: strin
     summary,
     ledgerEntryPath: ledgerInfo.entryPath,
     ledgerDigest: ledgerInfo.digest,
-    ledgerSourceFile: ledgerInfo.sourceFile
+    ledgerSourceFile: ledgerInfo.sourceFile,
+    ledgerHttpPosted: ledgerInfo.httpPosted,
+    ledgerHttpAttempts: ledgerInfo.httpAttempts,
+    ledgerHttpError: ledgerInfo.httpError
   };
 }
 
@@ -393,6 +429,9 @@ type LedgerRecordResult = {
   entryPath?: string;
   digest?: string;
   sourceFile?: string;
+  httpPosted?: boolean;
+  httpAttempts?: number;
+  httpError?: string;
 };
 
 export async function recordSecurityLedger(args: {
@@ -431,12 +470,19 @@ export async function recordSecurityLedger(args: {
       exportedAt: new Date().toISOString(),
       sourceFile: payloadPath
     };
-    const entryPath = await publishToLedger(auditEntry, {
+    const publishResult = await publishToLedger(auditEntry, {
       outputDir: process.env.SECURITY_LEDGER_DIR,
       httpEndpoint: process.env.SECURITY_LEDGER_ENDPOINT,
       httpToken: process.env.SECURITY_LEDGER_TOKEN
     });
-    return { entryPath, digest: ledgerDigest, sourceFile: payloadPath };
+    return {
+      entryPath: publishResult.entryPath,
+      digest: ledgerDigest,
+      sourceFile: payloadPath,
+      httpPosted: publishResult.httpPosted,
+      httpAttempts: publishResult.httpAttempts,
+      httpError: publishResult.httpError
+    };
   } catch (err) {
     console.warn('[activities] failed to record security ledger entry', err);
     return {};
@@ -490,12 +536,19 @@ export async function recordFunctionalLedger(args: {
       exportedAt: new Date().toISOString(),
       sourceFile: payloadPath
     };
-    const entryPath = await publishToLedger(auditEntry, {
+    const publishResult = await publishToLedger(auditEntry, {
       outputDir: process.env.FUNCTIONAL_LEDGER_DIR ?? process.env.SECURITY_LEDGER_DIR,
       httpEndpoint: process.env.FUNCTIONAL_LEDGER_ENDPOINT ?? process.env.SECURITY_LEDGER_ENDPOINT,
       httpToken: process.env.FUNCTIONAL_LEDGER_TOKEN ?? process.env.SECURITY_LEDGER_TOKEN
     });
-    return { entryPath, digest: ledgerDigest, sourceFile: payloadPath };
+    return {
+      entryPath: publishResult.entryPath,
+      digest: ledgerDigest,
+      sourceFile: payloadPath,
+      httpPosted: publishResult.httpPosted,
+      httpAttempts: publishResult.httpAttempts,
+      httpError: publishResult.httpError
+    };
   } catch (err) {
     console.warn('[activities] failed to record functional ledger entry', err);
     return {};
@@ -548,12 +601,19 @@ export async function recordJudgeLedger(args: {
       exportedAt: new Date().toISOString(),
       sourceFile: payloadPath
     };
-    const entryPath = await publishToLedger(auditEntry, {
+    const publishResult = await publishToLedger(auditEntry, {
       outputDir: process.env.JUDGE_LEDGER_DIR ?? process.env.SECURITY_LEDGER_DIR,
       httpEndpoint: process.env.JUDGE_LEDGER_ENDPOINT ?? process.env.SECURITY_LEDGER_ENDPOINT,
       httpToken: process.env.JUDGE_LEDGER_TOKEN ?? process.env.SECURITY_LEDGER_TOKEN
     });
-    return { entryPath, digest: ledgerDigest, sourceFile: payloadPath };
+    return {
+      entryPath: publishResult.entryPath,
+      digest: ledgerDigest,
+      sourceFile: payloadPath,
+      httpPosted: publishResult.httpPosted,
+      httpAttempts: publishResult.httpAttempts,
+      httpError: publishResult.httpError
+    };
   } catch (err) {
     console.warn('[activities] failed to record judge ledger entry', err);
     return {};

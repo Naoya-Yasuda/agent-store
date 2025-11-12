@@ -184,7 +184,7 @@ router.get('/review/ui/:submissionId', async (req: Request, res: Response) => {
         }
         return { stage, ledger };
       })
-      .filter(Boolean) as { stage: string; ledger: { entryPath?: string; digest?: string } }[];
+      .filter(Boolean) as { stage: string; ledger: { entryPath?: string; digest?: string; sourceFile?: string; httpPosted?: boolean; httpAttempts?: number; httpError?: string } }[];
     const ledgerHtml = ledgerEntries.length
       ? `<section style="margin-top:16px;">
           <h3>Ledger 記録</h3>
@@ -197,11 +197,19 @@ router.get('/review/ui/:submissionId', async (req: Request, res: Response) => {
                     ? `<a href="${escapeHtml(entryPath)}" target="_blank" rel="noreferrer">Ledger Link</a>`
                     : `<code>${escapeHtml(entryPath)}</code>`)
                 : 'N/A';
+              const httpStatus = entry.ledger.httpPosted === true
+                ? `HTTP送信: 成功${entry.ledger.httpAttempts ? ` (${escapeHtml(String(entry.ledger.httpAttempts))}回)` : ''}`
+                : entry.ledger.httpPosted === false
+                  ? `HTTP送信: 失敗${entry.ledger.httpAttempts ? ` (${escapeHtml(String(entry.ledger.httpAttempts))}回)` : ''}${entry.ledger.httpError ? `<div class="ledger-card__error">${escapeHtml(entry.ledger.httpError)}</div>` : ''}`
+                  : 'HTTP送信: 未設定';
+              const source = entry.ledger.sourceFile ? `<div>Source: <code>${escapeHtml(entry.ledger.sourceFile)}</code></div>` : '';
               return `
                 <div class="ledger-card">
                   <div class="ledger-card__title">${escapeHtml(stageLabels[entry.stage as keyof typeof stageLabels] ?? entry.stage)}</div>
                   <div>Entry: ${link}</div>
                   <div>Digest: ${digest}</div>
+                  <div>${httpStatus}</div>
+                  ${source}
                 </div>`;
             }).join('')}
           </div>
@@ -228,6 +236,7 @@ router.get('/review/ui/:submissionId', async (req: Request, res: Response) => {
         .relay-item__head{font-weight:600;}
         .relay-item__meta{font-size:12px;color:#57606a;}
         .relay-item__error{color:#d1242f;font-size:13px;margin-top:4px;}
+        .ledger-card__error{color:#d1242f;font-size:12px;}
         .relay-item pre{white-space:pre-wrap;background:#0f172a;color:#e2e8f0;padding:8px;border-radius:6px;}
         .ledger-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;}
         .ledger-card{background:#fff;border:1px solid #d0d7de;border-radius:8px;padding:12px;}

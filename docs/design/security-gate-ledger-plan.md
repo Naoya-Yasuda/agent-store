@@ -60,3 +60,4 @@ Functional Accuracyの場合は、RAGTruth突合の `functional_summary.json` / 
 - Workflow: `reviewPipeline.workflow.ts` のステージ details に Ledgerパス/ダイジェストを含め、Human Review UIとW&Bから参照できるようにした。
 - Ledgerのエントリパスに加えて、原本 (`sandbox-runner/artifacts/<rev>/<stage>_ledger_entry.json`) への `sourceFile` をStage Metadataに保持し、`/review/ledger/download` がローカルLedger欠損時にFallback配信できるようにした。
 - Pending: Ledger API障害時のリトライ/警告UI出力。
+- Update (2025-11-12): `publishToLedger` はHTTP送信を最大3回リトライし、失敗してもワークフローを止めずに `httpPosted=false` / `httpAttempts` / `httpError` をStage detailsへ書き込みます。Human Review UI・`/review/ledger` API・W&Bメタデータは同フラグを表示するため、Ledger障害を即座に検知できます。
