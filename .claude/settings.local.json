@@ -13,7 +13,11 @@
       "Bash(test:*)",
       "Bash(/tmp/.env.example.backup)",
       "Bash(.env.example)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(npm install:*)",
+      "Bash(npx tsc --project tsconfig.json)",
+      "Bash(./node_modules/.bin/tsc:*)",
+      "Bash(echo:*)"
     ],
     "deny": [],
     "ask": [],

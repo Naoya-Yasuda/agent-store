@@ -2,9 +2,10 @@ import path from 'path';
 import { promises as fs } from 'fs';
 import { spawn } from 'child_process';
 import { createHash } from 'crypto';
-import { WandbRunInfo, LlmJudgeConfig, StageName } from '../workflows/reviewPipeline.workflow';
+import { WandbRunInfo, LlmJudgeConfig, StageName, TrustScoreBreakdown } from '../workflows/reviewPipeline.workflow';
 import { publishToLedger, AuditLedgerEntry } from '../lib/auditLedger';
 import { NAMESPACE } from '../../temporal.config';
+import { getDbPool } from '../lib/dbPool';
 
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..', '..');
 const SANDBOX_ARTIFACTS_DIR = path.join(PROJECT_ROOT, 'sandbox-runner', 'artifacts');
@@ -788,4 +789,84 @@ function logWandbEvent(wandb: WandbRunInfo, event: Record<string, unknown>): Pro
     child.on('exit', () => resolve());
     child.on('error', () => resolve());
   });
+}
+
+export async function updateSubmissionTrustScore(args: {
+  submissionId: string;
+  agentId: string;
+  trustScore: TrustScoreBreakdown;
+  autoDecision: 'auto_approved' | 'auto_rejected' | 'requires_human_review';
+  stage: string;
+}): Promise<void> {
+  const { submissionId, agentId, trustScore, autoDecision, stage } = args;
+
+  console.log(`[activities] Updating trust score for submission ${submissionId}: ${trustScore.total}/100 => ${autoDecision}`);
+
+  const pool = getDbPool();
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    // Update submissions table with trust scores
+    await client.query(
+      `UPDATE submissions
+       SET
+         trust_score = $1,
+         security_score = $2,
+         functional_score = $3,
+         judge_score = $4,
+         implementation_score = $5,
+         score_breakdown = $6,
+         auto_decision = $7,
+         updated_at = now()
+       WHERE id = $8`,
+      [
+        trustScore.total,
+        trustScore.security,
+        trustScore.functional,
+        trustScore.judge,
+        trustScore.implementation,
+        JSON.stringify(trustScore),
+        autoDecision,
+        submissionId
+      ]
+    );
+
+    // Insert into trust_score_history for audit trail
+    await client.query(
+      `INSERT INTO trust_score_history
+       (submission_id, agent_id, previous_score, new_score, score_change, change_reason, stage, triggered_by, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [
+        submissionId,
+        agentId,
+        0, // previous_score (TODO: fetch from DB if updating)
+        trustScore.total,
+        trustScore.total, // score_change
+        `Trust score calculated: ${autoDecision}`,
+        stage,
+        'system',
+        JSON.stringify({
+          breakdown: {
+            security: trustScore.security,
+            functional: trustScore.functional,
+            judge: trustScore.judge,
+            implementation: trustScore.implementation
+          },
+          reasoning: trustScore.reasoning,
+          autoDecision
+        })
+      ]
+    );
+
+    await client.query('COMMIT');
+    console.log(`[activities] Trust score persisted to database for submission ${submissionId}`);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error(`[activities] Failed to update trust score for submission ${submissionId}:`, err);
+    throw err;
+  } finally {
+    client.release();
+  }
 }

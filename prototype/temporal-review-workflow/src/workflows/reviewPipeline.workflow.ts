@@ -847,13 +847,75 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
       severity: 'info'
     });
 
-    // Judge Panel結果に基づく分岐
-    if (judgeVerdict === 'manual' || judgeVerdict === 'unavailable') {
-      const reason = judgeVerdict === 'manual' ? 'judge_manual_review' : 'judge_panel_unavailable';
-      const decision = await escalateToHuman('judge', reason);
+    // Trust Score based auto-decision branching
+    if (trustScore.autoDecision === 'auto_rejected') {
+      // Auto-reject: score < 40
+      console.log(`[workflow] Auto-rejecting submission due to low trust score: ${trustScore.total}/100`);
+      await emitStageEvent('judge', 'auto_rejected', {
+        data: {
+          trustScore: trustScore.total,
+          reasoning: trustScore.reasoning
+        },
+        severity: 'error'
+      });
+
+      // Persist trust score to database
+      await activities.updateSubmissionTrustScore({
+        submissionId: context.submissionId,
+        agentId: context.agentId,
+        trustScore,
+        autoDecision: 'auto_rejected',
+        stage: 'judge'
+      });
+
+      terminalState = 'rejected';
+      return;
+    } else if (trustScore.autoDecision === 'auto_approved') {
+      // Auto-approve: score >= 80
+      console.log(`[workflow] Auto-approving submission due to high trust score: ${trustScore.total}/100`);
+      await emitStageEvent('judge', 'auto_approved', {
+        data: {
+          trustScore: trustScore.total,
+          reasoning: trustScore.reasoning
+        },
+        severity: 'info'
+      });
+
+      // Persist trust score to database
+      await activities.updateSubmissionTrustScore({
+        submissionId: context.submissionId,
+        agentId: context.agentId,
+        trustScore,
+        autoDecision: 'auto_approved',
+        stage: 'judge'
+      });
+
+      // Proceed to publish stage
+    } else {
+      // Requires human review: score 40-79
+      console.log(`[workflow] Escalating to human review due to medium trust score: ${trustScore.total}/100`);
+      await emitStageEvent('judge', 'requires_human_review', {
+        data: {
+          trustScore: trustScore.total,
+          reasoning: trustScore.reasoning
+        },
+        severity: 'warn'
+      });
+
+      // Persist trust score to database before human review
+      await activities.updateSubmissionTrustScore({
+        submissionId: context.submissionId,
+        agentId: context.agentId,
+        trustScore,
+        autoDecision: 'requires_human_review',
+        stage: 'judge'
+      });
+
+      const decision = await escalateToHuman('judge', 'trust_score_requires_review');
       if (decision === 'rejected') {
         return;
       }
+      // If approved, proceed to publish
     }
 
     await runStageWithRetry('publish', () =>
