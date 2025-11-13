@@ -17,7 +17,9 @@
       "Bash(npm install:*)",
       "Bash(npx tsc --project tsconfig.json)",
       "Bash(./node_modules/.bin/tsc:*)",
-      "Bash(echo:*)"
+      "Bash(echo:*)",
+      "Bash(npx create-next-app@latest:*)",
+      "Bash(psql:*)"
     ],
     "deny": [],
     "ask": [],
