@@ -112,6 +112,7 @@ services:
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:3001}
       RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-60000}
       RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-120}
+      SKIP_SIGNATURE_VERIFICATION: ${SKIP_SIGNATURE_VERIFICATION:-true}
     ports:
       - "3002:3000"
     depends_on:

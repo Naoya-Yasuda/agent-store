@@ -1,8 +1,10 @@
 import { proxyActivities, setHandler, defineSignal, defineQuery, workflowInfo, condition } from '@temporalio/workflow';
 import { TASK_QUEUE } from '../../temporal.config';
 
-const HUMAN_REVIEW_BASE_URL = normalizeBaseUrl(process.env.HUMAN_REVIEW_BASE_URL ?? process.env.REVIEW_UI_BASE_URL ?? process.env.REVIEW_DASHBOARD_URL ?? process.env.REVIEW_HTML_BASE_URL);
-const REVIEW_API_BASE_URL = normalizeBaseUrl(process.env.REVIEW_API_BASE_URL ?? process.env.REVIEW_BACKEND_BASE_URL ?? HUMAN_REVIEW_BASE_URL);
+// Hardcoded defaults for Docker environment (workflow code cannot access process.env)
+// TODO: Pass these as workflow input for production
+const HUMAN_REVIEW_BASE_URL = 'http://review-ui:3000';
+const REVIEW_API_BASE_URL = 'http://api:3000';
 
 export type LlmJudgeConfig = {
   enabled?: boolean;

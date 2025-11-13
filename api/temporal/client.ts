@@ -8,7 +8,9 @@ async function getWorkflowClient(): Promise<WorkflowClient> {
   if (workflowClient) {
     return workflowClient;
   }
-  const connection = await Connection.connect();
+  const connection = await Connection.connect({
+    address: process.env.TEMPORAL_ADDRESS || 'localhost:7233',
+  });
   workflowClient = new WorkflowClient({ connection, namespace: NAMESPACE });
   return workflowClient;
 }

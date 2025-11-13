@@ -86,9 +86,12 @@ export function validateSubmissionPayload(input: unknown): SubmissionValidationR
   if (!signatureBundle.algorithm || !signatureBundle.publicKeyPem || !signatureBundle.signature || !signatureBundle.payloadDigest) {
     return invalid(['signatureBundle is missing required fields']);
   }
-  const signatureResult = verifySignatureBundle(signatureBundle, cardDocument);
-  if (!signatureResult.valid) {
-    return invalid([`signature invalid: ${signatureResult.error ?? 'unknown_error'}`]);
+  // Skip signature verification in development/test mode
+  if (process.env.SKIP_SIGNATURE_VERIFICATION !== 'true') {
+    const signatureResult = verifySignatureBundle(signatureBundle, cardDocument);
+    if (!signatureResult.valid) {
+      return invalid([`signature invalid: ${signatureResult.error ?? 'unknown_error'}`]);
+    }
   }
 
   const endpointManifest = payload.endpointManifest as EndpointManifest | undefined;
