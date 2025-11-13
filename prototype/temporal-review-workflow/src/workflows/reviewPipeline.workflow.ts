@@ -81,7 +81,13 @@ type Activities = {
 
 const activities = proxyActivities<Activities>({
   taskQueue: TASK_QUEUE,
-  startToCloseTimeout: '1 minute'
+  startToCloseTimeout: '1 minute',
+  retry: {
+    maximumAttempts: 3,
+    initialInterval: '2s',
+    maximumInterval: '10s',
+    backoffCoefficient: 2
+  }
 });
 
 export type StageName = 'precheck' | 'security' | 'functional' | 'judge' | 'human' | 'publish';
@@ -570,89 +576,117 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
       }
     }
 
-    const judge = await runStageWithRetry('judge', () => activities.runJudgePanel({
-      submissionId: context.submissionId,
-      agentId: context.agentId,
-      agentRevisionId: context.agentRevisionId,
-      promptVersion: context.promptVersion,
-      workflowId: context.workflowId,
-      workflowRunId: context.workflowRunId,
-      wandbRun: context.wandbRun,
-      agentCardPath: context.agentCardPath,
-      relay: context.relay,
-      llmJudge: context.llmJudge
-    }));
-    const judgeSummary = judge.summary as Record<string, unknown> | undefined;
-    const judgeLlm = (judgeSummary?.llmJudge as LlmJudgeConfig | undefined) ?? context.llmJudge;
-    context.llmJudge = judgeLlm;
-    const judgeLinks = buildJudgeLinks({
-      submissionId: context.submissionId,
-      agentRevisionId: context.agentRevisionId,
-      agentId: context.agentId,
-      wandbUrl: context.wandbRun?.url
-    });
-    updateStage('judge', {
-      message: `judge verdict: ${judge.verdict}`,
-      details: {
-        summary: judge.summary,
-        llmJudge: judgeLlm,
-        artifacts: {
-          report: { stage: 'judge', type: 'report', agentRevisionId: context.agentRevisionId, agentId: context.agentId },
-          summary: { stage: 'judge', type: 'summary', agentRevisionId: context.agentRevisionId, agentId: context.agentId },
-          relayLogs: { stage: 'judge', type: 'relay', agentRevisionId: context.agentRevisionId, agentId: context.agentId }
-        },
-        links: judgeLinks,
-        ledger: judge.ledgerEntryPath
-          ? {
-              entryPath: judge.ledgerEntryPath,
-              digest: judge.ledgerDigest,
-              sourceFile: judge.ledgerSourceFile,
-              httpPosted: judge.ledgerHttpPosted,
-              httpAttempts: judge.ledgerHttpAttempts,
-              httpError: judge.ledgerHttpError
-            }
-          : undefined
+    // Judge Panel: オプショナルステージ（失敗時はHuman Reviewへエスカレート）
+    let judgeVerdict: 'approve' | 'reject' | 'manual' | 'unavailable' = 'approve';
+    try {
+      const judge = await runStageWithRetry('judge', () => activities.runJudgePanel({
+        submissionId: context.submissionId,
+        agentId: context.agentId,
+        agentRevisionId: context.agentRevisionId,
+        promptVersion: context.promptVersion,
+        workflowId: context.workflowId,
+        workflowRunId: context.workflowRunId,
+        wandbRun: context.wandbRun,
+        agentCardPath: context.agentCardPath,
+        relay: context.relay,
+        llmJudge: context.llmJudge
+      }));
+      const judgeSummary = judge.summary as Record<string, unknown> | undefined;
+      const judgeLlm = (judgeSummary?.llmJudge as LlmJudgeConfig | undefined) ?? context.llmJudge;
+      context.llmJudge = judgeLlm;
+      const judgeLinks = buildJudgeLinks({
+        submissionId: context.submissionId,
+        agentRevisionId: context.agentRevisionId,
+        agentId: context.agentId,
+        wandbUrl: context.wandbRun?.url
+      });
+      updateStage('judge', {
+        message: `judge verdict: ${judge.verdict}`,
+        details: {
+          summary: judge.summary,
+          llmJudge: judgeLlm,
+          artifacts: {
+            report: { stage: 'judge', type: 'report', agentRevisionId: context.agentRevisionId, agentId: context.agentId },
+            summary: { stage: 'judge', type: 'summary', agentRevisionId: context.agentRevisionId, agentId: context.agentId },
+            relayLogs: { stage: 'judge', type: 'relay', agentRevisionId: context.agentRevisionId, agentId: context.agentId }
+          },
+          links: judgeLinks,
+          ledger: judge.ledgerEntryPath
+            ? {
+                entryPath: judge.ledgerEntryPath,
+                digest: judge.ledgerDigest,
+                sourceFile: judge.ledgerSourceFile,
+                httpPosted: judge.ledgerHttpPosted,
+                httpAttempts: judge.ledgerHttpAttempts,
+                httpError: judge.ledgerHttpError
+              }
+            : undefined
+        }
+      });
+      if (judgeLlm) {
+        await emitStageEvent('judge', 'llm_override_applied', {
+          data: {
+            provider: judgeLlm.provider,
+            model: judgeLlm.model,
+            temperature: judgeLlm.temperature,
+            maxOutputTokens: judgeLlm.maxOutputTokens,
+            dryRun: judgeLlm.dryRun,
+            baseUrl: judgeLlm.baseUrl
+          },
+          links: judgeLinks
+        });
       }
-    });
-    if (judgeLlm) {
-      await emitStageEvent('judge', 'llm_override_applied', {
-        data: {
-          provider: judgeLlm.provider,
-          model: judgeLlm.model,
-          temperature: judgeLlm.temperature,
-          maxOutputTokens: judgeLlm.maxOutputTokens,
-          dryRun: judgeLlm.dryRun,
-          baseUrl: judgeLlm.baseUrl
-        },
-        links: judgeLinks
-      });
-    }
-    await handleLedgerStatus('judge', judge);
+      await handleLedgerStatus('judge', judge);
 
-    if (judge.verdict === 'reject') {
-      await emitStageEvent('judge', 'verdict_rejected', {
-        data: {
-          score: judge.score,
-          explanation: judge.explanation
-        },
-        severity: 'error',
-        links: judgeLinks
+      if (judge.verdict === 'reject') {
+        await emitStageEvent('judge', 'verdict_rejected', {
+          data: {
+            score: judge.score,
+            explanation: judge.explanation
+          },
+          severity: 'error',
+          links: judgeLinks
+        });
+        updateStage('judge', { status: 'failed', message: judge.explanation ?? 'judge rejected submission' });
+        terminalState = 'rejected';
+        return;
+      }
+
+      if (judge.verdict === 'manual') {
+        await emitStageEvent('judge', 'verdict_manual', {
+          data: {
+            score: judge.score,
+            explanation: judge.explanation
+          },
+          severity: 'warn',
+          links: judgeLinks
+        });
+        judgeVerdict = 'manual';
+      } else {
+        judgeVerdict = judge.verdict;
+      }
+    } catch (err) {
+      // Judge Panel失敗時: ステージをスキップしてHuman Reviewへエスカレート
+      const errorMessage = err instanceof Error ? err.message : 'Judge Panel execution failed';
+      console.warn('[workflow] Judge Panel failed after retries, escalating to Human Review', errorMessage);
+      updateStage('judge', {
+        status: 'skipped',
+        message: `Judge Panel unavailable: ${errorMessage}`
       });
-      updateStage('judge', { status: 'failed', message: judge.explanation ?? 'judge rejected submission' });
-      terminalState = 'rejected';
-      return;
+      await emitStageEvent('judge', 'stage_skipped', {
+        data: {
+          reason: 'judge_panel_unavailable',
+          error: errorMessage
+        },
+        severity: 'warn'
+      });
+      judgeVerdict = 'unavailable';
     }
 
-    if (judge.verdict === 'manual') {
-      await emitStageEvent('judge', 'verdict_manual', {
-        data: {
-          score: judge.score,
-          explanation: judge.explanation
-        },
-        severity: 'warn',
-        links: judgeLinks
-      });
-      const decision = await escalateToHuman('judge', 'judge_manual_review', judge.explanation ? [judge.explanation] : undefined);
+    // Judge Panel結果に基づく分岐
+    if (judgeVerdict === 'manual' || judgeVerdict === 'unavailable') {
+      const reason = judgeVerdict === 'manual' ? 'judge_manual_review' : 'judge_panel_unavailable';
+      const decision = await escalateToHuman('judge', reason);
       if (decision === 'rejected') {
         return;
       }

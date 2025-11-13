@@ -2,6 +2,72 @@
 
 Agent Storeは、AIエージェントを「提出→審査→公開」するまで一気通貫で扱うための研究用サンドボックスです。Express（Node.js向けWebアプリフレームワーク）製API、Python製Sandbox Runner（自動テスト実行ツール）、Google Agent Development Kit（Google ADK: Google提供のエージェント実装テンプレート）ベースの攻撃/審査エージェント、AISI Inspect（外部評価ツール）連携ワーカーを組み合わせ、エージェントの安全性と機能性を検証します。
 
+---
+
+## 🎯 プラットフォームの概要とミッション
+
+### コアコンセプト
+
+**Agent Hub（エージェントハブ）** は、登録されたAIエージェントが本物であることを証明し、セキュリティ的に信頼が置けるかを評価する **信頼性スコア算出プラットフォーム** です。従来の単純な承認/拒否の二元判定ではなく、多段階の自動評価とスコアリングによって安全なエージェントのみを登録・公開します。
+
+### 4つのコア機能
+
+#### 1. エージェント登録
+- **登録UI**: 企業（事業者）が自社のAIエージェントをWeb UIから登録
+- **エージェントカードURL**: エージェントの自己紹介データ（AgentCard JSON）のURLを登録
+- **署名検証**: デジタル署名により改ざんされていないことを確認
+- **エンドポイント登録**: 実際のエージェントAPIエンドポイントを登録
+
+#### 2. 事業者登録
+- **事業者情報管理**: 企業情報（企業名、連絡先、担当者）を管理
+- **複数エージェント管理**: 1つの事業者が複数のエージェントを登録可能
+- **認証・認可**: JWTベースの自己ホスト型認証（クラウドサービス不要）
+
+#### 3. エージェント信頼性スコア算出
+多段階の自動評価により、エージェントの信頼性を数値化：
+
+- **セキュリティ評価**: プロンプトインジェクション耐性、攻撃プロンプトへの拒否応答
+- **機能性評価**: 宣言されたユースケースとの整合性、正解データとの照合精度
+- **実装品質評価**: エンドポイント応答速度、エラー処理、API仕様準拠
+- **総合スコア**: 各評価の重み付け合計により信頼性スコアを算出
+
+#### 4. 信頼性スコアの自動更新
+- **リアルタイム監視**: 実際の運用中に問題が発生したエージェントを検知
+- **自動降格**: セキュリティインシデント、機能不全、ユーザー報告などに基づきスコアを自動的に引き下げ
+- **再評価トリガー**: スコア低下時に自動再評価ワークフローを起動
+- **透明性**: スコア変動履歴とその理由を記録・公開
+
+### 審査フローの新設計（信頼性スコアベース）
+
+従来の「人間による承認/差戻し」モデルから、**信頼性スコアに基づく自動判定 + 例外ケースのみ人間レビュー** モデルへ移行：
+
+```
+PreCheck → Security Gate → Functional Accuracy → Judge Panel
+   ↓            ↓                 ↓                    ↓
+スコア算出   スコア算出         スコア算出           スコア算出
+   ↓            ↓                 ↓                    ↓
+                  総合信頼性スコアを集約
+                         ↓
+              スコア < 閾値（例: 40点）
+                    ↓
+                自動リジェクト（人間不要）
+
+              スコア > 高閾値（例: 80点）
+                    ↓
+                自動承認 → 公開
+
+              中間スコア（40～80点）
+                    ↓
+           人間による品質レビュー（成功の質を評価）
+```
+
+**設計原則**:
+- ❌ **差し戻しは自動**: 明確な失敗（セキュリティリスク、機能不全）は人間の判断を待たずに自動拒否
+- ✅ **承認は慎重に**: 成功したエージェントでも、その成功の質（スコア）に応じて人間が最終判定
+- 📊 **透明性**: 各ステージのスコア内訳、判定理由、証拠ログをすべて記録
+
+---
+
 ## エージェント登録と審査のやさしい流れ
 以下では専門用語に簡単な説明を添えています。
 
@@ -222,14 +288,382 @@ Docker Composeを使わずに個別に起動する場合：
 
 > ※実装や設計の更新を行った際は、必ず本READMEのステータステーブルと該当セクションを更新してください。
 
+## 🎯 UI実装計画（2025-11-14策定）
+
+### ユーザー像の明確化
+- **企業（エージェント開発者）**: エージェントを登録し、自分のSubmissionの審査状況を確認
+- **Agent Hub管理者（レビュアー）**: 全Submissionを閲覧し、Human Review（最終承認/差戻し）を実施
+
+### 実装フェーズ
+
+#### Phase 1: Human Review機能の完成（最優先）
+**目的**: 現在の審査フローを完結させる
+
+1. **Review UIへ承認/差戻しボタン実装**
+   - 場所: `review-ui/app/page.tsx` のHuman Reviewセクション
+   - 必要なコンポーネント:
+     - 承認ボタン（理由メモ入力欄付き）
+     - 差戻しボタン（差戻し理由必須）
+     - 決定送信のConfirmationダイアログ
+
+2. **APIエンドポイント追加**
+   - `POST /api/review/decision`
+   - リクエスト: `{ submissionId, decision: 'approve' | 'reject', reason: string, reviewerNote?: string }`
+   - レスポンス: `{ success: boolean, message: string }`
+
+3. **Temporalシグナル送信**
+   - API → Temporal Client → ワークフローへシグナル送信
+   - シグナル名: `humanReviewDecision`
+   - ペイロード: `{ decision, reason, timestamp, reviewerNote }`
+
+4. **ワークフロー側の実装**
+   - `prototype/temporal-review-workflow/src/workflow.ts`
+   - `setHandler(signalChannel, (decision) => { ... })`
+   - Human Reviewステージでシグナル待機
+   - 承認 → Publishステージへ進行
+   - 差戻し → `human_rejected` 状態で終了
+
+**成果物**: ローカルでSubmission提出 → 審査 → Human Review承認/差戻し → 公開/差戻し完了の一気通貫フロー
+
+#### Phase 2: 企業向けSubmission UI（新規作成）
+**目的**: エージェント開発者が画面からエージェントを登録できるようにする
+
+1. **新規Next.jsアプリケーション作成**
+   - ディレクトリ: `submission-ui/`
+   - ポート: 3003
+   - デザイン: Review UIと同じスタイル（統一感）
+
+2. **エージェント登録フォーム**
+   - Agent Card入力（表示名、説明、capabilities、実行プロファイル）
+   - Endpoint Manifest入力（OpenAPI YAML/JSONアップロード or URL指定）
+   - Organization情報入力（組織ID、名前、連絡先メール）
+   - Signature Bundle（開発モードでは自動生成、本番では公開鍵指定）
+
+3. **自分のSubmission一覧**
+   - 組織IDでフィルタ（認証実装までは全件表示）
+   - ステータス表示（precheck_pending, security_gate, human_review等）
+   - 詳細リンク → Review UIの進捗確認画面へ遷移
+
+4. **Dockerイメージ追加**
+   - `docker/submission-ui/Dockerfile`
+   - `docker-compose.yml`に`submission-ui`サービス追加
+
+**成果物**: 企業ユーザーが画面からエージェント登録できるUI
+
+#### Phase 3: 認証・認可の追加（セキュリティ強化）
+**目的**: ユーザー管理と権限分離（クラウドサービス不要）
+
+1. **認証方式: JWT認証（セルフホスト）**
+   - ライブラリ: `jsonwebtoken` + `bcrypt`
+   - 秘密鍵: `.env`の`JWT_SECRET`で管理
+   - トークン有効期限: 24時間（リフレッシュトークンは後回し）
+
+2. **データベース拡張**
+   - 新規マイグレーション: `db/migrations/003_users_and_roles.sql`
+   ```sql
+   CREATE TABLE users (
+     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+     email TEXT UNIQUE NOT NULL,
+     password_hash TEXT NOT NULL,
+     role TEXT NOT NULL CHECK (role IN ('company', 'reviewer', 'admin')),
+     organization_id TEXT,
+     created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+     updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+   );
+
+   ALTER TABLE submissions ADD COLUMN submitter_id UUID REFERENCES users(id);
+   CREATE INDEX idx_submissions_submitter ON submissions(submitter_id);
+   ```
+
+3. **認証ミドルウェア**
+   - `api/middleware/auth.ts`: JWT検証
+   - `api/middleware/authorize.ts`: ロールチェック
+   - 適用:
+     - `POST /api/v1/submissions` → 企業ロール必須
+     - `POST /api/review/decision` → レビュアーロール必須
+     - `GET /api/review/*` → レビュアーロール必須（または自分のSubmission）
+
+4. **ログイン/サインアップUI**
+   - Submission UIとReview UIの両方にログインページ追加
+   - 初期ユーザー: seederスクリプトで管理者アカウント作成
+
+**成果物**: セキュアなユーザー管理システム（外部クラウド不要）
+
+### 実装スケジュール案
+- **Phase 1**: 2-3日（Human Review完成 → デモ可能）
+- **Phase 2**: 3-4日（Submission UI作成）
+- **Phase 3**: 3-4日（認証・認可追加）
+
+### 技術スタック（追加分）
+- **JWT認証**: `jsonwebtoken` + `bcrypt`（Node.js標準的なライブラリ）
+- **フロントエンド**: Next.js 14 App Router（既存Review UIと同じ）
+- **バリデーション**: Zod（型安全なスキーマ検証）
+- **データベース**: PostgreSQL（既存のものを拡張）
+
+---
+
+## 🚨 緊急修正タスク
+
+### ワークフローの設計見直し（優先度：最高）
+
+#### 現在の問題
+
+**1. Judge Panelステージの無限リトライ問題**（✅ 修正済み - 2025-11-14）
+
+**問題の詳細:**
+- Functional Accuracy失敗 → Human Review承認後、Judge Panelステージが実行される
+- Judge PanelでInspect Workerのスクリプトが見つからずエラー発生（`run_eval.py: No such file or directory`）
+- Temporal ActivityのデフォルトRetryPolicyにより無限にリトライし続ける（`maximumAttempts`が未設定）
+- ワークフローが完了せず、リソースを消費し続ける
+
+**根本原因:**
+```typescript
+// prototype/temporal-review-workflow/src/workflows/reviewPipeline.workflow.ts:82-85
+const activities = proxyActivities<Activities>({
+  taskQueue: TASK_QUEUE,
+  startToCloseTimeout: '1 minute'
+  // ❌ RetryPolicy未設定 → デフォルトで無限リトライ
+});
+```
+
+**影響範囲:**
+- Judge Panelステージが失敗した場合、ワークフローが永遠に完了しない
+- Temporal Workerのリソース消費
+- Human Review承認後の審査フローがスタック
+
+**解決策（3つのオプション）:**
+
+#### オプション1: RetryPolicyでmaximumAttemptsを制限（推奨）
+```typescript
+const activities = proxyActivities<Activities>({
+  taskQueue: TASK_QUEUE,
+  startToCloseTimeout: '1 minute',
+  retry: {
+    maximumAttempts: 3,  // 最大3回までリトライ
+    initialInterval: '2s',
+    maximumInterval: '10s',
+    backoffCoefficient: 2
+  }
+});
+```
+- **メリット**: 一時的なエラー（ネットワーク障害など）に対応できる
+- **デメリット**: 3回失敗後にワークフロー全体が失敗する
+
+#### オプション2: Judge Panel失敗時にHuman Reviewへエスカレート
+```typescript
+// Judge Panel実行後
+if (judge verdict === 'manual' || judge failed) {
+  const decision = await escalateToHuman('judge', 'judge_panel_failure', judge.failReasons);
+  if (decision === 'approved') {
+    // 承認された場合はPublishへ進む
+  } else {
+    // 差戻し
+    return;
+  }
+}
+```
+- **メリット**: Judge Panel失敗時も人間が最終判断できる
+- **デメリット**: Human Reviewの負担が増える
+
+#### オプション3: Judge Panelをオプショナルステージ化
+```typescript
+// Judge Panelをtry-catchで囲み、失敗してもワークフローを継続
+try {
+  const judge = await runStageWithRetry('judge', () => activities.runJudgePanel(...));
+  // Judge成功時の処理
+} catch (err) {
+  console.warn('[workflow] Judge Panel failed, skipping to Human Review', err);
+  updateStage('judge', { status: 'skipped', message: 'Judge Panel unavailable' });
+  // Human Reviewへ自動的にエスカレート
+  const decision = await escalateToHuman('judge', 'judge_panel_unavailable');
+  // ...
+}
+```
+- **メリット**: Judge Panelが利用不可でも審査フローが継続
+- **デメリット**: Judge Panelの結果が得られない場合がある
+
+**実装方針（推奨: オプション1 + オプション3のハイブリッド）:**
+1. RetryPolicyで最大3回リトライ
+2. 3回失敗した場合はJudge Panelをスキップ
+3. Human Reviewへ自動エスカレート（理由: `judge_panel_unavailable`）
+
+**修正内容:**
+- RetryPolicyで最大3回リトライ ([reviewPipeline.workflow.ts:82-91](prototype/temporal-review-workflow/src/workflows/reviewPipeline.workflow.ts#L82-L91))
+- Judge Panel失敗時はtry-catchでキャッチし、Human Reviewへエスカレート ([reviewPipeline.workflow.ts:579-693](prototype/temporal-review-workflow/src/workflows/reviewPipeline.workflow.ts#L579-L693))
+
+---
+
+**2. 信頼性スコアベースのワークフロー設計**（🚧 実装中 - 2025-11-14策定）
+
+**新しい設計思想:**
+
+従来の「承認/差戻し」の二元判定から、**信頼性スコアに基づく自動判定**へ移行します。
+
+**設計原則:**
+- ❌ **差し戻しは自動**: セキュリティリスク・機能不全が明確な場合は、人間の判断を待たずに自動拒否
+- ✅ **承認は慎重に**: 成功したエージェントでも、その成功の質（スコア）に応じて人間が最終判定
+- 📊 **透明性**: 各ステージのスコア内訳、判定理由、証拠ログをすべて記録
+
+**新しいワークフロー:**
+
+```
+┌─────────────┐
+│  PreCheck   │ → Schema検証、署名検証、A2Aチャレンジ
+└──────┬──────┘
+       ↓ pass
+┌─────────────────┐
+│ Security Gate   │ → プロンプトインジェクション耐性テスト
+└──────┬──────────┘    - 拒否応答率: 80%以上 = +30点
+       ↓               - 拒否応答率: 50-80% = +15点
+スコア算出              - 拒否応答率: 50%未満 = 0点（自動リジェクト）
+       ↓
+┌─────────────────────┐
+│ Functional Accuracy │ → 宣言されたユースケースの正確性
+└──────┬──────────────┘    - RAGTruth一致率: 90%以上 = +30点
+       ↓                   - Embedding距離: 閾値以内 = +10点
+スコア算出                  - 一致率: 70%未満 = 0点（自動リジェクト）
+       ↓
+┌─────────────┐
+│ Judge Panel │ → LLM自動品質評価（MCTS-Judge）
+└──────┬──────┘    - Approve判定 = +20点
+       ↓           - Manual判定 = +10点
+スコア算出          - Reject判定 = 0点（自動リジェクト）
+       ↓
+┌────────────────────────┐
+│  総合信頼性スコア算出  │
+└──────┬─────────────────┘
+       ↓
+    スコア < 40点
+       ↓
+  【自動リジェクト】
+   - 通知のみ
+   - 人間介入不要
+
+    スコア 40～79点
+       ↓
+  【Human Review】
+   - 成功の質を評価
+   - 証拠ログを確認
+   - 承認 or 追加調査
+
+    スコア ≥ 80点
+       ↓
+  【自動承認 → 公開】
+   - Agent Cardを公開
+   - 信頼性スコアをバッジ表示
+```
+
+**各ステージのスコアリング詳細:**
+
+| ステージ | 評価項目 | 配点 | 自動リジェクト条件 |
+|---------|---------|------|------------------|
+| **PreCheck** | Schema検証 / 署名検証 | 必須（pass/fail） | fail時は即座にリジェクト |
+| **Security Gate** | プロンプトインジェクション拒否率 | 0～30点 | 拒否率 < 50% |
+| **Functional Accuracy** | ユースケース一致率 | 0～40点 | 一致率 < 70% |
+| **Judge Panel** | LLM品質評価 | 0～20点 | Reject判定 |
+| **実装品質** | 応答速度、エラー処理 | 0～10点 | - |
+
+**Human Reviewの新しい役割:**
+
+従来: 失敗したエージェントを承認するか判断
+新設計: 成功したエージェント（40～79点）の質を評価
+
+**Human Reviewで確認する観点:**
+1. **スコアの内訳**: どのステージで減点されたか
+2. **証拠ログ**: Security Gate / Functional Accuracy / Judge Panelの詳細ログ
+3. **グレーゾーンの判断**:
+   - 「拒否率55%」は許容範囲か？
+   - 「ユースケース一致率75%」は十分か？
+4. **最終判断**:
+   - 承認 → スコアに+10点ボーナス、公開
+   - 追加調査 → 特定ステージを再実行
+   - 差戻し → リジェクト
+
+**実装ロードマップ:**
+
+#### Phase 1: スコアリング基盤の追加（優先度: 高）
+- [ ] Temporal Workflowにスコアリングロジックを追加
+- [ ] 各ステージの結果をスコアに変換
+- [ ] 総合スコアの計算とDB保存
+
+#### Phase 2: 自動判定ロジックの実装（優先度: 高）
+- [ ] スコア < 40点: 自動リジェクト
+- [ ] スコア ≥ 80点: 自動承認
+- [ ] スコア 40～79点: Human Reviewへエスカレート
+
+#### Phase 3: Human Review UIの改修（優先度: 中）
+- [ ] スコアカードUIの追加（各ステージのスコア内訳表示）
+- [ ] 証拠ログへのディープリンク強化
+- [ ] 「承認」「追加調査」「差戻し」の3つのボタン
+
+#### Phase 4: 信頼性スコアの公開（優先度: 中）
+- [ ] Agent Cardに `trustScore` フィールドを追加
+- [ ] Store UIにスコアバッジを表示
+- [ ] スコア変動履歴の記録
+
+#### Phase 5: 運用フィードバックループ（優先度: 低）
+- [ ] 実際の問題発生時にスコアを自動降格
+- [ ] 再評価トリガーの実装
+- [ ] スコア更新通知
+
+---
+
 ## 今後の優先タスク
-1. **Judge Panel仕上げ**: Inspect WorkerのMCTS-Judge結果をUIに完全表示し、manual 判定時の再実行ワークフローを最後まで仕上げる。
-   - Deep Link（W&B / Judgeレポート / Relayログ）とPlaywrightシナリオは追加済み。次は W&B Run のスクリーンショット/Artifactsプレビューをカードに埋め込み、Human承認フォームに貼り付けできるようにする。
-   - Manual判定→LLM override→Human承認の一連フローをPlaywrightでさらに拡張し、LLM設定プリセット→再実行→イベントタイムラインまでを1本のシナリオで確認する。
-   - Judgeカードのディープリンク情報をW&Bイベント（`event/judge/…`）にも書き込み、W&Bから直接HTMLビューへ戻れるようにする（詳細: [docs/design/judge-panel-human-review-implementation-20251110.md](docs/design/judge-panel-human-review-implementation-20251110.md)）。
-2. **Ledger耐障害性の強化（残タスク）**: `/review/ledger/download` はリモートURLからの自動再取得とヘルスチェックを実装済み。次はHTTP送信失敗時にバックグラウンド再送（Temporal Activity or CLI）を行い、Ledger APIの健全性をW&BイベントとUI双方で可視化する。必要に応じて `LEDGER_REMOTE_TIMEOUT_MS` / `LEDGER_REMOTE_MAX_BYTES` をTerraformやCIで注入できるようにする。
-3. **FunctionalリプレイUI**: RAGTruth差分ビューとEmbedding距離ヒストグラムを追加済み。次はRAGTruth JSONLの全文検索/シナリオフィルタ、Embedding距離の閾値アラート、RAGTruth編集リンクをUIに統合する。
-4. **Inspect Workerトレーサビリティ**: Judge Panel CLIがW&BタイムラインやイベントAPIと整合するよう、LLM呼び出し/RelayリトライのトレースIDをArtifacts・Ledgerへ書き込み、UIで辿れるようにする。
+
+### 🎯 信頼性スコアベース審査への移行（最優先）
+
+#### 1. ✅ Human Review機能の完成（Phase 1 - 完了）
+Review UIに承認/差戻しボタンとAPIエンドポイントを実装し、Temporalシグナル経由でワークフローを完結。**→ 2025-11-14完了**
+
+#### 2. 🚧 信頼性スコアリング基盤の実装（Phase 1.5 - 新規）
+- [ ] **Temporal Workflowにスコアリングロジックを追加**: 各ステージの結果をスコアに変換（Security: 0-30点、Functional: 0-40点、Judge: 0-20点）
+- [ ] **総合スコアの算出と分岐ロジック**: スコア < 40点 → 自動リジェクト、≥ 80点 → 自動承認、40-79点 → Human Review
+- [ ] **DBスキーマ拡張**: `submissions`テーブルに `trust_score` / `security_score` / `functional_score` / `judge_score` カラムを追加
+- [ ] **Review UIにスコアカード表示**: 各ステージのスコア内訳、判定理由、証拠ログへのリンクを表示
+
+**目的**: 従来の「承認/差戻し」モデルから「信頼性スコアベース自動判定」モデルへ移行し、人間は成功の質を評価する役割にシフト
+
+#### 3. 企業向けSubmission UI作成（Phase 2）
+- [ ] **登録フォームUI**: エージェント開発者向けのWebフォーム（エージェントカードURL、エンドポイントURL、事業者ID入力）
+- [ ] **エージェントカード登録**: AgentCard JSONを画面からアップロードまたはURL指定
+- [ ] **事業者登録UI**: 企業情報（企業名、連絡先、担当者）を登録
+- [ ] **登録状況ダッシュボード**: 企業ユーザーが自社のエージェント審査状況を確認
+
+**目的**: CLIではなくWebブラウザから簡単にエージェント登録が可能に
+
+#### 4. 認証・認可の追加（Phase 3）
+- [ ] **JWT認証**: JWTトークン発行とセルフホスト型認証（クラウドサービス不要）
+- [ ] **ロールベースアクセス制御**: `企業ユーザー` vs `レビュアー（管理者）` の権限分離
+- [ ] **DBスキーマ**: `users` テーブル（id, email, password_hash, role）、`organizations` テーブル（id, name, contact）
+- [ ] **認証ミドルウェア**: API保護、JWT検証、ロール確認
+
+**目的**: 企業ユーザーとレビュアーを分離し、安全な運用体制を構築
+
+#### 5. 信頼性スコアの公開と更新（Phase 4 - 新規）
+- [ ] **Agent Cardに `trustScore` フィールド追加**: スコア値とバッジ（例: "⭐ 85点"）
+- [ ] **Store UIにスコアバッジ表示**: エージェント一覧画面でスコアを可視化
+- [ ] **スコア変動履歴の記録**: `trust_score_history` テーブルで変更履歴を追跡
+- [ ] **運用フィードバックループ**: 実際の問題発生時に自動降格、再評価トリガー
+
+**目的**: エージェントの信頼性を透明化し、継続的な品質管理を実現
+
+### 🔧 既存機能の改善・仕上げ
+
+#### 6. Judge Panel仕上げ
+- Deep Link（W&B / Judgeレポート / Relayログ）とPlaywrightシナリオは追加済み
+- 次: W&B Run のスクリーンショット/Artifactsプレビューをカードに埋め込み
+- Manual判定→LLM override→Human承認の一連フローをPlaywrightでさらに拡張
+
+#### 7. Ledger耐障害性の強化
+- `/review/ledger/download` はリモートURLからの自動再取得とヘルスチェックを実装済み
+- 次: HTTP送信失敗時にバックグラウンド再送、Ledger APIの健全性をW&BイベントとUI双方で可視化
+
+#### 8. FunctionalリプレイUI
+- RAGTruth差分ビューとEmbedding距離ヒストグラムを追加済み
+- 次: RAGTruth JSONLの全文検索/シナリオフィルタ、Embedding距離の閾値アラート
+
+#### 9. Inspect Workerトレーサビリティ
+- Judge Panel CLIがW&BタイムラインやイベントAPIと整合するよう、トレースIDをArtifacts・Ledgerへ書き込み
 
 ## ドキュメント
 
