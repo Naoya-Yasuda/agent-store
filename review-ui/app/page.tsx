@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { buildLlmOverride, LlmOverrideResult } from '../src/lib/judgeOverride';
+import { TrustScoreCard } from '../src/components/TrustScoreCard';
 
 type StageName = 'precheck' | 'security' | 'functional' | 'judge' | 'human' | 'publish';
 
@@ -60,6 +61,21 @@ type WandbInfo = {
   entity?: string;
 };
 
+type TrustScoreBreakdown = {
+  security: number;
+  functional: number;
+  judge: number;
+  implementation: number;
+  total: number;
+  autoDecision: 'auto_approved' | 'auto_rejected' | 'requires_human_review';
+  reasoning: {
+    security?: string;
+    functional?: string;
+    judge?: string;
+    implementation?: string;
+  };
+};
+
 type ProgressResponse = {
   terminalState: string;
   stages: Record<StageName, StageInfo>;
@@ -68,6 +84,7 @@ type ProgressResponse = {
   agentRevisionId?: string;
   llmJudge?: LlmJudgeConfig;
   warnings?: Record<StageName, string[]>;
+  trustScore?: TrustScoreBreakdown;
 };
 
 type ArtifactState = {
@@ -1658,6 +1675,8 @@ export default function ReviewDashboard() {
               {renderLlmJudgeSummary()}
             </div>
           </div>
+
+          <TrustScoreCard trustScore={progress.trustScore} />
 
           <div style={{ display: 'grid', gap: 12 }}>
             <h2 style={{ margin: 0 }}>ステージ進捗</h2>
