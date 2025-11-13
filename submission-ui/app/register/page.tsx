@@ -1,27 +1,34 @@
 'use client';
 
-import { useState, FormEvent } from 'react';
+import { useState, FormEvent, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { getCurrentUser, isAuthenticated, authenticatedFetch } from '@/lib/auth';
 
 export default function RegisterPage() {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   const [formData, setFormData] = useState({
     agentCardUrl: '',
     endpointUrl: '',
-    organizationName: '',
-    contactEmail: '',
     signatureBundle: null as File | null,
   });
+
+  // Check authentication on mount
+  useEffect(() => {
+    if (!isAuthenticated()) {
+      router.push('/login?redirect=/register');
+    } else {
+      setIsLoading(false);
+    }
+  }, [router]);
 
   const [validationErrors, setValidationErrors] = useState({
     agentCardUrl: '',
     endpointUrl: '',
-    organizationName: '',
-    contactEmail: '',
   });
 
   const validateUrl = (url: string): boolean => {
@@ -31,11 +38,6 @@ export default function RegisterPage() {
     } catch {
       return false;
     }
-  };
-
-  const validateEmail = (email: string): boolean => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
   };
 
   const validateField = (name: string, value: string) => {
@@ -54,18 +56,6 @@ export default function RegisterPage() {
           errorMessage = 'エンドポイントURLを入力してください';
         } else if (!validateUrl(value)) {
           errorMessage = '有効なURLを入力してください（例: https://api.example.com/agent）';
-        }
-        break;
-      case 'organizationName':
-        if (!value.trim()) {
-          errorMessage = '組織名を入力してください';
-        }
-        break;
-      case 'contactEmail':
-        if (!value.trim()) {
-          errorMessage = '連絡先メールアドレスを入力してください';
-        } else if (!validateEmail(value)) {
-          errorMessage = '有効なメールアドレスを入力してください';
         }
         break;
     }
@@ -93,11 +83,17 @@ export default function RegisterPage() {
     // Validate all fields
     const agentCardValid = validateField('agentCardUrl', formData.agentCardUrl);
     const endpointValid = validateField('endpointUrl', formData.endpointUrl);
-    const orgNameValid = validateField('organizationName', formData.organizationName);
-    const emailValid = validateField('contactEmail', formData.contactEmail);
 
-    if (!agentCardValid || !endpointValid || !orgNameValid || !emailValid) {
+    if (!agentCardValid || !endpointValid) {
       setError('入力内容にエラーがあります。修正してください。');
+      return;
+    }
+
+    // Get current user info
+    const user = getCurrentUser();
+    if (!user || !user.organization_id) {
+      setError('ログイン情報が取得できません。再度ログインしてください。');
+      router.push('/login?redirect=/register');
       return;
     }
 
@@ -109,14 +105,13 @@ export default function RegisterPage() {
       const submitData = new FormData();
       submitData.append('agentCardUrl', formData.agentCardUrl);
       submitData.append('endpointUrl', formData.endpointUrl);
-      submitData.append('organizationName', formData.organizationName);
-      submitData.append('contactEmail', formData.contactEmail);
+      submitData.append('organization_id', user.organization_id);
 
       if (formData.signatureBundle) {
         submitData.append('signatureBundle', formData.signatureBundle);
       }
 
-      const response = await fetch(`${apiBaseUrl}/api/submissions`, {
+      const response = await authenticatedFetch(`${apiBaseUrl}/api/submissions`, {
         method: 'POST',
         body: submitData,
       });
@@ -136,6 +131,17 @@ export default function RegisterPage() {
       setIsSubmitting(false);
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          <p className="mt-4 text-gray-600">認証確認中...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4">
@@ -208,48 +214,6 @@ export default function RegisterPage() {
                 <p className="mt-1 text-xs text-gray-500">
                   エージェントAPIのエンドポイントURL
                 </p>
-              </div>
-
-              {/* Organization Name */}
-              <div>
-                <label htmlFor="organizationName" className="block text-sm font-medium text-gray-700 mb-2">
-                  組織名 <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  id="organizationName"
-                  name="organizationName"
-                  value={formData.organizationName}
-                  onChange={handleInputChange}
-                  className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                    validationErrors.organizationName ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                  placeholder="株式会社Example"
-                />
-                {validationErrors.organizationName && (
-                  <p className="mt-1 text-sm text-red-600">{validationErrors.organizationName}</p>
-                )}
-              </div>
-
-              {/* Contact Email */}
-              <div>
-                <label htmlFor="contactEmail" className="block text-sm font-medium text-gray-700 mb-2">
-                  連絡先メールアドレス <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="email"
-                  id="contactEmail"
-                  name="contactEmail"
-                  value={formData.contactEmail}
-                  onChange={handleInputChange}
-                  className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                    validationErrors.contactEmail ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                  placeholder="contact@example.com"
-                />
-                {validationErrors.contactEmail && (
-                  <p className="mt-1 text-sm text-red-600">{validationErrors.contactEmail}</p>
-                )}
               </div>
 
               {/* Signature Bundle (Optional) */}
