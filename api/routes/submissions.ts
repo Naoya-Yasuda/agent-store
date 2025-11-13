@@ -1,10 +1,12 @@
-import { Router, Request, Response } from 'express';
+import { Router, Response } from 'express';
 import { validateSubmissionPayload } from '../utils/submissionValidator';
 import { createSubmission } from '../services/submissionService';
+import { authenticate, requireRole, AuthenticatedRequest } from '../middleware/auth';
 
 const router = Router();
 
-router.post('/v1/submissions', async (req: Request, res: Response) => {
+// エージェント登録はcompanyロール必須
+router.post('/v1/submissions', authenticate, requireRole('company'), async (req: AuthenticatedRequest, res: Response) => {
   const validation = validateSubmissionPayload(req.body);
   if (!validation.valid) {
     return res.status(400).json({ errors: validation.errors });

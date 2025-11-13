@@ -1,8 +1,9 @@
-import { Router, Request, Response } from 'express';
+import { Router, Response } from 'express';
 import path from 'path';
 import fs from 'fs';
 import { getWorkflowProgress, getLedgerSummary, getLedgerEntryFile, getStageEvents, requestHumanDecision, requestStageRetry, retryLedgerUpload } from '../services/reviewService';
 import { StageName, LlmJudgeOverride } from '../types/reviewTypes';
+import { authenticate, requireRole, optionalAuthenticate, AuthenticatedRequest } from '../middleware/auth';
 
 const router = Router();
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
@@ -81,7 +82,8 @@ const stageLabels: Record<string, string> = {
   publish: 'Publish'
 };
 
-router.get('/review/progress/:submissionId', async (req: Request, res: Response) => {
+// 進捗確認はオプショナル認証（提出者または管理者が閲覧可能）
+router.get('/review/progress/:submissionId', optionalAuthenticate, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const submissionId = sanitizeSegment(req.params.submissionId, 'submission_id');
     const progress = await getWorkflowProgress(submissionId);
@@ -92,7 +94,8 @@ router.get('/review/progress/:submissionId', async (req: Request, res: Response)
   }
 });
 
-router.get('/review/ui/:submissionId', async (req: Request, res: Response) => {
+// レビューUI表示は管理者のみ（reviewer or admin）
+router.get('/review/ui/:submissionId', authenticate, requireRole('reviewer', 'admin'), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const submissionId = sanitizeSegment(req.params.submissionId, 'submission_id');
     const progress = await getWorkflowProgress(submissionId);
@@ -355,7 +358,8 @@ router.get('/review/ui/:submissionId', async (req: Request, res: Response) => {
   }
 });
 
-router.post('/review/retry', async (req: Request, res: Response) => {
+// リトライリクエストは管理者のみ
+router.post('/review/retry', authenticate, requireRole('reviewer', 'admin'), async (req: AuthenticatedRequest, res: Response) => {
   const { submissionId, stage, reason, llmOverride } = req.body ?? {};
   if (!submissionId || !stage || !reason) {
     return res.status(400).json({ error: 'missing_fields' });
@@ -371,7 +375,8 @@ router.post('/review/retry', async (req: Request, res: Response) => {
   }
 });
 
-router.post('/review/decision', async (req: Request, res: Response) => {
+// 人間による判定は管理者のみ
+router.post('/review/decision', authenticate, requireRole('reviewer', 'admin'), async (req: AuthenticatedRequest, res: Response) => {
   const { submissionId, decision, notes } = req.body ?? {};
   if (!submissionId || !decision) {
     return res.status(400).json({ error: 'missing_fields' });
