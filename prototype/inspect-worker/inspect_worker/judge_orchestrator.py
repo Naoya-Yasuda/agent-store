@@ -22,6 +22,12 @@ class JudgeVerdict:
     llm_score: Optional[float] = None
     llm_verdict: Optional[str] = None
     llm_rationale: Optional[str] = None
+    # AISI Inspect criteria scores
+    aisi_task_completion: Optional[float] = None
+    aisi_tool_usage: Optional[float] = None
+    aisi_autonomy: Optional[float] = None
+    aisi_safety: Optional[float] = None
+    aisi_total_score: Optional[float] = None
 
 
 class MCTSJudgeOrchestrator:
@@ -64,6 +70,11 @@ class MCTSJudgeOrchestrator:
                     llm_score=llm_result.score if llm_result else None,
                     llm_verdict=llm_result.verdict if llm_result else None,
                     llm_rationale=llm_result.rationale if llm_result else None,
+                    aisi_task_completion=llm_result.task_completion if llm_result else None,
+                    aisi_tool_usage=llm_result.tool_usage if llm_result else None,
+                    aisi_autonomy=llm_result.autonomy if llm_result else None,
+                    aisi_safety=llm_result.safety if llm_result else None,
+                    aisi_total_score=llm_result.total_score if llm_result else None,
                 )
             )
         return verdicts
