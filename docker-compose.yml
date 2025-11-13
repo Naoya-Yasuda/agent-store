@@ -59,7 +59,6 @@ services:
       - SKIP_DEFAULT_NAMESPACE_CREATION=false
     ports:
       - "7233:7233"
-      - "8233:8233"
     healthcheck:
       test: ["CMD", "sh", "-c", "nc -z $(hostname -i) 7233"]
       interval: 10s
@@ -68,6 +67,21 @@ services:
       start_period: 40s
     depends_on:
       temporal-postgres:
+        condition: service_healthy
+    networks:
+      - agent-store-network
+
+  # Temporal Web UI
+  temporal-ui:
+    image: temporalio/ui:2.22.3
+    container_name: agent-store-temporal-ui
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:8233
+    ports:
+      - "8233:8080"
+    depends_on:
+      temporal:
         condition: service_healthy
     networks:
       - agent-store-network
@@ -83,6 +97,8 @@ services:
     environment:
       TEMPORAL_ADDRESS: ${TEMPORAL_ADDRESS:-temporal:7233}
       NODE_ENV: ${NODE_ENV:-production}
+      SANDBOX_PYTHON: python3
+      INSPECT_PYTHON: python3
     depends_on:
       temporal:
         condition: service_healthy

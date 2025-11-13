@@ -1,5 +1,5 @@
 # Inspect worker container (draft)
-FROM python:3.11-slim AS base
+FROM python:3.13-slim AS base
 
 WORKDIR /app
 

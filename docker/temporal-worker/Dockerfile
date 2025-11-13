@@ -1,17 +1,23 @@
 # syntax=docker/dockerfile:1.7
-FROM node:20-slim AS base
+FROM python:3.13-slim AS base
 
 WORKDIR /app
 
-# Install system dependencies
+# Install Node.js 20.x and other system dependencies
 RUN apt-get update && apt-get install -y \
-    python3 \
-    python3-pip \
-    python3-venv \
-    bash \
     curl \
+    bash \
     ca-certificates \
+    gnupg \
+    && mkdir -p /etc/apt/keyrings \
+    && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list \
+    && apt-get update \
+    && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
+
+# Verify installations
+RUN python3 --version && node --version && npm --version
 
 # Copy Temporal worker code
 COPY prototype/temporal-review-workflow/package*.json ./
@@ -19,7 +25,7 @@ COPY prototype/temporal-review-workflow/tsconfig.json ./
 COPY prototype/temporal-review-workflow/src ./src/
 COPY prototype/temporal-review-workflow/temporal.config.ts ./
 
-# Install dependencies
+# Install Node.js dependencies
 RUN npm install
 
 # Build TypeScript
