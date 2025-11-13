@@ -7,13 +7,30 @@
 docker compose ps
 ```
 
-期待される出力: 以下の6つのサービスが`Up`または`Running`状態
+期待される出力: 以下の7つのサービスが`Up`または`Running`状態
 - agent-store-api
 - agent-store-postgres
 - agent-store-temporal-postgres
 - agent-store-temporal
+- agent-store-temporal-ui (**Temporal Web UI**)
 - agent-store-temporal-worker
 - agent-store-review-ui
+
+### Python環境の確認
+
+Temporal WorkerとInspect WorkerがPython 3.13を使用していることを確認：
+```bash
+# Temporal WorkerのPythonバージョン確認
+docker exec agent-store-temporal-worker python3 --version
+
+# Inspect WorkerのPythonバージョン確認
+docker run --rm --entrypoint python3 agent-store-inspect-worker --version
+```
+
+期待される出力:
+```
+Python 3.13.9
+```
 
 ## 🌐 アクセス先URL
 
@@ -88,40 +105,61 @@ Temporalのダッシュボードを確認します。
 ```bash
 cat > /tmp/test-submission.json << 'EOF'
 {
-  "agentCard": {
+  "agentId": "550e8400-e29b-41d4-a716-446655440001",
+  "cardDocument": {
     "id": "550e8400-e29b-41d4-a716-446655440000",
     "agentId": "550e8400-e29b-41d4-a716-446655440001",
     "defaultLocale": "en",
     "status": "draft",
+    "executionProfile": "self_hosted",
     "translations": [
       {
         "locale": "en",
-        "displayName": "Test Agent",
-        "shortDescription": "A test agent for manual testing",
+        "displayName": "E2E Test Agent",
+        "shortDescription": "An agent for end-to-end browser testing",
         "capabilities": ["text-processing", "data-analysis"]
       }
-    ],
-    "executionProfile": {
-      "inputFormat": "application/json",
-      "outputFormat": "application/json",
-      "entrypoint": "main.py",
-      "dependencies": []
+    ]
+  },
+  "endpointManifest": {
+    "openapi": "3.0.0",
+    "info": {
+      "title": "Test Agent API",
+      "version": "1.0.0"
+    },
+    "servers": [{"url": "https://example.com/agent"}],
+    "paths": {
+      "/query": {
+        "post": {
+          "summary": "Process queries",
+          "description": "Handles text processing and data analysis",
+          "tags": ["text-processing", "data-analysis"]
+        }
+      }
     }
   },
-  "signature": "test-signature-123",
-  "sourceCodeTarball": "https://example.com/agent.tar.gz",
-  "metadata": {
-    "submittedBy": "test-user",
-    "timestamp": "2025-11-13T04:00:00Z"
+  "signatureBundle": {
+    "algorithm": "RS256",
+    "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA\n-----END PUBLIC KEY-----",
+    "signature": "test-signature-base64",
+    "payloadDigest": "sha256-digest"
+  },
+  "organization": {
+    "organizationId": "test-org-001",
+    "name": "Test Organization",
+    "contactEmail": "test@example.com",
+    "operatorPublicKey": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA\n-----END PUBLIC KEY-----"
   }
 }
 EOF
 ```
 
+**注意:** `SKIP_SIGNATURE_VERIFICATION=true` 環境変数が設定されている場合、署名検証はスキップされます（開発・テストモード）。
+
 #### Step 2: エージェントを提出
 
 ```bash
-curl -X POST http://localhost:3002/v1/submissions \
+curl -X POST http://localhost:3002/api/v1/submissions \
   -H "Content-Type: application/json" \
   -d @/tmp/test-submission.json
 ```
@@ -129,8 +167,8 @@ curl -X POST http://localhost:3002/v1/submissions \
 **期待される出力:**
 ```json
 {
-  "submissionId": "uuid-generated-by-server",
-  "state": "pending",
+  "submissionId": "9c912c17-c36d-4898-bae9-d768156a6193",
+  "state": "precheck_pending",
   "manifestWarnings": []
 }
 ```
@@ -138,9 +176,9 @@ curl -X POST http://localhost:3002/v1/submissions \
 **確認ポイント:**
 - ✅ HTTPステータス 202 (Accepted)
 - ✅ `submissionId`が返される（UUIDフォーマット）
-- ✅ `state`が`"pending"`
+- ✅ `state`が`"precheck_pending"`
 
-**⚠️ 重要:** 次のステップのために`submissionId`の値を控えておいてください。
+**⚠️ 重要:** 次のステップのために`submissionId`の値を控えておいてください（例: `9c912c17-c36d-4898-bae9-d768156a6193`）
 
 #### Step 3: Temporal Workflowの確認
 
@@ -161,55 +199,48 @@ curl -X POST http://localhost:3002/v1/submissions \
 
 #### Step 4: Review UIで状態確認
 
-1. **Review UIをリロード:**
+1. **Review UIを開く:**
    ```
    http://localhost:3001
    ```
 
-2. **確認ポイント:**
-   - ✅ 提出したエージェントがリストに表示される
-   - ✅ 現在のステージ（PreCheck → Security Gate → ...）が表示される
-   - ✅ 各ステージの詳細情報（メトリクス、アーティファクトなど）が表示される
-   - ✅ ステージのステータス（pending/running/completed/failed）が正しく表示される
+2. **Submission IDを入力:**
+   - ページ上部の「Submission ID」フィールドに、Step 2で取得したSubmission ID（例: `9c912c17-c36d-4898-bae9-d768156a6193`）を入力
+   - 「最新の進捗を取得」ボタンをクリック
 
-#### Step 5: APIで状態取得
+3. **確認ポイント:**
+   - ✅ 証拠ビューアセクションに進捗情報が表示される
+   - ✅ ステージ選択プルダウンで各ステージ（PreCheck, Security Gate, Functional Accuracy等）が選択可能
+   - ✅ 種別選択プルダウンでLedger/Artifactが選択可能
+   - ✅ 各ステージのステータスが確認できる
+   - ✅ Human Review決定セクションで承認/差戻しボタンが表示される
+
+#### Step 5: Temporal Workerログでワークフロー実行を確認
 
 ```bash
 # Step 2で取得したsubmissionIdを使用
-SUBMISSION_ID="<Step 2で取得したsubmissionId>"
-curl http://localhost:3002/v1/submissions/${SUBMISSION_ID}
+SUBMISSION_ID="9c912c17-c36d-4898-bae9-d768156a6193"
+
+# Temporal Workerのログを確認
+docker logs agent-store-temporal-worker --tail 50 | grep -A 5 -B 5 "${SUBMISSION_ID}"
 ```
 
 **期待される出力:**
-```json
-{
-  "id": "550e8400-e29b-41d4-a716-446655440002",
-  "state": "in_review",
-  "agentCard": {
-    "id": "550e8400-e29b-41d4-a716-446655440000",
-    "agentId": "550e8400-e29b-41d4-a716-446655440001",
-    "displayName": "Test Agent",
-    ...
-  },
-  "createdAt": "2025-11-13T04:10:00.000Z",
-  "progress": {
-    "currentStage": "security_gate",
-    "stages": {
-      "precheck": {
-        "status": "completed",
-        "startedAt": "...",
-        "completedAt": "...",
-        "details": { ... }
-      },
-      "security": {
-        "status": "running",
-        "startedAt": "...",
-        "details": { ... }
-      }
-    }
-  }
-}
 ```
+[activities] preCheckSubmission 9c912c17-c36d-4898-bae9-d768156a6193
+[activities] runSecurityGate submission=9c912c17-c36d-4898-bae9-d768156a6193
+[sandbox-runner] generated artifacts in /app/sandbox-runner/artifacts/9c912c17-c36d-4898-bae9-d768156a6193-rev1
+[activities] runFunctionalAccuracy submission=9c912c17-c36d-4898-bae9-d768156a6193
+[sandbox-runner] generated artifacts in /app/sandbox-runner/artifacts/9c912c17-c36d-4898-bae9-d768156a6193-rev1
+[activities] notifyHumanReview submission=9c912c17-c36d-4898-bae9-d768156a6193 reason=functional_accuracy_failure
+```
+
+**確認ポイント:**
+- ✅ PreCheck、Security Gate、Functional Accuracyの各ステージが実行されている
+- ✅ アーティファクトが生成されている
+- ✅ Human Review待機状態になっている（`notifyHumanReview`が呼ばれている）
+
+**注意:** 現在のPoCでは、GETエンドポイント（`GET /api/v1/submissions/{id}`）は未実装です。進捗確認はTemporal UIまたはReview UIから行ってください。
 
 ---
 
