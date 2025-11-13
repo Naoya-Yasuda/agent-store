@@ -104,5 +104,3 @@ htmlcov/
 # Inspect worker outputs and secrets
 prototype/inspect-worker/out/
 prototype/inspect-worker/.env.inspect
-
-.claude/

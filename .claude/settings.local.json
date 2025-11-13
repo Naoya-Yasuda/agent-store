@@ -12,7 +12,8 @@
       "Bash(docker run:*)",
       "Bash(test:*)",
       "Bash(/tmp/.env.example.backup)",
-      "Bash(.env.example)"
+      "Bash(.env.example)",
+      "Bash(npm run build:*)"
     ],
     "deny": [],
     "ask": [],
