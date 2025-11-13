@@ -1,14 +1,17 @@
 # syntax=docker/dockerfile:1.7
-FROM node:20-alpine AS base
+FROM node:20-slim AS base
 
 WORKDIR /app
 
 # Install system dependencies
-RUN apk add --no-cache \
+RUN apt-get update && apt-get install -y \
     python3 \
-    py3-pip \
+    python3-pip \
+    python3-venv \
     bash \
-    curl
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy Temporal worker code
 COPY prototype/temporal-review-workflow/package*.json ./

@@ -4,7 +4,7 @@ import Ajv, { ErrorObject } from 'ajv';
 
 const schemaPath = path.resolve(__dirname, '..', '..', 'schemas', 'agent-card.schema.json');
 const schemaJson = JSON.parse(readFileSync(schemaPath, 'utf8'));
-const ajv = new Ajv({ allErrors: true, strict: false });
+const ajv = new Ajv({ allErrors: true, strict: false, validateSchema: false });
 const validateAgentCard = ajv.compile(schemaJson);
 
 export function validateAgentCardPayload(payload: unknown): { valid: boolean; errors?: string[] } {
