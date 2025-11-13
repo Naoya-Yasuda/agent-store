@@ -28,6 +28,7 @@ type StageDetails = {
   artifacts?: Record<string, ArtifactDescriptor>;
   llmJudge?: LlmJudgeConfig;
   categories?: Record<string, number>;
+  reason?: string;
   ledger?: {
     entryPath?: string;
     digest?: string;

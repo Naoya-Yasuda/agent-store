@@ -50,22 +50,22 @@ services:
     image: temporalio/auto-setup:1.24.0
     container_name: agent-store-temporal
     environment:
-      - DB=postgresql
-      - DB_HOST=${TEMPORAL_DB_HOST:-temporal-postgres}
+      - DB=postgres12
       - DB_PORT=${TEMPORAL_DB_PORT:-5432}
-      - DB_USER=${TEMPORAL_DB_USER:-temporal}
-      - DB_PWD=${TEMPORAL_DB_PASSWORD:-temporal_pass}
-      - DB_NAME=${TEMPORAL_DB_NAME:-temporal}
-      - SQL_PLUGIN=postgresql
-      - LOG_LEVEL=warn
+      - POSTGRES_SEEDS=${TEMPORAL_DB_HOST:-temporal-postgres}
+      - POSTGRES_USER=${TEMPORAL_DB_USER:-temporal}
+      - POSTGRES_PWD=${TEMPORAL_DB_PASSWORD:-temporal_pass}
+      - SKIP_DB_CREATE=false
+      - SKIP_DEFAULT_NAMESPACE_CREATION=false
     ports:
       - "7233:7233"
       - "8233:8233"
     healthcheck:
-      test: ["CMD", "tctl", "cluster", "health"]
+      test: ["CMD", "sh", "-c", "nc -z $(hostname -i) 7233"]
       interval: 10s
       timeout: 5s
       retries: 20
+      start_period: 40s
     depends_on:
       temporal-postgres:
         condition: service_healthy
@@ -75,8 +75,8 @@ services:
   # Temporal Worker
   temporal-worker:
     build:
-      context: ./prototype/temporal-review-workflow
-      dockerfile: ../../docker/temporal-worker/Dockerfile
+      context: .
+      dockerfile: docker/temporal-worker/Dockerfile
     container_name: agent-store-temporal-worker
     env_file:
       - .env
@@ -113,7 +113,7 @@ services:
       RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-60000}
       RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-120}
     ports:
-      - "3000:3000"
+      - "3002:3000"
     depends_on:
       postgres:
         condition: service_healthy
