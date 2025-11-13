@@ -9,7 +9,10 @@
       "Bash(docker ps:*)",
       "Bash(docker exec:*)",
       "Bash(curl:*)",
-      "Bash(docker run:*)"
+      "Bash(docker run:*)",
+      "Bash(test:*)",
+      "Bash(/tmp/.env.example.backup)",
+      "Bash(.env.example)"
     ],
     "deny": [],
     "ask": [],

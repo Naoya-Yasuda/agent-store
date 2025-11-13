@@ -32,6 +32,59 @@ docker run --rm --entrypoint python3 agent-store-inspect-worker --version
 Python 3.13.9
 ```
 
+### オプション機能の設定（W&B、LLM APIキー）
+
+完全なE2Eテストを実行する場合、以下のAPIキーを設定できます：
+
+#### 1. Weights & Biases (W&B) の設定
+
+W&Bでメトリクスをトラッキングする場合：
+
+```bash
+# .envファイルを編集
+nano .env  # または vim .env
+
+# 以下の行のコメントを外して設定
+# WANDB_API_KEY=your-wandb-api-key-here
+```
+
+W&Bを使わない場合は、`WANDB_DISABLED=true` に設定してください（デフォルトは`false`）。
+
+#### 2. LLM APIキーの設定（Judge Panel用）
+
+Judge Panelステージで自動判定を有効にする場合：
+
+```bash
+# .envファイルを編集
+nano .env
+
+# 以下の行のコメントを外して設定
+# OPENAI_API_KEY=sk-your-openai-key-here
+# または
+# ANTHROPIC_API_KEY=sk-ant-your-anthropic-key-here
+```
+
+**注意:**
+- Judge Panelステージは現在のPoCでは**オプション**です
+- APIキーを設定しない場合、Judge Panelはスキップされます
+- OpenAI GPT-4またはAnthropic Claudeが使用可能です
+
+#### 3. 設定後のサービス再起動
+
+環境変数を変更した後は、サービスを再起動してください：
+
+```bash
+# サービスを停止
+docker compose down
+
+# サービスを再起動
+docker compose up -d
+
+# ログで設定が反映されているか確認
+docker compose logs api | grep -i wandb
+docker compose logs inspect-worker | head -20
+```
+
 ## 🌐 アクセス先URL
 
 | サービス | URL | 用途 |
@@ -39,6 +92,67 @@ Python 3.13.9
 | **Review UI** | http://localhost:3001 | レビュー状況の確認・Human Review |
 | **API** | http://localhost:3002 | エージェント提出・状態確認 |
 | **Temporal Web UI** | http://localhost:8233 | ワークフロー管理・デバッグ |
+
+---
+
+## 📖 用語説明
+
+### Submission（提出物）とは
+
+**Submission**は、Agent Store に登録するために提出されたエージェントの審査申請のことです。
+
+#### 構成要素
+
+1つのSubmissionには以下の情報が含まれます：
+
+- **Agent Card（エージェントカード）**: エージェントのメタデータ
+  - 表示名、説明文、機能リスト（capabilities）
+  - 実行プロファイル（self_hosted, managed等）
+  - 多言語対応情報
+
+- **Endpoint Manifest（エンドポイント仕様書）**: エージェントのAPI仕様
+  - OpenAPI 3.0形式
+  - 利用可能なエンドポイント一覧
+  - リクエスト/レスポンス形式
+
+- **Signature Bundle（署名情報）**: セキュリティ検証用
+  - 公開鍵
+  - 署名アルゴリズム
+  - ペイロードダイジェスト
+
+- **Organization（組織情報）**: 提出元の組織
+  - 組織ID、名称
+  - 連絡先メールアドレス
+  - 運用者の公開鍵
+
+#### レビューパイプライン
+
+各Submissionは以下のステージを順番に通過します：
+
+```
+Submission作成
+  ↓
+① PreCheck（事前チェック）
+  ↓
+② Security Gate（セキュリティ検査）
+  ↓
+③ Functional Accuracy（機能精度テスト）
+  ↓
+④ Judge Panel（自動判定）
+  ↓
+⑤ Human Review（人間による最終レビュー）
+  ↓
+⑥ Publish（公開）
+```
+
+各ステージで合格すると次のステージに進み、問題があれば差し戻されます。
+
+#### Submission ID
+
+各Submissionには一意の識別子（UUID形式）が付与されます。
+例: `9c912c17-c36d-4898-bae9-d768156a6193`
+
+このIDを使って、進捗状況の確認やレビュー結果の取得を行います。
 
 ---
 
