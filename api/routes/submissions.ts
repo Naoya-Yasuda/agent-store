@@ -3,6 +3,7 @@ import multer from 'multer';
 import { validateSubmissionPayload } from '../utils/submissionValidator';
 import { createSubmission } from '../services/submissionService';
 import { authenticate, requireRole, AuthenticatedRequest } from '../middleware/auth';
+import pool from '../db/pool';
 
 const router = Router();
 
@@ -83,6 +84,57 @@ router.post('/submissions',
       console.error('[submissions] Error:', error);
       const message = error instanceof Error ? error.message : 'unknown_error';
       return res.status(500).json({ error: 'submission_failed', message });
+    }
+  }
+);
+
+// 自分の組織のsubmissions一覧を取得
+router.get('/submissions/my',
+  authenticate,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const organizationId = req.user?.organizationId;
+
+      if (!organizationId) {
+        return res.status(400).json({
+          error: 'missing_organization_id',
+          message: 'Organization ID not found',
+        });
+      }
+
+      const result = await pool.query(
+        `SELECT
+          s.id,
+          s.state,
+          s.created_at,
+          s.card_document,
+          s.sandbox_score,
+          s.inspect_score,
+          s.judge_panel_score,
+          s.final_score
+         FROM submissions s
+         WHERE s.organization_id = $1
+         ORDER BY s.created_at DESC`,
+        [organizationId]
+      );
+
+      const submissions = result.rows.map(row => ({
+        id: row.id,
+        agentName: row.card_document?.agent?.name || 'Unknown',
+        agentVersion: row.card_document?.agent?.version || 'Unknown',
+        state: row.state,
+        createdAt: row.created_at,
+        sandboxScore: row.sandbox_score,
+        inspectScore: row.inspect_score,
+        judgePanelScore: row.judge_panel_score,
+        finalScore: row.final_score,
+      }));
+
+      return res.status(200).json({ submissions });
+    } catch (error) {
+      console.error('[submissions/my] Error:', error);
+      const message = error instanceof Error ? error.message : 'unknown_error';
+      return res.status(500).json({ error: 'fetch_failed', message });
     }
   }
 );
