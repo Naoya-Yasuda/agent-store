@@ -24,7 +24,9 @@
       "Bash(python3 -m pytest:*)",
       "Bash(python3:*)",
       "Bash(npx tsc)",
-      "Bash(node node_modules/.bin/tsc:*)"
+      "Bash(node node_modules/.bin/tsc:*)",
+      "Bash(/tmp/test_auth.sh)",
+      "Bash(bash:*)"
     ],
     "deny": [],
     "ask": [],

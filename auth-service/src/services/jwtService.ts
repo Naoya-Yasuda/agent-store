@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken';
+import { randomBytes } from 'crypto';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'your-refresh-secret-key-change-in-production';
@@ -13,11 +14,21 @@ export interface TokenPayload {
 }
 
 export function generateAccessToken(payload: TokenPayload): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRY } as any);
+  // Add jti (JWT ID) to ensure each token is unique
+  const payloadWithJti = {
+    ...payload,
+    jti: randomBytes(16).toString('hex'),
+  };
+  return jwt.sign(payloadWithJti, JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRY } as any);
 }
 
 export function generateRefreshToken(payload: TokenPayload): string {
-  return jwt.sign(payload, JWT_REFRESH_SECRET, { expiresIn: REFRESH_TOKEN_EXPIRY } as any);
+  // Add jti (JWT ID) to ensure each token is unique
+  const payloadWithJti = {
+    ...payload,
+    jti: randomBytes(16).toString('hex'),
+  };
+  return jwt.sign(payloadWithJti, JWT_REFRESH_SECRET, { expiresIn: REFRESH_TOKEN_EXPIRY } as any);
 }
 
 export function verifyAccessToken(token: string): TokenPayload | null {

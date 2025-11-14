@@ -64,7 +64,7 @@ router.post('/register', async (req: Request, res: Response) => {
 
     // Refresh tokenをDBに保存
     await pool.query(
-      `INSERT INTO refresh_tokens (user_id, token, expires_at, created_at)
+      `INSERT INTO refresh_tokens (user_id, token_hash, expires_at, created_at)
        VALUES ($1, $2, NOW() + INTERVAL '7 days', NOW())`,
       [newUser.id, refreshToken]
     );
@@ -146,7 +146,7 @@ router.post('/login', async (req: Request, res: Response) => {
 
     // Refresh tokenをDBに保存
     await pool.query(
-      `INSERT INTO refresh_tokens (user_id, token, expires_at, created_at)
+      `INSERT INTO refresh_tokens (user_id, token_hash, expires_at, created_at)
        VALUES ($1, $2, NOW() + INTERVAL '7 days', NOW())`,
       [user.id, refreshToken]
     );
@@ -225,7 +225,7 @@ router.post('/refresh', async (req: Request, res: Response) => {
 
     // DBでトークンが有効か確認
     const result = await pool.query(
-      'SELECT * FROM refresh_tokens WHERE token = $1 AND user_id = $2 AND revoked_at IS NULL AND expires_at > NOW()',
+      'SELECT * FROM refresh_tokens WHERE token_hash = $1 AND user_id = $2 AND revoked = false AND expires_at > NOW()',
       [refreshToken, payload.userId]
     );
 
@@ -236,19 +236,25 @@ router.post('/refresh', async (req: Request, res: Response) => {
       });
     }
 
-    // 新しいトークンを生成
-    const newAccessToken = generateAccessToken(payload);
-    const newRefreshToken = generateRefreshToken(payload);
+    // 新しいトークンを生成（JWTクレームを除外したクリーンなペイロードを使用）
+    const cleanPayload: TokenPayload = {
+      userId: payload.userId,
+      email: payload.email,
+      role: payload.role,
+      organizationId: payload.organizationId,
+    };
+    const newAccessToken = generateAccessToken(cleanPayload);
+    const newRefreshToken = generateRefreshToken(cleanPayload);
 
-    // 古いトークンを無効化
+    // 古いトークンを無効化してから新しいトークンを保存
     await pool.query(
-      'UPDATE refresh_tokens SET revoked_at = NOW() WHERE token = $1',
+      'UPDATE refresh_tokens SET revoked = true, revoked_at = NOW() WHERE token_hash = $1',
       [refreshToken]
     );
 
     // 新しいRefresh tokenをDBに保存
     await pool.query(
-      `INSERT INTO refresh_tokens (user_id, token, expires_at, created_at)
+      `INSERT INTO refresh_tokens (user_id, token_hash, expires_at, created_at)
        VALUES ($1, $2, NOW() + INTERVAL '7 days', NOW())`,
       [payload.userId, newRefreshToken]
     );
