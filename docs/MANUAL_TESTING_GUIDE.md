@@ -163,6 +163,8 @@ docker compose exec postgres sh -c 'psql -U $POSTGRES_USER -d $POSTGRES_DB -c "\
 
 ### Step 0-3: 企業情報とユーザー情報を入力
 
+**アクセスURL**: `http://localhost:3002/register-account`
+
 **フォームに以下の情報を入力:**
 
 **組織情報セクション:**
@@ -182,6 +184,8 @@ docker compose exec postgres sh -c 'psql -U $POSTGRES_USER -d $POSTGRES_DB -c "\
 - ✅ パスワード8文字以上のチェックが動作する
 
 ### Step 0-4: アカウント作成実行
+
+**アクセスURL**: `http://localhost:3002/register-account`
 
 1. **「アカウントを作成」ボタンをクリック**
 
@@ -221,6 +225,8 @@ docker compose exec postgres sh -c 'psql -U $POSTGRES_USER -d $POSTGRES_DB -c "S
 - ✅ リフレッシュトークンがSHA256ハッシュで保存されている（64文字の16進数文字列）
 
 ### Step 0-6: ログアウトとログイン
+
+**アクセスURL**: `http://localhost:3002/login`
 
 1. **ログアウト（localStorage削除）:**
    ```javascript
@@ -268,6 +274,8 @@ docker compose exec postgres sh -c 'psql -U $POSTGRES_USER -d $POSTGRES_DB -c "S
 
 ### Step 1-2: エージェント情報を入力
 
+**アクセスURL**: `http://localhost:3002/register`
+
 **フォームに以下の情報を入力:**
 
 - **エージェントカードURL**: `https://example.com/agent-card.json`
@@ -280,6 +288,8 @@ docker compose exec postgres sh -c 'psql -U $POSTGRES_USER -d $POSTGRES_DB -c "S
 - ✅ 有効なURLで緑色のチェックマーク表示
 
 ### Step 1-3: エージェント登録実行
+
+**アクセスURL**: `http://localhost:3002/register`
 
 1. **「登録する」ボタンをクリック**
 
@@ -296,6 +306,8 @@ docker compose exec postgres sh -c 'psql -U $POSTGRES_USER -d $POSTGRES_DB -c "S
    - ✅ ステージ別の進捗表示（PreCheck、Security Gate、Functional Accuracy、Judge Panel、Publish）
 
 ### Step 1-4: Temporal Web UIでワークフロー確認
+
+**アクセスURL**: `http://localhost:8233`
 
 1. **別のブラウザタブでTemporal Web UIを開く:**
    ```
@@ -334,6 +346,8 @@ docker compose exec postgres sh -c 'psql -U $POSTGRES_USER -d $POSTGRES_DB -c "S
 ```
 
 ### Step 1-5: 各ステージの進行確認
+
+**アクセスURL**: `http://localhost:8233`
 
 **ステージの実行順序:**
 
@@ -387,6 +401,8 @@ docker compose exec postgres sh -c 'psql -U $POSTGRES_USER -d $POSTGRES_DB -c "S
 ```
 
 ### Step 1-6: Trust Score自動判定の確認
+
+**アクセスURL**: `http://localhost:3002/status/<submissionId>`
 
 **Auto Decision分岐:**
 
@@ -463,6 +479,8 @@ docker compose exec postgres sh -c 'psql -U $POSTGRES_USER -d $POSTGRES_DB -c "S
 
 ### Step 1-7: データベース確認
 
+**アクセスURL**: `http://localhost:3000`（API）
+
 **Trust Score永続化確認:**
 
 ```bash
@@ -490,6 +508,8 @@ docker compose exec postgres sh -c 'psql -U $POSTGRES_USER -d $POSTGRES_DB -c "S
 - ✅ `auto_decision`が正しく記録されている
 
 ### Step 1-8: Publishステージの確認（auto_approved時のみ）
+
+**アクセスURL**: `http://localhost:3000/api/catalog/agents`
 
 **Trust Score >= 80の場合:**
 
@@ -548,6 +568,8 @@ curl -X GET "http://localhost:3000/api/catalog/agents" | jq
 
 ### Step 2-1: 高スコアエージェント（auto_approved）のテスト
 
+**アクセスURL**: `http://localhost:3002/status/<submissionId>`
+
 **目標Trust Score**: 80点以上
 
 **テスト手順:**
@@ -575,6 +597,8 @@ curl -X GET "http://localhost:3000/api/catalog/agents" | jq
 ```
 
 ### Step 2-2: 中スコアエージェント（requires_human_review）のテスト
+
+**アクセスURL**: `http://localhost:3001`
 
 **目標Trust Score**: 40-79点
 
@@ -616,6 +640,8 @@ curl -X GET "http://localhost:3000/api/catalog/agents" | jq
    - 「却下」ボタンをクリック → ワークフロー終了（rejected）
 
 ### Step 2-3: 低スコアエージェント（auto_rejected）のテスト
+
+**アクセスURL**: `http://localhost:3002/status/<submissionId>`
 
 **目標Trust Score**: 40点未満
 
