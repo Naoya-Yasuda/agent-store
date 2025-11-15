@@ -193,14 +193,6 @@ router.get('/submissions/:id/progress',
 router.delete('/submissions/:id',
   authenticate,
   async (req: AuthenticatedRequest, res: Response) => {
-    // 開発環境のみ許可
-    if (process.env.NODE_ENV === 'production') {
-      return res.status(403).json({
-        error: 'forbidden',
-        message: 'Deletion is only allowed in development environment',
-      });
-    }
-
     try {
       const submissionId = req.params.id;
 
