@@ -130,7 +130,7 @@ services:
       RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-120}
       SKIP_SIGNATURE_VERIFICATION: ${SKIP_SIGNATURE_VERIFICATION:-true}
     ports:
-      - "3002:3000"
+      - "3000:3000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -157,6 +157,26 @@ services:
       - "3001:3000"
     depends_on:
       - api
+    networks:
+      - agent-store-network
+
+  # Submission UI
+  submission-ui:
+    build:
+      context: .
+      dockerfile: docker/submission-ui/Dockerfile
+    container_name: agent-store-submission-ui
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:3000}
+      NEXT_PUBLIC_AUTH_URL: ${NEXT_PUBLIC_AUTH_URL:-http://localhost:3003}
+    ports:
+      - "3002:3000"
+    depends_on:
+      - api
+      - auth-service
     networks:
       - agent-store-network
 

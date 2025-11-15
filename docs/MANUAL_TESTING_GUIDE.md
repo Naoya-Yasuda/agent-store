@@ -91,6 +91,8 @@ docker compose ps
 | `agent-store-temporal-ui` | 8233 | Temporal Web UI |
 | `agent-store-temporal-worker` | - | ワークフロー実行Worker |
 
+**補足**: 上記サービスは `docker compose up` で同時起動します。`agent-store-submission-ui` は `docker/submission-ui/Dockerfile` を使ってビルドされ、`http://localhost:3002` で Next.js の企業向けエージェント登録画面を提供します。
+
 ### 3. ブラウザで各UIにアクセス確認
 
 以下のURLをブラウザで開いて、各UIが表示されることを確認：
