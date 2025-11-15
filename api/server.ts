@@ -9,6 +9,7 @@ import submissionsRouter from './routes/submissions';
 import reviewsRouter from './routes/reviews';
 import catalogRouter from './routes/catalog';
 import governanceRouter from './routes/governance';
+import organizationsRouter from './routes/organizations';
 
 const app = express();
 const PORT = Number(process.env.PORT ?? 3000);
@@ -56,6 +57,7 @@ app.use('/api', submissionsRouter);
 app.use('/api', reviewsRouter);
 app.use('/api', catalogRouter);
 app.use('/api', governanceRouter);
+app.use('/api', organizationsRouter);
 
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error('[api] error:', err);
