@@ -25,6 +25,7 @@ venv.bak/
 *.swp
 *.swo
 *~
+.claude/
 
 # OS設定
 .DS_Store
