@@ -137,7 +137,7 @@ export default function RegisterAccountPage() {
     setIsSubmitting(true);
 
     try {
-      const authUrl = process.env.NEXT_PUBLIC_AUTH_URL || 'http://localhost:3001';
+      const authUrl = process.env.NEXT_PUBLIC_AUTH_URL || 'http://localhost:3003';
 
       const response = await fetch(`${authUrl}/auth/register`, {
         method: 'POST',

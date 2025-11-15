@@ -165,6 +165,9 @@ services:
     build:
       context: .
       dockerfile: docker/submission-ui/Dockerfile
+      args:
+        NEXT_PUBLIC_AUTH_URL: ${NEXT_PUBLIC_AUTH_URL:-http://localhost:3003}
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:3000}
     container_name: agent-store-submission-ui
     env_file:
       - .env
@@ -196,6 +199,7 @@ services:
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-your-refresh-secret-key-change-in-production}
       ACCESS_TOKEN_EXPIRY: ${ACCESS_TOKEN_EXPIRY:-15m}
       REFRESH_TOKEN_EXPIRY: ${REFRESH_TOKEN_EXPIRY:-7d}
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:3002
     ports:
       - "3003:3001"
     depends_on:

@@ -25,7 +25,7 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      const authUrl = process.env.NEXT_PUBLIC_AUTH_URL || 'http://localhost:3001';
+      const authUrl = process.env.NEXT_PUBLIC_AUTH_URL || 'http://localhost:3003';
 
       const response = await fetch(`${authUrl}/auth/login`, {
         method: 'POST',

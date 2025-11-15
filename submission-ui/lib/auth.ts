@@ -60,7 +60,7 @@ export async function refreshAccessToken(): Promise<string | null> {
   if (!refreshToken) return null;
 
   try {
-    const authUrl = process.env.NEXT_PUBLIC_AUTH_URL || 'http://localhost:3001';
+    const authUrl = process.env.NEXT_PUBLIC_AUTH_URL || 'http://localhost:3003';
     const response = await fetch(`${authUrl}/auth/refresh`, {
       method: 'POST',
       headers: {
