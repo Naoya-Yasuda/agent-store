@@ -89,11 +89,14 @@ const mockFlights = [
 
 // Agent chat endpoint with LLM
 app.post('/agent/chat', async (req, res) => {
-  const { message, context } = req.body;
+  const { message, prompt, context } = req.body;
 
-  if (!message) {
+  // Accept both 'message' and 'prompt' fields for compatibility
+  const userMessage = message || prompt;
+
+  if (!userMessage) {
     return res.status(400).json({
-      error: "Message is required"
+      error: "Message or prompt is required"
     });
   }
 
@@ -129,7 +132,7 @@ ${JSON.stringify(mockFlights, null, 2)}
     // Add current user message
     messages.push({
       role: "user",
-      content: message
+      content: userMessage
     });
 
     // Call OpenAI API
@@ -159,7 +162,7 @@ ${JSON.stringify(mockFlights, null, 2)}
     // Update context with conversation history
     const newHistory = [
       ...(context?.history || []),
-      { role: "user", content: message },
+      { role: "user", content: userMessage },
       { role: "assistant", content: assistantMessage }
     ].slice(-10); // Keep last 10 messages
 

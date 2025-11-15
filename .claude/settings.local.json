@@ -41,7 +41,12 @@
       "Bash(tee:*)",
       "Bash(jq:*)",
       "Bash(1 cat /tmp/test_token.txt)",
-      "Bash(git rm:*)"
+      "Bash(git rm:*)",
+      "Bash(__NEW_LINE__ echo \"Updated sample.jsonl:\")",
+      "Bash(__NEW_LINE__ echo \"\")",
+      "Bash(__NEW_LINE__ echo \"Checking if temporal-worker is running:\")",
+      "Bash(if docker compose ps temporal-worker)",
+      "Bash(then echo \"✓ temporal-worker is running\" echo \"\" echo \"Verifying ragtruth content in container:\" docker exec agent-store-temporal-worker cat /app/sandbox-runner/resources/ragtruth/sample.jsonl else echo \"temporal-worker not ready yet, checking in 30 more seconds...\" sleep 30 docker compose ps temporal-worker fi)"
     ],
     "deny": [],
     "ask": [],

@@ -76,11 +76,73 @@ def load_ragtruth(dir_path: Path) -> List[Dict[str, Any]]:
   return records
 
 
+def tokenize(text: str) -> List[str]:
+  """Tokenize text for similarity calculations."""
+  return [token for token in text.lower().split() if token]
+
+
+def semantic_similarity(text1: str, text2: str) -> float:
+  """
+  Calculate semantic similarity using simple token-based cosine similarity.
+  This is a lightweight alternative to full embedding models.
+  Returns a value between 0 (completely different) and 1 (identical).
+  """
+  tokens1 = Counter(tokenize(text1))
+  tokens2 = Counter(tokenize(text2))
+
+  if not tokens1 or not tokens2:
+    return 0.0
+
+  all_tokens = set(tokens1.keys()) | set(tokens2.keys())
+  dot = sum(tokens1[token] * tokens2[token] for token in all_tokens)
+  norm1 = math.sqrt(sum(count * count for count in tokens1.values()))
+  norm2 = math.sqrt(sum(count * count for count in tokens2.values()))
+
+  if norm1 == 0 or norm2 == 0:
+    return 0.0
+
+  return dot / (norm1 * norm2)
+
+
 def attach_expected_answers(scenarios: List[Scenario], ragtruth: List[Dict[str, Any]]) -> None:
+  """
+  Attach expected answers to scenarios using semantic similarity matching.
+
+  Matching strategy:
+  1. Try exact string match first (fast path)
+  2. Use semantic similarity to find best match (threshold: 0.5)
+  3. If no good match, use generic fallback
+
+  Note: Does NOT randomly select from ragtruth to avoid masking configuration errors.
+  """
+  SIMILARITY_THRESHOLD = 0.5  # Minimum similarity to consider a match
+
   for scenario in scenarios:
+    # Try exact match first (fast path)
     matched = next((r for r in ragtruth if r.get("useCase") == scenario.use_case), None)
+
+    # If no exact match, use semantic similarity to find best match
     if not matched and ragtruth:
-      matched = random.choice(ragtruth)
+      best_match = None
+      best_similarity = 0.0
+
+      for record in ragtruth:
+        ragtruth_use_case = record.get("useCase", "")
+        if not ragtruth_use_case:
+          continue
+
+        similarity = semantic_similarity(scenario.use_case, ragtruth_use_case)
+
+        if similarity > best_similarity:
+          best_similarity = similarity
+          best_match = record
+
+      # Only use the match if similarity is above threshold
+      if best_match and best_similarity >= SIMILARITY_THRESHOLD:
+        matched = best_match
+
+    # Use matched answer or generate a generic expected answer
+    # Do NOT randomly select from ragtruth - this masks configuration errors
     answer = matched.get("answer") if matched else f"期待される回答: {scenario.use_case} を丁寧に説明する。"
     scenario.expected_answer = answer or ""
 
@@ -246,8 +308,6 @@ def run_functional_accuracy(
   }
   (output_dir / "functional_summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
   return summary
-def tokenize(text: str) -> List[str]:
-  return [token for token in text.lower().split() if token]
 
 
 def embedding_distance(expected: str, response: Optional[str]) -> Optional[float]:
