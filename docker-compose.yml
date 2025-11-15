@@ -121,11 +121,7 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       TEMPORAL_ADDRESS: ${TEMPORAL_ADDRESS:-temporal:7233}
       PORT: ${PORT:-3000}
-      WANDB_DISABLED: ${WANDB_DISABLED:-false}
-      WANDB_PROJECT: ${WANDB_PROJECT:-agent-store-sandbox}
-      WANDB_ENTITY: ${WANDB_ENTITY:-local}
-      WANDB_BASE_URL: ${WANDB_BASE_URL:-https://wandb.ai}
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:3001}
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:3002
       RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-60000}
       RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-120}
       SKIP_SIGNATURE_VERIFICATION: ${SKIP_SIGNATURE_VERIFICATION:-true}
@@ -141,6 +137,8 @@ services:
     volumes:
       - ./logs:/app/logs
       - ./sandbox-runner/artifacts:/app/artifacts
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   # Next.js Review UI
   review-ui:
@@ -226,6 +224,22 @@ services:
       - agent-store-network
     volumes:
       - ./sandbox-runner/artifacts:/app/sandbox-runner/artifacts
+
+  # Mock Flight Agent (for testing)
+  mock-agent:
+    build:
+      context: ./mock-agent
+      dockerfile: Dockerfile
+    container_name: agent-store-mock-agent
+    env_file:
+      - .env
+    environment:
+      PORT: 4000
+      BASE_URL: http://localhost:4000
+    ports:
+      - "4000:4000"
+    networks:
+      - agent-store-network
 
 volumes:
   postgres_data:

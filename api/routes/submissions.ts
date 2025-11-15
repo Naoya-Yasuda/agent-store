@@ -52,11 +52,34 @@ router.post('/submissions',
 
       const cardDocument = await agentCardResponse.json();
 
+      // 組織情報を取得
+      const orgResult = await pool.query(
+        'SELECT id, name, contact_email, public_key FROM organizations WHERE id = $1',
+        [organizationId]
+      );
+      if (orgResult.rows.length === 0) {
+        return res.status(400).json({
+          error: 'organization_not_found',
+          message: 'Organization not found',
+        });
+      }
+      const org = orgResult.rows[0];
+
       // SubmissionPayloadを構築
       const payload = {
+        agentId: cardDocument.agentId || `agent-${Date.now()}`,
         cardDocument,
-        endpointUrl,
-        organizationId,
+        endpointManifest: {
+          url: endpointUrl,
+          method: 'POST',
+          headers: {},
+        },
+        organization: {
+          organizationId: org.id,
+          name: org.name,
+          contactEmail: org.contact_email,
+          operatorPublicKey: org.public_key || '',
+        },
         signatureBundle: req.file ? {
           filename: req.file.originalname,
           data: req.file.buffer,

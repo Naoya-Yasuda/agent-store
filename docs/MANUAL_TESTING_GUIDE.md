@@ -77,7 +77,7 @@ NEXT_PUBLIC_AUTH_URL=http://localhost:3003
 docker compose ps
 ```
 
-**期待される出力**: 以下の9つのサービスが`Up`状態
+**期待される出力**: 以下の10つのサービスが`Up`状態
 
 | サービス名 | ポート | 説明 |
 |-----------|--------|------|
@@ -85,6 +85,7 @@ docker compose ps
 | `agent-store-auth-service` | 3003 | 認証サーバー（JWT発行） |
 | `agent-store-submission-ui` | 3002 | エージェント登録UI（企業向け） |
 | `agent-store-review-ui` | 3001 | レビュー管理UI（管理者向け） |
+| `agent-store-mock-agent` | 4000 | LLM搭載フライト予約エージェント（テスト用） |
 | `agent-store-postgres` | 5432 | メインデータベース |
 | `agent-store-temporal-postgres` | 5433 | Temporal用データベース |
 | `agent-store-temporal` | 7233 | Temporalサーバー |
@@ -280,14 +281,29 @@ docker compose exec postgres sh -c 'psql -U $POSTGRES_USER -d $POSTGRES_DB -c "S
 
 **フォームに以下の情報を入力:**
 
-- **エージェントカードURL**: `https://example.com/agent-card.json`
-- **エンドポイントURL**: `https://api.example.com/agent`
+**🔴 重要: Docker環境では、コンテナ間通信のためサービス名を使用してください**
+
+- **エージェントカードURL**: `http://mock-agent:4000/agent-card.json`
+- **エンドポイントURL**: `http://mock-agent:4000/agent/chat`
 - **署名バンドル（オプション）**: ファイルをアップロード（またはスキップ）
+
+**📝 説明:**
+- `localhost`ではなく`mock-agent`を使用する理由：
+  - APIコンテナ内から見た`localhost`はAPIコンテナ自身を指します
+  - `mock-agent`はDockerネットワーク内のサービス名です
+  - これにより、コンテナ間で正しく通信できます
 
 **バリデーション確認:**
 - ✅ 無効なURL（`http://`や`https://`なし）でエラーメッセージ表示
 - ✅ 空白入力でエラーメッセージ表示
 - ✅ 有効なURLで緑色のチェックマーク表示
+
+**利用可能なモックエージェント:**
+- **名前**: フライト予約エージェント
+- **バージョン**: 2.0.0
+- **説明**: GPT-4o-miniを使用したAI搭載フライト予約アシスタント（日本語対応）
+- **LLMモデル**: OpenAI GPT-4o-mini
+- **言語**: 日本語（です・ます調）
 
 ### Step 1-3: エージェント登録実行
 
