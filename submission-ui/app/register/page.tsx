@@ -91,7 +91,7 @@ export default function RegisterPage() {
 
     // Get current user info
     const user = getCurrentUser();
-    if (!user || !user.organization_id) {
+    if (!user || !user.organizationId) {
       setError('ログイン情報が取得できません。再度ログインしてください。');
       router.push('/login?redirect=/register');
       return;
@@ -105,7 +105,7 @@ export default function RegisterPage() {
       const submitData = new FormData();
       submitData.append('agentCardUrl', formData.agentCardUrl);
       submitData.append('endpointUrl', formData.endpointUrl);
-      submitData.append('organization_id', user.organization_id);
+      submitData.append('organization_id', user.organizationId);
 
       if (formData.signatureBundle) {
         submitData.append('signatureBundle', formData.signatureBundle);

@@ -9,6 +9,9 @@ if (!JWT_SECRET || !JWT_REFRESH_SECRET) {
   throw new Error('JWT_SECRET and JWT_REFRESH_SECRET environment variables must be set');
 }
 
+const jwtSecret = JWT_SECRET as string;
+const jwtRefreshSecret = JWT_REFRESH_SECRET as string;
+
 const ACCESS_TOKEN_EXPIRY = process.env.ACCESS_TOKEN_EXPIRY || '15m';
 const REFRESH_TOKEN_EXPIRY = process.env.REFRESH_TOKEN_EXPIRY || '7d';
 
@@ -25,7 +28,7 @@ export function generateAccessToken(payload: TokenPayload): string {
     ...payload,
     jti: randomBytes(16).toString('hex'),
   };
-  return jwt.sign(payloadWithJti, JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRY } as any);
+  return jwt.sign(payloadWithJti, jwtSecret, { expiresIn: ACCESS_TOKEN_EXPIRY } as any);
 }
 
 export function generateRefreshToken(payload: TokenPayload): string {
@@ -34,12 +37,16 @@ export function generateRefreshToken(payload: TokenPayload): string {
     ...payload,
     jti: randomBytes(16).toString('hex'),
   };
-  return jwt.sign(payloadWithJti, JWT_REFRESH_SECRET, { expiresIn: REFRESH_TOKEN_EXPIRY } as any);
+  return jwt.sign(payloadWithJti, jwtRefreshSecret, { expiresIn: REFRESH_TOKEN_EXPIRY } as any);
 }
 
 export function verifyAccessToken(token: string): TokenPayload | null {
   try {
-    return jwt.verify(token, JWT_SECRET) as TokenPayload;
+    const decoded = jwt.verify(token, jwtSecret);
+    if (typeof decoded === 'object' && decoded) {
+      return decoded as TokenPayload;
+    }
+    return null;
   } catch (error) {
     return null;
   }
@@ -47,7 +54,11 @@ export function verifyAccessToken(token: string): TokenPayload | null {
 
 export function verifyRefreshToken(token: string): TokenPayload | null {
   try {
-    return jwt.verify(token, JWT_REFRESH_SECRET) as TokenPayload;
+    const decoded = jwt.verify(token, jwtRefreshSecret);
+    if (typeof decoded === 'object' && decoded) {
+      return decoded as TokenPayload;
+    }
+    return null;
   } catch (error) {
     return null;
   }

@@ -220,7 +220,8 @@ export default function RegisterAccountPage() {
                     name="organizationName"
                     value={formData.organizationName}
                     onChange={handleInputChange}
-                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                    style={{ color: '#111827' }}
+                    className={`w-full px-4 py-2 border rounded-lg text-gray-900 bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
                       validationErrors.organizationName ? 'border-red-500' : 'border-gray-300'
                     }`}
                     placeholder="株式会社Example"
@@ -241,7 +242,8 @@ export default function RegisterAccountPage() {
                     name="contactEmail"
                     value={formData.contactEmail}
                     onChange={handleInputChange}
-                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                    style={{ color: '#111827' }}
+                    className={`w-full px-4 py-2 border rounded-lg text-gray-900 bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
                       validationErrors.contactEmail ? 'border-red-500' : 'border-gray-300'
                     }`}
                     placeholder="contact@example.com"
@@ -265,7 +267,8 @@ export default function RegisterAccountPage() {
                     name="website"
                     value={formData.website}
                     onChange={handleInputChange}
-                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                    style={{ color: '#111827' }}
+                    className={`w-full px-4 py-2 border rounded-lg text-gray-900 bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
                       validationErrors.website ? 'border-red-500' : 'border-gray-300'
                     }`}
                     placeholder="https://example.com"
@@ -293,7 +296,8 @@ export default function RegisterAccountPage() {
                     name="email"
                     value={formData.email}
                     onChange={handleInputChange}
-                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                    style={{ color: '#111827' }}
+                    className={`w-full px-4 py-2 border rounded-lg text-gray-900 bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
                       validationErrors.email ? 'border-red-500' : 'border-gray-300'
                     }`}
                     placeholder="user@example.com"
@@ -314,7 +318,8 @@ export default function RegisterAccountPage() {
                     name="password"
                     value={formData.password}
                     onChange={handleInputChange}
-                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                    style={{ color: '#111827' }}
+                    className={`w-full px-4 py-2 border rounded-lg text-gray-900 bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
                       validationErrors.password ? 'border-red-500' : 'border-gray-300'
                     }`}
                     placeholder="••••••••"
@@ -338,7 +343,8 @@ export default function RegisterAccountPage() {
                     name="confirmPassword"
                     value={formData.confirmPassword}
                     onChange={handleInputChange}
-                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                    style={{ color: '#111827' }}
+                    className={`w-full px-4 py-2 border rounded-lg text-gray-900 bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
                       validationErrors.confirmPassword ? 'border-red-500' : 'border-gray-300'
                     }`}
                     placeholder="••••••••"
