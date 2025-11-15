@@ -76,6 +76,66 @@ export default function RegisterPage() {
     }
   };
 
+  const handleDeleteAndResubmit = async (existingSubmissionId: string) => {
+    try {
+      const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+
+      // Delete existing submission
+      const deleteResponse = await authenticatedFetch(`${apiBaseUrl}/api/submissions/${existingSubmissionId}`, {
+        method: 'DELETE',
+      });
+
+      if (!deleteResponse.ok) {
+        throw new Error('既存の登録の削除に失敗しました');
+      }
+
+      // Wait a moment for the deletion to complete
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Retry submission
+      await submitRegistration();
+    } catch (err) {
+      console.error('Delete and resubmit error:', err);
+      setError(err instanceof Error ? err.message : '削除に失敗しました');
+      setIsSubmitting(false);
+    }
+  };
+
+  const submitRegistration = async () => {
+    const user = getCurrentUser();
+    if (!user || !user.organizationId) {
+      setError('ログイン情報が取得できません。再度ログインしてください。');
+      router.push('/login?redirect=/register');
+      return;
+    }
+
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+
+    const submitData = new FormData();
+    submitData.append('agentCardUrl', formData.agentCardUrl);
+    submitData.append('endpointUrl', formData.endpointUrl);
+    submitData.append('organization_id', user.organizationId);
+
+    if (formData.signatureBundle) {
+      submitData.append('signatureBundle', formData.signatureBundle);
+    }
+
+    const response = await authenticatedFetch(`${apiBaseUrl}/api/submissions`, {
+      method: 'POST',
+      body: submitData,
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'エラーが発生しました' }));
+      throw new Error(errorData.message || errorData.error || `サーバーエラー: ${response.status}`);
+    }
+
+    const result = await response.json();
+
+    // Redirect to status page
+    router.push(`/status/${result.submissionId}`);
+  };
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -100,34 +160,28 @@ export default function RegisterPage() {
     setIsSubmitting(true);
 
     try {
-      const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
-
-      const submitData = new FormData();
-      submitData.append('agentCardUrl', formData.agentCardUrl);
-      submitData.append('endpointUrl', formData.endpointUrl);
-      submitData.append('organization_id', user.organizationId);
-
-      if (formData.signatureBundle) {
-        submitData.append('signatureBundle', formData.signatureBundle);
-      }
-
-      const response = await authenticatedFetch(`${apiBaseUrl}/api/submissions`, {
-        method: 'POST',
-        body: submitData,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'エラーが発生しました' }));
-        throw new Error(errorData.error || `サーバーエラー: ${response.status}`);
-      }
-
-      const result = await response.json();
-
-      // Redirect to status page
-      router.push(`/status/${result.submissionId}`);
+      await submitRegistration();
     } catch (err) {
       console.error('Submission error:', err);
-      setError(err instanceof Error ? err.message : '登録に失敗しました。もう一度お試しください。');
+      const errorMessage = err instanceof Error ? err.message : '登録に失敗しました。もう一度お試しください。';
+
+      // Check if this is a duplicate endpoint error
+      const duplicateMatch = errorMessage.match(/Submission ID: ([a-f0-9-]+)/);
+
+      if (duplicateMatch) {
+        const existingSubmissionId = duplicateMatch[1];
+        const shouldDelete = confirm(
+          'このエンドポイントURLは既に登録されています。\n\n' +
+          `既存の登録（ID: ${existingSubmissionId}）を削除して、新しく登録し直しますか？`
+        );
+
+        if (shouldDelete) {
+          await handleDeleteAndResubmit(existingSubmissionId);
+          return;
+        }
+      }
+
+      setError(errorMessage);
       setIsSubmitting(false);
     }
   };

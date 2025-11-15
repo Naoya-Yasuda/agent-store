@@ -3,7 +3,9 @@ import { insertSubmission, SubmissionRecord } from '../repositories/submissionRe
 import { startReviewWorkflow } from '../temporal/client';
 import path from 'path';
 import { promises as fs } from 'fs';
-import { randomUUID } from 'crypto';
+import { randomUUID, createHash } from 'crypto';
+import { stableStringify } from '../utils/json';
+import pool from '../db/pool';
 
 export type SubmissionRequestContext = Record<string, string | undefined> & {
   ip?: string;
@@ -12,6 +14,18 @@ export type SubmissionRequestContext = Record<string, string | undefined> & {
 };
 
 export async function createSubmission(payload: SubmissionPayload, manifestWarnings: string[], requestContext: SubmissionRequestContext): Promise<SubmissionRecord> {
+  // Check for duplicate endpoint
+  const snapshotHash = createHash('sha256').update(stableStringify(payload.endpointManifest)).digest('hex');
+  const duplicateCheck = await pool.query(
+    'SELECT id, state, created_at FROM submissions WHERE endpoint_snapshot_hash = $1 ORDER BY created_at DESC LIMIT 1',
+    [snapshotHash]
+  );
+
+  if (duplicateCheck.rows.length > 0) {
+    const existing = duplicateCheck.rows[0];
+    throw new Error(`This endpoint URL has already been registered (Submission ID: ${existing.id}, State: ${existing.state})`);
+  }
+
   const wandbRun = ensureWandbConfig(payload.telemetry?.wandb);
   const record = await insertSubmission(payload, manifestWarnings, requestContext, wandbRun);
   const relay = payload.telemetry?.relay;

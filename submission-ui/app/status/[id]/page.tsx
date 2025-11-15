@@ -46,6 +46,7 @@ export default function StatusPage() {
   const [progress, setProgress] = useState<ProgressData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated()) {
@@ -80,6 +81,32 @@ export default function StatusPage() {
 
     fetchProgress();
   }, [submissionId, router]);
+
+  const handleDelete = async () => {
+    if (!confirm('本当にこの登録を削除しますか？この操作は取り消せません。')) {
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+      const response = await authenticatedFetch(`${apiBaseUrl}/api/submissions/${submissionId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error(`削除に失敗しました: ${response.status}`);
+      }
+
+      alert('削除が完了しました');
+      router.push('/');
+    } catch (err) {
+      console.error('Failed to delete submission:', err);
+      alert(err instanceof Error ? err.message : '削除に失敗しました');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const getStageLabel = (stage: StageName): string => {
     const labels: Record<StageName, string> = {
@@ -190,7 +217,17 @@ export default function StatusPage() {
               </h1>
               <p className="text-sm text-gray-500">Submission ID: {submissionId}</p>
             </div>
-            {getTerminalStateBadge(progress.terminalState)}
+            <div className="flex items-center gap-3">
+              {getTerminalStateBadge(progress.terminalState)}
+              <button
+                onClick={handleDelete}
+                disabled={isDeleting}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-semibold rounded disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                title="テスト用: この登録を削除します"
+              >
+                {isDeleting ? '削除中...' : '🗑️ 削除'}
+              </button>
+            </div>
           </div>
 
           {progress.agentId && (

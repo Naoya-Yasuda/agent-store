@@ -78,6 +78,7 @@ type Activities = {
   recordHumanDecisionMetadata: (args: { agentRevisionId: string; decision: 'approved' | 'rejected'; notes?: string; decidedAt?: string }) => Promise<void>;
   publishAgent: (args: { submissionId: string; agentId: string; agentRevisionId: string }) => Promise<void>;
   updateSubmissionTrustScore: (args: { submissionId: string; agentId: string; trustScore: TrustScoreBreakdown; autoDecision: 'auto_approved' | 'auto_rejected' | 'requires_human_review'; stage: string }) => Promise<void>;
+  updateSubmissionState: (args: { submissionId: string; state: string }) => Promise<void>;
 };
 
 const activities = proxyActivities<Activities>({
@@ -582,8 +583,10 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
       }
     }
     if (decision === 'rejected') {
+      await activities.updateSubmissionState({ submissionId: context.submissionId, state: 'rejected' });
       terminalState = 'rejected';
     } else {
+      await activities.updateSubmissionState({ submissionId: context.submissionId, state: 'human_approved' });
       terminalState = 'running';
     }
     return decision;
@@ -609,11 +612,13 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
     updateStage('precheck', { warnings: preCheck.warnings, message: 'pre-check completed' });
     if (!preCheck.passed) {
       updateStage('precheck', { status: 'failed', message: 'pre-check rejected submission' });
+      await activities.updateSubmissionState({ submissionId: context.submissionId, state: 'precheck_failed' });
       terminalState = 'rejected';
       return;
     }
     context.agentId = preCheck.agentId;
     context.agentRevisionId = preCheck.agentRevisionId;
+    await activities.updateSubmissionState({ submissionId: context.submissionId, state: 'security_pending' });
 
     const security = await runStageWithRetry('security', () => activities.runSecurityGate({
       submissionId: context.submissionId,
@@ -655,6 +660,7 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
     await handleLedgerStatus('security', security);
     if (!security.passed) {
       updateStage('security', { status: 'failed', message: security.failReasons?.join(', ') ?? 'security gate failed' });
+      await activities.updateSubmissionState({ submissionId: context.submissionId, state: 'security_failed' });
       await emitStageEvent('security', 'stage_failed', {
         data: {
           failReasons: security.failReasons
@@ -665,6 +671,8 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
       if (decision === 'rejected') {
         return;
       }
+    } else {
+      await activities.updateSubmissionState({ submissionId: context.submissionId, state: 'functional_pending' });
     }
 
     const functional = await runStageWithRetry('functional', () => activities.runFunctionalAccuracy({
@@ -706,6 +714,7 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
     await handleLedgerStatus('functional', functional);
     if (!functional.passed) {
       updateStage('functional', { status: 'failed', message: functional.failReasons?.join(', ') ?? 'functional accuracy failed' });
+      await activities.updateSubmissionState({ submissionId: context.submissionId, state: 'functional_failed' });
       await emitStageEvent('functional', 'stage_failed', {
         data: {
           failReasons: functional.failReasons
@@ -716,6 +725,8 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
       if (decision === 'rejected') {
         return;
       }
+    } else {
+      await activities.updateSubmissionState({ submissionId: context.submissionId, state: 'judge_pending' });
     }
 
     // Judge Panel: オプショナルステージ（失敗時はHuman Reviewへエスカレート）
@@ -927,6 +938,7 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
       })
     );
     updateStage('publish', { message: 'agent published' });
+    await activities.updateSubmissionState({ submissionId: context.submissionId, state: 'approved' });
     terminalState = 'published';
   } finally {
     markPendingAsSkipped();

@@ -137,6 +137,11 @@ services:
     volumes:
       - ./logs:/app/logs
       - ./sandbox-runner/artifacts:/app/artifacts
+      - ./api:/app/api:cached
+      - ./db:/app/db:cached
+      - ./schemas:/app/schemas:cached
+      - ./prototype/temporal-review-workflow:/app/prototype/temporal-review-workflow:cached
+    command: sh -c "cd /app/api && npx nodemon --watch . --ext ts,js,json --exec 'npx ts-node --transpile-only server.ts'"
     extra_hosts:
       - "host.docker.internal:host-gateway"
 

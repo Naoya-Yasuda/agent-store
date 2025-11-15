@@ -153,16 +153,31 @@ router.get('/submissions/:id/progress',
 
       const submission = result.rows[0];
 
+      // Build trustScore object if scores exist
+      const trustScore = submission.trust_score ? {
+        security: submission.security_score || 0,
+        functional: submission.functional_score || 0,
+        judge: submission.judge_score || 0,
+        implementation: submission.implementation_score || 0,
+        total: submission.trust_score,
+        autoDecision: submission.auto_decision || 'requires_human_review',
+        reasoning: submission.score_breakdown || {},
+      } : undefined;
+
+      // Build stages object (simplified for now - will be populated by workflow)
+      const stages = {
+        precheck: { status: 'completed' as const },
+        security_gate: { status: 'pending' as const },
+        functional_accuracy: { status: 'pending' as const },
+        judge: { status: 'pending' as const },
+        human_review: { status: 'pending' as const },
+      };
+
       return res.status(200).json({
         id: submission.id,
-        state: submission.state,
-        trustScore: submission.trust_score,
-        securityScore: submission.security_score,
-        functionalScore: submission.functional_score,
-        judgeScore: submission.judge_score,
-        implementationScore: submission.implementation_score,
-        scoreBreakdown: submission.score_breakdown,
-        autoDecision: submission.auto_decision,
+        terminalState: submission.state,
+        stages,
+        trustScore,
         createdAt: submission.created_at,
         updatedAt: submission.updated_at,
       });
@@ -170,6 +185,45 @@ router.get('/submissions/:id/progress',
       console.error('[submissions/:id/progress] Error:', error);
       const message = error instanceof Error ? error.message : 'unknown_error';
       return res.status(500).json({ error: 'fetch_failed', message });
+    }
+  }
+);
+
+// submissionを削除（開発環境のみ）
+router.delete('/submissions/:id',
+  authenticate,
+  async (req: AuthenticatedRequest, res: Response) => {
+    // 開発環境のみ許可
+    if (process.env.NODE_ENV === 'production') {
+      return res.status(403).json({
+        error: 'forbidden',
+        message: 'Deletion is only allowed in development environment',
+      });
+    }
+
+    try {
+      const submissionId = req.params.id;
+
+      const result = await pool.query(
+        'DELETE FROM submissions WHERE id = $1 RETURNING id',
+        [submissionId]
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({
+          error: 'not_found',
+          message: 'Submission not found',
+        });
+      }
+
+      return res.status(200).json({
+        message: 'Submission deleted successfully',
+        id: result.rows[0].id,
+      });
+    } catch (error) {
+      console.error('[submissions/:id DELETE] Error:', error);
+      const message = error instanceof Error ? error.message : 'unknown_error';
+      return res.status(500).json({ error: 'delete_failed', message });
     }
   }
 );

@@ -870,3 +870,34 @@ export async function updateSubmissionTrustScore(args: {
     client.release();
   }
 }
+
+/**
+ * Update submission state in database
+ */
+export async function updateSubmissionState(args: {
+  submissionId: string;
+  state: string;
+}): Promise<void> {
+  const { submissionId, state } = args;
+
+  console.log(`[activities] Updating submission state for ${submissionId}: ${state}`);
+
+  const pool = getDbPool();
+  const client = await pool.connect();
+
+  try {
+    await client.query(
+      `UPDATE submissions
+       SET state = $1, updated_at = now()
+       WHERE id = $2`,
+      [state, submissionId]
+    );
+
+    console.log(`[activities] Submission state updated to ${state} for ${submissionId}`);
+  } catch (err) {
+    console.error(`[activities] Failed to update submission state for ${submissionId}:`, err);
+    throw err;
+  } finally {
+    client.release();
+  }
+}
