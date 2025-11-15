@@ -31,20 +31,26 @@ RUN npm install
 # Build TypeScript
 RUN npm run build
 
-# Copy Python sandbox-runner for workflow execution
+# Copy Python sandbox-runner and inspect-worker for workflow execution
 COPY sandbox-runner /app/sandbox-runner
+COPY prototype/inspect-worker /app/prototype/inspect-worker
 COPY requirements.txt /app/
 RUN python3 -m venv /app/.venv && \
     . /app/.venv/bin/activate && \
     pip install --no-cache-dir -r requirements.txt && \
     pip install -e /app/sandbox-runner
 
+# Install inspect-worker dependencies
+COPY prototype/inspect-worker/requirements.txt /app/prototype/inspect-worker/
+RUN . /app/.venv/bin/activate && \
+    pip install --no-cache-dir -r /app/prototype/inspect-worker/requirements.txt
+
 # Copy necessary resources
 COPY prompts /app/prompts
 COPY third_party /app/third_party
 
-# Create directories for artifacts and logs
-RUN mkdir -p /app/artifacts /app/logs
+# Create directories for artifacts, logs, and inspect-worker output
+RUN mkdir -p /app/artifacts /app/logs /app/prototype/inspect-worker/out /app/sandbox-runner/artifacts
 
 EXPOSE 8233
 

@@ -7,6 +7,8 @@ import rateLimit from 'express-rate-limit';
 import agentCardsRouter from './routes/agentCards';
 import submissionsRouter from './routes/submissions';
 import reviewsRouter from './routes/reviews';
+import catalogRouter from './routes/catalog';
+import governanceRouter from './routes/governance';
 
 const app = express();
 const PORT = Number(process.env.PORT ?? 3000);
@@ -52,6 +54,8 @@ app.get('/health', (_req, res) => {
 app.use('/api', agentCardsRouter);
 app.use('/api', submissionsRouter);
 app.use('/api', reviewsRouter);
+app.use('/api', catalogRouter);
+app.use('/api', governanceRouter);
 
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error('[api] error:', err);

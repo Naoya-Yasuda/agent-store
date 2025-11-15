@@ -127,7 +127,74 @@
 - 公平性・信頼性指標をダッシュボードで可視化し、Responsible AIチームが閾値を調整可能。
 - 政策変更時は `governance-hub` 経由でロールアウト計画を登録し、マイグレーション中の影響をモニタリング。
 
-## 4. 未決事項 / 次のアクション
+## 4. 実装状況 (2025-11-14更新)
+
+### ✅ 完全実装済み
+
+#### 認証システム
+- **Auth Service** (`auth-service/`): JWT認証、ユーザー登録・ログイン・トークンリフレッシュ
+  - トークン無効化とセキュリティ機能実装済み
+  - Role-Based Access Control (RBAC): company, reviewer, admin
+
+#### 提出システム
+- **Submission API** (`api/routes/submissions.ts`):
+  - `POST /api/submissions`: Agent Card URL、署名バンドル、エンドポイント情報の受付
+  - `GET /api/submissions/my`: 組織別の提出物一覧取得
+
+#### Review API & Temporal Workflow
+- **Review API** (`api/routes/reviews.ts`): 完全実装済み
+  - `GET /review/progress/:submissionId`: Temporal Workflow進捗取得
+  - `GET /review/ledger/:submissionId`: 監査ログエントリ一覧
+  - `GET /review/events/:submissionId`: イベントタイムライン
+  - `POST /review/retry`: ステージ再実行
+  - `POST /review/decision`: Human Review決裁
+  - `GET /review/artifacts/:agentRevisionId`: アーティファクト取得
+  - `GET /review/ui/:submissionId`: HTML Review UI
+- **Temporal Workflow** (`prototype/temporal-review-workflow/`):
+  - PreCheck → Security → Functional → Judge → Human → Publish の全ステージ
+  - Signal handlers: `signalRetryStage`, `signalHumanDecision`, `signalUpdateLlmJudge`
+  - Query handler: `queryProgress`
+  - Trust Score計算と自動判定分岐ロジック（auto_approved/auto_rejected/requires_human_review）
+  - W&B MCP統合、Audit Ledger記録
+
+#### Governance & Audit Features (2025-11-15実装)
+- **Governance API** (`api/routes/governance.ts`): 完全実装済み
+  - `GET /governance/audit-ledger`: 監査ログ一覧取得（フィルタリング・ページネーション対応）
+  - `GET /governance/audit-trail/:submissionId`: 特定Submissionの完全な監査トレイル
+  - `POST /governance/trust-signal`: Trust Signal収集（運用インシデント報告）
+  - `GET /governance/policies`: ポリシーバージョン管理
+  - `POST /governance/policies`: 新規ポリシー作成
+  - `POST /governance/policies/:id/activate`: ポリシーアクティベート（4-eyes承認）
+- **Database Schema** (`db/migrations/20251115_governance.sql`):
+  - `trust_signals`: 運用中のインシデント報告（security_incident, functional_error, etc.）
+  - `governance_policies`: バージョン管理されたポリシー（AISI prompt, thresholds, blacklist, ToS）
+  - `policy_audit_log`: ポリシー変更履歴（4-eyes承認トラッキング）
+  - `fairness_metrics`: Judge Panel バイアス検出メトリクス（Phase 4実装予定）
+  - `ledger_export_log`: 監査レジャーエクスポート履歴（HTTP POST失敗時のリトライ記録）
+  - `agent_performance_metrics`: エージェント運用メトリクス（日次集計）
+
+#### Agent Catalog (2025-11-15実装)
+- **Catalog API** (`api/routes/catalog.ts`): 完全実装済み
+  - `GET /api/catalog`: 公開エージェント一覧（検索・カテゴリフィルタ・ソート・ページネーション）
+  - `GET /api/catalog/:agentId`: エージェント詳細情報（スコア・メタデータ・料金情報）
+
+#### UI
+- **Submission UI** (`submission-ui/`): ログイン、アカウント登録、提出物ステータス表示
+- **Review UI** (`review-ui/`): 進捗表示、証拠閲覧、操作フォーム、LLM設定管理
+
+### ⚠️ 実装済みだが要調整
+- **Inspect Worker**: Judge Panelのスクリプトパス問題を修正済み（Dockerfile更新完了）
+
+### 📋 未実装・要実装
+- **Fairness Metrics収集**: Judge Panel Position Bias検出、Judge間一致率測定（Phase 4）
+- **A2A Relay**: Agent間通信中継
+- **Catalog UI**: エージェントカタログのフロントエンド実装
+- **Trust Signal自動スコア減算**: インシデント重要度に応じたスコア調整ロジック（Phase 7）
+- **Multi-Model Judge Ensemble**: GPT-4o, Claude 3.5, Gemini 2.0のアンサンブル評価（Phase 6）
+
+詳細は各設計ドキュメント（`docs/design/`）を参照してください。
+
+## 5. 未決事項 / 次のアクション
 - **Workflow Engine**: Temporal / Step Functions / Airflow の比較表と採用指針 (運用費用、SLA、リトライ制御、JavaScript/Python SDKサポート) を作成し、PoC計画を固める。
 - **Sandbox Runner**: Google ADK / LangGraph テンプレートのディレクトリ構成、コンテナイメージ、依存ライブラリ、出力アーティファクト(JSONログ、W&B Run ID)のスキーマを定義。
 - **MCP Metrics**: Weights & Biases MCPで収集するメトリクス項目(応答時間、ポリシースコア、不適切率等)と合格閾値、Run命名規則、通知チャネル(Slack等)を決定。

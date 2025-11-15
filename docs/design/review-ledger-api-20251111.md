@@ -2,6 +2,18 @@
 
 審査ダッシュボードと自動化フローが共有するRESTエンドポイントを整理し、Ledger（監査台帳）情報をUI/CLI/W&Bから同じJSON構造で参照できるようにする。
 
+## 実装状況 (2025-11-14更新)
+
+✅ **完全実装済み** - すべてのエンドポイントが実装され、動作確認済みです。
+
+- **実装ファイル**:
+  - API Routes: `api/routes/reviews.ts`
+  - Service Layer: `api/services/reviewService.ts`
+  - Temporal Client: `api/temporal/client.ts`
+  - Workflow: `prototype/temporal-review-workflow/src/workflows/reviewPipeline.workflow.ts`
+- **認証**: JWT認証とRBAC（reviewer/admin）を実装済み
+- **Temporal統合**: Signal/Query APIを通じたワークフロー制御を実装済み
+
 ## 1. API一覧
 | メソッド | パス | 目的 | 主なレスポンス |
 | --- | --- | --- | --- |

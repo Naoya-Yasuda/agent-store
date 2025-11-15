@@ -77,6 +77,7 @@ type Activities = {
   recordStageEvent: (args: { agentRevisionId: string; stage: StageName; event: string; data?: Record<string, unknown>; timestamp?: string; severity?: 'info' | 'warn' | 'error'; links?: Record<string, string> }) => Promise<void>;
   recordHumanDecisionMetadata: (args: { agentRevisionId: string; decision: 'approved' | 'rejected'; notes?: string; decidedAt?: string }) => Promise<void>;
   publishAgent: (args: { submissionId: string; agentId: string; agentRevisionId: string }) => Promise<void>;
+  updateSubmissionTrustScore: (args: { submissionId: string; agentId: string; trustScore: TrustScoreBreakdown; autoDecision: 'auto_approved' | 'auto_rejected' | 'requires_human_review'; stage: string }) => Promise<void>;
 };
 
 const activities = proxyActivities<Activities>({
