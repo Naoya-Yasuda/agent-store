@@ -119,6 +119,61 @@ router.post('/submissions',
   }
 );
 
+// 特定のsubmissionの進捗状況を取得
+router.get('/submissions/:id/progress',
+  authenticate,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const submissionId = req.params.id;
+
+      const result = await pool.query(
+        `SELECT
+          id,
+          state,
+          trust_score,
+          security_score,
+          functional_score,
+          judge_score,
+          implementation_score,
+          score_breakdown,
+          auto_decision,
+          created_at,
+          updated_at
+         FROM submissions
+         WHERE id = $1`,
+        [submissionId]
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({
+          error: 'not_found',
+          message: 'Submission not found',
+        });
+      }
+
+      const submission = result.rows[0];
+
+      return res.status(200).json({
+        id: submission.id,
+        state: submission.state,
+        trustScore: submission.trust_score,
+        securityScore: submission.security_score,
+        functionalScore: submission.functional_score,
+        judgeScore: submission.judge_score,
+        implementationScore: submission.implementation_score,
+        scoreBreakdown: submission.score_breakdown,
+        autoDecision: submission.auto_decision,
+        createdAt: submission.created_at,
+        updatedAt: submission.updated_at,
+      });
+    } catch (error) {
+      console.error('[submissions/:id/progress] Error:', error);
+      const message = error instanceof Error ? error.message : 'unknown_error';
+      return res.status(500).json({ error: 'fetch_failed', message });
+    }
+  }
+);
+
 // 自分の組織のsubmissions一覧を取得
 router.get('/submissions/my',
   authenticate,

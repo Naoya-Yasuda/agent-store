@@ -32,7 +32,7 @@ export async function insertSubmission(payload: SubmissionPayload, manifestWarni
         JSON.stringify(payload.cardDocument),
         JSON.stringify(payload.endpointManifest),
         snapshotHash,
-        JSON.stringify(payload.signatureBundle),
+        payload.signatureBundle ? JSON.stringify(payload.signatureBundle) : null,
         JSON.stringify(payload.organization),
         state,
         manifestWarnings,

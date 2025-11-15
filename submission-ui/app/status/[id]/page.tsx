@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { isAuthenticated, authenticatedFetch } from '@/lib/auth';
 
 type StageName = 'precheck' | 'security_gate' | 'functional_accuracy' | 'judge' | 'human_review';
 
@@ -39,6 +40,7 @@ type ProgressData = {
 
 export default function StatusPage() {
   const params = useParams();
+  const router = useRouter();
   const submissionId = params.id as string;
 
   const [progress, setProgress] = useState<ProgressData | null>(null);
@@ -46,11 +48,16 @@ export default function StatusPage() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    if (!isAuthenticated()) {
+      router.push(`/login?redirect=/status/${submissionId}`);
+      return;
+    }
+
     const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
 
     const fetchProgress = async () => {
       try {
-        const response = await fetch(`${apiBaseUrl}/api/submissions/${submissionId}/progress`);
+        const response = await authenticatedFetch(`${apiBaseUrl}/api/submissions/${submissionId}/progress`);
 
         if (!response.ok) {
           throw new Error(`エラー: ${response.status}`);
@@ -72,7 +79,7 @@ export default function StatusPage() {
     };
 
     fetchProgress();
-  }, [submissionId]);
+  }, [submissionId, router]);
 
   const getStageLabel = (stage: StageName): string => {
     const labels: Record<StageName, string> = {
