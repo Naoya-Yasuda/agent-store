@@ -58,7 +58,8 @@
       "Bash(source .venv/bin/activate)",
       "Bash(pip install:*)",
       "Bash(source ../../.venv/bin/activate)",
-      "Bash(docker rm:*)"
+      "Bash(docker rm:*)",
+      "Bash(timeout 120 bash:*)"
     ],
     "deny": [],
     "ask": [],

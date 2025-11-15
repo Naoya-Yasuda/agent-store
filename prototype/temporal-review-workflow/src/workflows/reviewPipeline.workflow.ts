@@ -618,7 +618,7 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
     }
     context.agentId = preCheck.agentId;
     context.agentRevisionId = preCheck.agentRevisionId;
-    await activities.updateSubmissionState({ submissionId: context.submissionId, state: 'security_pending' });
+    await activities.updateSubmissionState({ submissionId: context.submissionId, state: 'security_running' });
 
     const security = await runStageWithRetry('security', () => activities.runSecurityGate({
       submissionId: context.submissionId,
@@ -672,7 +672,7 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
         return;
       }
     } else {
-      await activities.updateSubmissionState({ submissionId: context.submissionId, state: 'functional_pending' });
+      await activities.updateSubmissionState({ submissionId: context.submissionId, state: 'functional_running' });
     }
 
     const functional = await runStageWithRetry('functional', () => activities.runFunctionalAccuracy({
@@ -726,7 +726,7 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
         return;
       }
     } else {
-      await activities.updateSubmissionState({ submissionId: context.submissionId, state: 'judge_pending' });
+      await activities.updateSubmissionState({ submissionId: context.submissionId, state: 'judge_running' });
     }
 
     // Judge Panel: オプショナルステージ（失敗時はHuman Reviewへエスカレート）
