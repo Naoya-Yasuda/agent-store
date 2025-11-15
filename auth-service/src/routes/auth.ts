@@ -6,6 +6,7 @@ import {
   generateRefreshToken,
   verifyAccessToken,
   verifyRefreshToken,
+  hashRefreshToken,
   TokenPayload,
 } from '../services/jwtService';
 
@@ -62,11 +63,12 @@ router.post('/register', async (req: Request, res: Response) => {
     const accessToken = generateAccessToken(tokenPayload);
     const refreshToken = generateRefreshToken(tokenPayload);
 
-    // Refresh tokenをDBに保存
+    // Refresh tokenをハッシュ化してDBに保存（セキュリティ強化）
+    const tokenHash = hashRefreshToken(refreshToken);
     await pool.query(
       `INSERT INTO refresh_tokens (user_id, token_hash, expires_at, created_at)
        VALUES ($1, $2, NOW() + INTERVAL '7 days', NOW())`,
-      [newUser.id, refreshToken]
+      [newUser.id, tokenHash]
     );
 
     return res.status(201).json({
@@ -144,11 +146,12 @@ router.post('/login', async (req: Request, res: Response) => {
     const accessToken = generateAccessToken(tokenPayload);
     const refreshToken = generateRefreshToken(tokenPayload);
 
-    // Refresh tokenをDBに保存
+    // Refresh tokenをハッシュ化してDBに保存（セキュリティ強化）
+    const tokenHash = hashRefreshToken(refreshToken);
     await pool.query(
       `INSERT INTO refresh_tokens (user_id, token_hash, expires_at, created_at)
        VALUES ($1, $2, NOW() + INTERVAL '7 days', NOW())`,
-      [user.id, refreshToken]
+      [user.id, tokenHash]
     );
 
     return res.status(200).json({
@@ -223,10 +226,11 @@ router.post('/refresh', async (req: Request, res: Response) => {
       });
     }
 
-    // DBでトークンが有効か確認
+    // DBでトークンが有効か確認（ハッシュ化されたトークンで検索）
+    const tokenHash = hashRefreshToken(refreshToken);
     const result = await pool.query(
       'SELECT * FROM refresh_tokens WHERE token_hash = $1 AND user_id = $2 AND revoked = false AND expires_at > NOW()',
-      [refreshToken, payload.userId]
+      [tokenHash, payload.userId]
     );
 
     if (result.rows.length === 0) {
@@ -246,17 +250,18 @@ router.post('/refresh', async (req: Request, res: Response) => {
     const newAccessToken = generateAccessToken(cleanPayload);
     const newRefreshToken = generateRefreshToken(cleanPayload);
 
-    // 古いトークンを無効化してから新しいトークンを保存
+    // 古いトークンを無効化してから新しいトークンを保存（ハッシュ化されたトークンで更新）
     await pool.query(
       'UPDATE refresh_tokens SET revoked = true, revoked_at = NOW() WHERE token_hash = $1',
-      [refreshToken]
+      [tokenHash]
     );
 
-    // 新しいRefresh tokenをDBに保存
+    // 新しいRefresh tokenをハッシュ化してDBに保存
+    const newTokenHash = hashRefreshToken(newRefreshToken);
     await pool.query(
       `INSERT INTO refresh_tokens (user_id, token_hash, expires_at, created_at)
        VALUES ($1, $2, NOW() + INTERVAL '7 days', NOW())`,
-      [payload.userId, newRefreshToken]
+      [payload.userId, newTokenHash]
     );
 
     return res.status(200).json({

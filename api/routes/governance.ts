@@ -1,11 +1,11 @@
 import { Router, Request, Response } from 'express';
 import pool from '../db/pool';
-import { authenticateToken, requireRole } from '../middleware/auth';
+import { authenticate, requireRole } from '../middleware/auth';
 
 const router = Router();
 
 // 監査レジャーエントリの取得（管理者・レビュアー専用）
-router.get('/governance/audit-ledger', authenticateToken, requireRole(['admin', 'reviewer']), async (req: Request, res: Response) => {
+router.get('/governance/audit-ledger', authenticate, requireRole('admin', 'reviewer'), async (req: Request, res: Response) => {
   try {
     const {
       limit = 20,
@@ -152,7 +152,7 @@ router.get('/governance/audit-ledger', authenticateToken, requireRole(['admin', 
 });
 
 // 特定Submission の監査トレイル取得
-router.get('/governance/audit-trail/:submissionId', authenticateToken, async (req: Request, res: Response) => {
+router.get('/governance/audit-trail/:submissionId', authenticate, async (req: Request, res: Response) => {
   try {
     const { submissionId } = req.params;
     const user = (req as any).user;
@@ -249,7 +249,7 @@ router.get('/governance/audit-trail/:submissionId', authenticateToken, async (re
 });
 
 // Trust Signal収集エンドポイント（外部からのフィードバック）
-router.post('/governance/trust-signal', authenticateToken, async (req: Request, res: Response) => {
+router.post('/governance/trust-signal', authenticate, async (req: Request, res: Response) => {
   try {
     const {
       agentId,
@@ -307,7 +307,7 @@ router.post('/governance/trust-signal', authenticateToken, async (req: Request, 
 });
 
 // ポリシーバージョン一覧取得（管理者専用）
-router.get('/governance/policies', authenticateToken, requireRole(['admin']), async (req: Request, res: Response) => {
+router.get('/governance/policies', authenticate, requireRole('admin'), async (req: Request, res: Response) => {
   try {
     const result = await pool.query(
       `SELECT
@@ -341,7 +341,7 @@ router.get('/governance/policies', authenticateToken, requireRole(['admin']), as
 });
 
 // ポリシー作成（管理者専用）
-router.post('/governance/policies', authenticateToken, requireRole(['admin']), async (req: Request, res: Response) => {
+router.post('/governance/policies', authenticate, requireRole('admin'), async (req: Request, res: Response) => {
   try {
     const {
       policyType,
@@ -428,7 +428,7 @@ router.post('/governance/policies', authenticateToken, requireRole(['admin']), a
 });
 
 // ポリシーのアクティベート（管理者専用、4-eyes承認用）
-router.post('/governance/policies/:policyId/activate', authenticateToken, requireRole(['admin']), async (req: Request, res: Response) => {
+router.post('/governance/policies/:policyId/activate', authenticate, requireRole('admin'), async (req: Request, res: Response) => {
   try {
     const { policyId } = req.params;
 

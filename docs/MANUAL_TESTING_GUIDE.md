@@ -2,13 +2,36 @@
 
 ## 📋 前提条件
 
+### 環境変数の設定（重要！）
+
+**セキュリティ強化により、以下の環境変数が必須になりました:**
+
+```bash
+# .envファイルを編集（または新規作成）
+cp .env.example .env
+nano .env  # または vim .env
+
+# 以下の必須環境変数を設定（ランダムな32文字以上の文字列）
+JWT_SECRET="your-secure-random-secret-key-at-least-32-characters-long"
+JWT_REFRESH_SECRET="your-secure-refresh-secret-key-at-least-32-characters-long"
+
+# ランダムな文字列を生成する場合:
+openssl rand -hex 32  # これをJWT_SECRETに設定
+openssl rand -hex 32  # これをJWT_REFRESH_SECRETに設定
+```
+
+⚠️ **注意**: これらの環境変数が未設定の場合、Auth ServiceとAPIが起動時にエラーをスローします。
+
+### サービス起動確認
+
 すべてのサービスが起動していることを確認：
 ```bash
 docker compose ps
 ```
 
-期待される出力: 以下の7つのサービスが`Up`または`Running`状態
+期待される出力: 以下の8つのサービスが`Up`または`Running`状態
 - agent-store-api
+- agent-store-auth-service (**NEW!**)
 - agent-store-postgres
 - agent-store-temporal-postgres
 - agent-store-temporal
@@ -96,7 +119,9 @@ docker compose logs inspect-worker | head -20
 | サービス | URL | 用途 |
 |---------|-----|------|
 | **Review UI** | http://localhost:3001 | レビュー状況の確認・Human Review |
+| **Submission UI** | http://localhost:3002 | エージェント登録・ステータス確認 (**NEW!**) |
 | **API** | http://localhost:3002 | エージェント提出・状態確認 |
+| **Auth Service** | http://localhost:3003 | 認証・ユーザー登録・ログイン (**NEW!**) |
 | **Temporal Web UI** | http://localhost:8233 | ワークフロー管理・デバッグ |
 
 ---
@@ -164,6 +189,143 @@ Submission作成
 
 ## テストシナリオ
 
+### 🆕 シナリオ0: 認証システムのテスト（ブラウザ）
+
+最新の実装では、JWT認証とユーザー登録・ログイン機能が追加されました。
+
+#### Step 1: アカウント登録ページを開く
+
+1. **ブラウザでアカウント登録ページを開く:**
+   ```
+   http://localhost:3002/register-account
+   ```
+
+2. **フォームに入力:**
+   - メールアドレス: `test-company@example.com`
+   - パスワード: `SecurePass123!`
+   - ロール: `Company` を選択
+   - 組織名: `Test Corporation`
+
+3. **「Register」ボタンをクリック**
+
+**確認ポイント:**
+- ✅ アカウント登録成功メッセージが表示される
+- ✅ アクセストークンとリフレッシュトークンが発行される（DevToolsのNetworkタブで確認）
+- ✅ ログイン状態になる
+
+#### Step 2: ログインページを開く
+
+1. **ブラウザでログインページを開く:**
+   ```
+   http://localhost:3002/login
+   ```
+
+2. **登録したアカウントでログイン:**
+   - メールアドレス: `test-company@example.com`
+   - パスワード: `SecurePass123!`
+
+3. **「Login」ボタンをクリック**
+
+**確認ポイント:**
+- ✅ ログイン成功
+- ✅ ダッシュボードまたはステータスページにリダイレクトされる
+- ✅ トークンがlocalStorageに保存される（DevToolsのApplicationタブで確認）
+
+#### Step 3: セキュリティ機能の確認
+
+**リフレッシュトークンのハッシュ化を確認:**
+
+```bash
+# PostgreSQLに接続
+docker compose exec postgres sh -c 'psql -U $POSTGRES_USER -d $POSTGRES_DB'
+
+# refresh_tokensテーブルを確認
+SELECT token_hash FROM refresh_tokens LIMIT 1;
+
+# 期待される結果: 64文字のSHA256ハッシュ値
+# 例: a3f5c8d2e1b4f6a9c7e2d5b8a1f3c6e9d2b5a8c1f6e3d9b2a7c4e1f8d3b6a9c5
+
+\q
+```
+
+**確認ポイント:**
+- ✅ token_hashが64文字の16進数文字列（平文JWTではない）
+- ✅ パスワードがbcryptでハッシュ化されている
+
+---
+
+### 🆕 シナリオ0-2: Governance & Catalog APIのテスト（ブラウザ + curl）
+
+#### Step 1: Agent Catalogの表示確認
+
+1. **ブラウザでCatalog APIを呼び出し（開発者ツールのConsoleで）:**
+   ```javascript
+   fetch('http://localhost:3002/api/catalog?limit=10')
+     .then(res => res.json())
+     .then(data => console.log(data));
+   ```
+
+**期待される結果:**
+```json
+{
+  "agents": [],
+  "pagination": {
+    "total": 0,
+    "limit": 10,
+    "offset": 0,
+    "hasMore": false
+  }
+}
+```
+
+**確認ポイント:**
+- ✅ 認証なしでアクセス可能（公開API）
+- ✅ 空の配列が返される（まだpublished状態のSubmissionがない場合）
+- ✅ CORSエラーが発生しない
+
+#### Step 2: 管理者アカウントでGovernance APIテスト
+
+1. **管理者アカウントを登録:**
+   - http://localhost:3002/register-account を開く
+   - メールアドレス: `admin@example.com`
+   - パスワード: `AdminPass123!`
+   - ロール: `Admin` を選択
+   - 「Register」ボタンをクリック
+
+2. **DevToolsでアクセストークンを取得:**
+   - Networkタブで `/auth/register` のレスポンスを確認
+   - `accessToken` の値をコピー
+
+3. **curlでGovernance APIを呼び出し:**
+   ```bash
+   # アクセストークンを環境変数に設定
+   ACCESS_TOKEN="eyJhbGciOiJIUzI1NiIs..."
+
+   # 監査レジャー一覧を取得
+   curl -X GET "http://localhost:3002/api/governance/audit-ledger?limit=10" \
+     -H "Authorization: Bearer $ACCESS_TOKEN"
+   ```
+
+**期待される結果:**
+```json
+{
+  "entries": [],
+  "pagination": {
+    "total": 0,
+    "limit": 10,
+    "offset": 0,
+    "hasMore": false
+  }
+}
+```
+
+**確認ポイント:**
+- ✅ 認証トークンで正常アクセス可能
+- ✅ トークンなしで401エラー
+- ✅ companyロールで403エラー（RBAC動作確認）
+
+---
+
 ### 🧪 シナリオ1: APIヘルスチェック
 
 最も基本的な動作確認です。
@@ -184,7 +346,34 @@ curl http://localhost:3002/health
 
 ---
 
-### 🧪 シナリオ2: Review UIの表示確認
+### 🧪 シナリオ2: Submission UIの表示確認（NEW!）
+
+ブラウザで新しいSubmission UIの動作を確認します。
+
+1. **Submission UIを開く:**
+   ```
+   http://localhost:3002
+   ```
+
+2. **確認ポイント:**
+   - ✅ ログインページまたはダッシュボードが表示される
+   - ✅ ナビゲーションメニューが表示される
+   - ✅ JavaScriptエラーがコンソールにない（ブラウザのDevToolsで確認）
+
+3. **エージェント登録ページを開く:**
+   ```
+   http://localhost:3002/register
+   ```
+
+4. **確認ポイント:**
+   - ✅ Agent Card URLの入力フィールドが表示される
+   - ✅ Agent Endpointの入力フィールドが表示される
+   - ✅ 署名バンドルのアップロードフィールドが表示される（オプション）
+   - ✅ 「Submit for Review」ボタンが表示される
+
+---
+
+### 🧪 シナリオ2-2: Review UIの表示確認
 
 ブラウザで動作を確認します。
 
@@ -195,7 +384,7 @@ curl http://localhost:3002/health
 
 2. **確認ポイント:**
    - ✅ Agent Store Review UIのページが表示される
-   - ✅ 初期状態では提出物のリストは空
+   - ✅ Submission ID入力フィールドが表示される
    - ✅ JavaScriptエラーがコンソールにない（ブラウザのDevToolsで確認）
 
 ---
@@ -697,9 +886,25 @@ docker compose exec postgres psql -U agent_store_user -d agent_store_db \
 
 ### 基本動作確認
 - [ ] すべてのサービスが起動している（`docker compose ps`で確認）
+- [ ] JWT_SECRETとJWT_REFRESH_SECRETが環境変数に設定されている
 - [ ] APIヘルスチェックが成功する（`/health`エンドポイント）
+- [ ] Submission UIがブラウザで表示される（http://localhost:3002）
 - [ ] Review UIがブラウザで表示される（http://localhost:3001）
 - [ ] Temporal Web UIがアクセス可能（http://localhost:8233）
+
+### 認証システム（NEW!）
+- [ ] アカウント登録が成功する（Submission UI）
+- [ ] ログインが成功する（Submission UI）
+- [ ] アクセストークンとリフレッシュトークンが発行される
+- [ ] トークンがlocalStorageに保存される
+- [ ] リフレッシュトークンがDBでSHA256ハッシュ化されている
+
+### Governance & Catalog API（NEW!）
+- [ ] Catalog APIで公開エージェント一覧が取得できる（認証なし）
+- [ ] Governance APIで監査レジャーが取得できる（admin/reviewer）
+- [ ] Trust Signal報告が成功する（認証済みユーザー）
+- [ ] ポリシー一覧が取得できる（admin）
+- [ ] RBACが正しく動作する（companyロールでadmin APIに403エラー）
 
 ### エージェント提出フロー
 - [ ] エージェント提出が202 Acceptedを返す
@@ -729,9 +934,10 @@ docker compose exec postgres psql -U agent_store_user -d agent_store_db \
 
 このPoCでは以下の機能が制限されています：
 
-1. **認証・認可が未実装**
-   - すべてのAPIエンドポイントが認証なしでアクセス可能
-   - 本番環境ではJWT認証またはAPIキー認証が必須
+1. **認証・認可（2025-11-15更新）**
+   - ✅ **実装済み**: JWT認証、ユーザー登録・ログイン、RBAC（company/reviewer/admin）
+   - ✅ **セキュリティ強化済み**: JWT Secret必須化、リフレッシュトークンのSHA256ハッシュ化
+   - ⚠️ 一部のエンドポイントは認証未適用（Catalog APIは公開API）
 
 2. **Functional Accuracyステージの制限**
    - 実際のエージェントコードの実行には、有効なtarballとSandbox Runnerが必要
@@ -749,9 +955,10 @@ docker compose exec postgres psql -U agent_store_user -d agent_store_db \
 PoCが正常に動作することを確認したら、以下の機能追加を検討してください：
 
 1. **セキュリティの強化**（優先度：高）
-   - API認証・認可の実装（JWT/APIキー）
-   - Rate limiting（既に実装済みだが、設定の調整）
-   - HTTPS対応
+   - ✅ **完了**: JWT認証・認可の実装（company/reviewer/admin）
+   - ✅ **完了**: JWT Secret必須化、トークンハッシュ化
+   - ⚠️ **要対応**: Rate limiting（設定の調整）
+   - ⚠️ **要対応**: HTTPS対応
 
 2. **監視・ログ**（優先度：高）
    - Prometheus/Grafanaによるメトリクス収集

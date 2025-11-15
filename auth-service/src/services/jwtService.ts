@@ -1,8 +1,14 @@
 import jwt from 'jsonwebtoken';
-import { randomBytes } from 'crypto';
+import { randomBytes, createHash } from 'crypto';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
-const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'your-refresh-secret-key-change-in-production';
+// JWT Secretsは必須。デフォルト値を削除してセキュリティを強化
+const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
+
+if (!JWT_SECRET || !JWT_REFRESH_SECRET) {
+  throw new Error('JWT_SECRET and JWT_REFRESH_SECRET environment variables must be set');
+}
+
 const ACCESS_TOKEN_EXPIRY = process.env.ACCESS_TOKEN_EXPIRY || '15m';
 const REFRESH_TOKEN_EXPIRY = process.env.REFRESH_TOKEN_EXPIRY || '7d';
 
@@ -45,4 +51,12 @@ export function verifyRefreshToken(token: string): TokenPayload | null {
   } catch (error) {
     return null;
   }
+}
+
+/**
+ * リフレッシュトークンをSHA256でハッシュ化
+ * DBに保存する前に平文トークンをハッシュ化してセキュリティを強化
+ */
+export function hashRefreshToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
 }
