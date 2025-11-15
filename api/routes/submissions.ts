@@ -164,13 +164,128 @@ router.get('/submissions/:id/progress',
         reasoning: submission.score_breakdown || {},
       } : undefined;
 
-      // Build stages object (simplified for now - will be populated by workflow)
-      const stages = {
-        precheck: { status: 'completed' as const },
-        security_gate: { status: 'pending' as const },
-        functional_accuracy: { status: 'pending' as const },
-        judge: { status: 'pending' as const },
-        human_review: { status: 'pending' as const },
+      // Build stages object based on current state
+      const stateToStages: Record<string, any> = {
+        'precheck_pending': {
+          precheck: { status: 'pending' },
+          security_gate: { status: 'pending' },
+          functional_accuracy: { status: 'pending' },
+          judge: { status: 'pending' },
+          human_review: { status: 'pending' },
+        },
+        'precheck_running': {
+          precheck: { status: 'running' },
+          security_gate: { status: 'pending' },
+          functional_accuracy: { status: 'pending' },
+          judge: { status: 'pending' },
+          human_review: { status: 'pending' },
+        },
+        'security_gate_pending': {
+          precheck: { status: 'completed' },
+          security_gate: { status: 'pending' },
+          functional_accuracy: { status: 'pending' },
+          judge: { status: 'pending' },
+          human_review: { status: 'pending' },
+        },
+        'security_gate_running': {
+          precheck: { status: 'completed' },
+          security_gate: { status: 'running' },
+          functional_accuracy: { status: 'pending' },
+          judge: { status: 'pending' },
+          human_review: { status: 'pending' },
+        },
+        'functional_pending': {
+          precheck: { status: 'completed' },
+          security_gate: { status: 'completed' },
+          functional_accuracy: { status: 'pending' },
+          judge: { status: 'pending' },
+          human_review: { status: 'pending' },
+        },
+        'functional_running': {
+          precheck: { status: 'completed' },
+          security_gate: { status: 'completed' },
+          functional_accuracy: { status: 'running' },
+          judge: { status: 'pending' },
+          human_review: { status: 'pending' },
+        },
+        'judge_pending': {
+          precheck: { status: 'completed' },
+          security_gate: { status: 'completed' },
+          functional_accuracy: { status: 'completed' },
+          judge: { status: 'pending' },
+          human_review: { status: 'pending' },
+        },
+        'judge_running': {
+          precheck: { status: 'completed' },
+          security_gate: { status: 'completed' },
+          functional_accuracy: { status: 'completed' },
+          judge: { status: 'running' },
+          human_review: { status: 'pending' },
+        },
+        'awaiting_human_review': {
+          precheck: { status: 'completed' },
+          security_gate: { status: 'completed' },
+          functional_accuracy: { status: 'completed' },
+          judge: { status: 'completed' },
+          human_review: { status: 'awaiting_review' },
+        },
+        'approved': {
+          precheck: { status: 'completed' },
+          security_gate: { status: 'completed' },
+          functional_accuracy: { status: 'completed' },
+          judge: { status: 'completed' },
+          human_review: { status: 'completed' },
+        },
+        'rejected': {
+          precheck: { status: 'completed' },
+          security_gate: { status: 'completed' },
+          functional_accuracy: { status: 'completed' },
+          judge: { status: 'completed' },
+          human_review: { status: 'completed' },
+        },
+        'failed': {
+          precheck: { status: 'failed' },
+          security_gate: { status: 'pending' },
+          functional_accuracy: { status: 'pending' },
+          judge: { status: 'pending' },
+          human_review: { status: 'pending' },
+        },
+        'precheck_failed': {
+          precheck: { status: 'failed' },
+          security_gate: { status: 'pending' },
+          functional_accuracy: { status: 'pending' },
+          judge: { status: 'pending' },
+          human_review: { status: 'pending' },
+        },
+        'security_failed': {
+          precheck: { status: 'completed' },
+          security_gate: { status: 'failed' },
+          functional_accuracy: { status: 'pending' },
+          judge: { status: 'pending' },
+          human_review: { status: 'pending' },
+        },
+        'functional_failed': {
+          precheck: { status: 'completed' },
+          security_gate: { status: 'completed' },
+          functional_accuracy: { status: 'failed' },
+          judge: { status: 'pending' },
+          human_review: { status: 'pending' },
+        },
+        'judge_failed': {
+          precheck: { status: 'completed' },
+          security_gate: { status: 'completed' },
+          functional_accuracy: { status: 'completed' },
+          judge: { status: 'failed' },
+          human_review: { status: 'pending' },
+        },
+      };
+
+      const stages = stateToStages[submission.state] || {
+        precheck: { status: 'pending' },
+        security_gate: { status: 'pending' },
+        functional_accuracy: { status: 'pending' },
+        judge: { status: 'pending' },
+        human_review: { status: 'pending' },
       };
 
       return res.status(200).json({

@@ -74,6 +74,21 @@ async function resolveWandbInfo(agentRevisionId: string): Promise<WandbRunInfo |
   return extractWandbFromMetadata(metadata);
 }
 
+// Helper function to update submission state in database (internal use)
+async function updateSubmissionStateInternal(submissionId: string, state: string): Promise<void> {
+  const pool = getDbPool();
+  try {
+    await pool.query(
+      'UPDATE submissions SET state = $1, updated_at = NOW() WHERE id = $2',
+      [state, submissionId]
+    );
+    console.log(`[activities] Updated submission ${submissionId} state to ${state}`);
+  } catch (error) {
+    console.error(`[activities] Failed to update submission state:`, error);
+    // Don't throw - state update failure shouldn't fail the workflow
+  }
+}
+
 export async function preCheckSubmission(args: { submissionId: string }): Promise<{ passed: boolean; agentId: string; agentRevisionId: string; warnings: string[] }> {
   console.log(`[activities] preCheckSubmission ${args.submissionId}`);
   return {

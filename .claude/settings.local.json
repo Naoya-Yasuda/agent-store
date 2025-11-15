@@ -33,7 +33,12 @@
       "Bash(export)",
       "Bash(unset NODE_ENV:*)",
       "Bash(export NODE_ENV=development)",
-      "Bash(docker volume rm:*)"
+      "Bash(docker volume rm:*)",
+      "Bash(if [ -f /tmp/test_token.txt ])",
+      "Bash(then cat /tmp/test_token.txt)",
+      "Bash(else echo \"No token found\")",
+      "Bash(fi)",
+      "Bash(tee:*)"
     ],
     "deny": [],
     "ask": [],
