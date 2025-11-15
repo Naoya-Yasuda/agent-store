@@ -1,17 +1,43 @@
-# Agent Store - 手動テスト手順書
+# Agent Store - 手動テスト手順書（ブラウザベース）
+
+**最終更新**: 2025-11-15
+**対象**: Agent Store プラットフォーム全体のエンドツーエンドテスト
+**テスト形式**: ブラウザベースの手動操作テスト
+
+---
+
+## 📋 目次
+
+1. [前提条件](#前提条件)
+2. [テストシナリオ0: 企業アカウント登録と認証](#シナリオ0-企業アカウント登録と認証)
+3. [テストシナリオ1: エージェント登録から審査完了まで（成功パス）](#シナリオ1-エージェント登録から審査完了まで成功パス)
+4. [テストシナリオ2: Trust Score自動判定の検証](#シナリオ2-trust-score自動判定の検証)
+5. [テストシナリオ3: 組織管理機能のテスト](#シナリオ3-組織管理機能のテスト)
+6. [テストシナリオ4: ガバナンスAPIのテスト](#シナリオ4-ガバナンスapiのテスト)
+7. [トラブルシューティング](#トラブルシューティング)
+
+---
+
+## ✅ テスト前の共通ルール
+
+1. **Docker Composeで起動**: `docker compose up -d` を実行し、すべてのサービスが `Up` になっていることを確認
+2. **ブラウザタブを活用**: 複数のWebページを同時に開いて操作しながら手動テストを実施
+3. **画面操作を優先**: CLIや `curl` は補助として使用し、実際のユーザー体験を再現
+
+---
 
 ## 📋 前提条件
 
-### 環境変数の設定（重要！）
+### 1. 環境変数の設定（必須）
 
-**セキュリティ強化により、以下の環境変数が必須になりました:**
+**セキュリティ強化により、以下の環境変数が必須です:**
 
 ```bash
-# .envファイルを編集（または新規作成）
+# .envファイルを作成または編集
 cp .env.example .env
 nano .env  # または vim .env
 
-# 以下の必須環境変数を設定（ランダムな32文字以上の文字列）
+# 必須環境変数を設定
 JWT_SECRET="your-secure-random-secret-key-at-least-32-characters-long"
 JWT_REFRESH_SECRET="your-secure-refresh-secret-key-at-least-32-characters-long"
 
@@ -20,959 +46,1023 @@ openssl rand -hex 32  # これをJWT_SECRETに設定
 openssl rand -hex 32  # これをJWT_REFRESH_SECRETに設定
 ```
 
-⚠️ **注意**: これらの環境変数が未設定の場合、Auth ServiceとAPIが起動時にエラーをスローします。
+**例（.envファイルの内容）:**
+```bash
+# Database
+DATABASE_URL=postgresql://postgres:password@postgres:5432/agent_store
+TEMPORAL_DATABASE_URL=postgresql://temporal:temporal@temporal-postgres:5432/temporal
 
-### サービス起動確認
+# JWT Authentication (必須)
+JWT_SECRET="a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6"
+JWT_REFRESH_SECRET="z6y5x4w3v2u1t0s9r8q7p6o5n4m3l2k1j0i9h8g7f6e5d4c3b2a1"
+
+# API URLs
+NEXT_PUBLIC_API_BASE_URL=http://localhost:3000
+NEXT_PUBLIC_AUTH_URL=http://localhost:3003
+
+# Optional: Multi-Model Judge Panel
+# OPENAI_API_KEY=sk-...
+# ANTHROPIC_API_KEY=sk-ant-...
+# GOOGLE_API_KEY=AI...
+# MULTI_MODEL_JUDGE_ENABLED=false
+```
+
+⚠️ **注意**: これらの環境変数が未設定の場合、Auth ServiceとAPIが起動時にエラーで停止します。
+
+### 2. サービス起動確認
 
 すべてのサービスが起動していることを確認：
+
 ```bash
 docker compose ps
 ```
 
-期待される出力: 以下の8つのサービスが`Up`または`Running`状態
-- agent-store-api
-- agent-store-auth-service (**NEW!**)
-- agent-store-postgres
-- agent-store-temporal-postgres
-- agent-store-temporal
-- agent-store-temporal-ui (**Temporal Web UI**)
-- agent-store-temporal-worker
-- agent-store-review-ui
+**期待される出力**: 以下の9つのサービスが`Up`状態
 
-### Python環境の確認
+| サービス名 | ポート | 説明 |
+|-----------|--------|------|
+| `agent-store-api` | 3000 | メインAPIサーバー |
+| `agent-store-auth-service` | 3003 | 認証サーバー（JWT発行） |
+| `agent-store-submission-ui` | 3002 | エージェント登録UI（企業向け） |
+| `agent-store-review-ui` | 3001 | レビュー管理UI（管理者向け） |
+| `agent-store-postgres` | 5432 | メインデータベース |
+| `agent-store-temporal-postgres` | 5433 | Temporal用データベース |
+| `agent-store-temporal` | 7233 | Temporalサーバー |
+| `agent-store-temporal-ui` | 8233 | Temporal Web UI |
+| `agent-store-temporal-worker` | - | ワークフロー実行Worker |
 
-Temporal WorkerとInspect WorkerがPython 3.13を使用していることを確認：
-```bash
-# Temporal WorkerのPythonバージョン確認
-docker exec agent-store-temporal-worker python3 --version
+### 3. ブラウザで各UIにアクセス確認
 
-# Inspect WorkerのPythonバージョン確認
-docker run --rm --entrypoint python3 agent-store-inspect-worker --version
-```
-
-期待される出力:
-```
-Python 3.13.9
-```
-
-### オプション機能の設定（W&B、LLM APIキー）
-
-完全なE2Eテストを実行する場合、以下のAPIキーを設定できます：
-
-#### 1. Weights & Biases (W&B) の設定
-
-W&Bでメトリクスをトラッキングする場合：
+以下のURLをブラウザで開いて、各UIが表示されることを確認：
 
 ```bash
-# .envファイルを編集
-nano .env  # または vim .env
+# Submission UI（企業向けエージェント登録画面）
+open http://localhost:3002
 
-# 以下の行のコメントを外して設定
-# WANDB_API_KEY=your-wandb-api-key-here
+# Review UI（管理者向けレビュー画面）
+open http://localhost:3001
+
+# Temporal Web UI（ワークフロー監視）
+open http://localhost:8233
 ```
 
-W&Bを使わない場合は、`WANDB_DISABLED=true` に設定してください（デフォルトは`false`）。
+### 4. データベースマイグレーション確認
 
-#### 2. LLM APIキーの設定（Judge Panel用）
-
-Judge Panelステージで自動判定を有効にする場合：
+データベースのテーブルが正しく作成されていることを確認：
 
 ```bash
-# .envファイルを編集
-nano .env
-
-# 以下の行のコメントを外して設定
-# OPENAI_API_KEY=sk-your-openai-key-here
-# または
-# ANTHROPIC_API_KEY=sk-ant-your-anthropic-key-here
+# PostgreSQLに接続してテーブル一覧を確認
+docker compose exec postgres sh -c 'psql -U $POSTGRES_USER -d $POSTGRES_DB -c "\dt"'
 ```
 
-**注意:**
-- Judge Panelステージは現在のPoCでは**オプション**です
-- APIキーを設定しない場合、Judge Panelはスキップされます
-- OpenAI GPT-4またはAnthropic Claudeが使用可能です
-
-#### 3. 設定後のサービス再ビルドと再起動
-
-環境変数を変更した後は、**必ず再ビルド**してからサービスを起動してください：
-
-```bash
-# サービスを停止
-docker compose down
-
-# 環境変数を使用するサービスを再ビルド（重要！）
-docker compose build --no-cache api temporal-worker inspect-worker
-
-# 全サービスを起動
-docker compose up -d
-
-# ログで設定が反映されているか確認
-docker compose logs api | grep -i "WANDB\|API"
-docker compose logs temporal-worker | grep -i "WANDB\|API"
-docker compose logs inspect-worker | head -20
-```
-
-**重要:** `.env`ファイルの変更は、コンテナのビルド時に環境変数として埋め込まれます。そのため、環境変数を変更した場合は、単なる再起動ではなく、`docker compose build`による再ビルドが必要です。
-
-## 🌐 アクセス先URL
-
-| サービス | URL | 用途 |
-|---------|-----|------|
-| **Review UI** | http://localhost:3001 | レビュー状況の確認・Human Review |
-| **Submission UI** | http://localhost:3002 | エージェント登録・ステータス確認 (**NEW!**) |
-| **API** | http://localhost:3002 | エージェント提出・状態確認 |
-| **Auth Service** | http://localhost:3003 | 認証・ユーザー登録・ログイン (**NEW!**) |
-| **Temporal Web UI** | http://localhost:8233 | ワークフロー管理・デバッグ |
+**期待される出力（主要テーブル）**:
+- `users` - ユーザーアカウント
+- `refresh_tokens` - リフレッシュトークン（ハッシュ化）
+- `organizations` - 組織情報
+- `submissions` - エージェント提出物
+- `trust_score_history` - Trust Score履歴
+- `governance_policies` - ガバナンスポリシー
+- `trust_signals` - 信頼シグナル
 
 ---
 
-## 📖 用語説明
+## 🧪 テストシナリオ0: 企業アカウント登録と認証
 
-### Submission（提出物）とは
+**目的**: 企業ユーザーが新規アカウントを登録し、ログインできることを確認
 
-**Submission**は、Agent Store に登録するために提出されたエージェントの審査申請のことです。
+### Step 0-1: Submission UIのホームページを開く
 
-#### 構成要素
-
-1つのSubmissionには以下の情報が含まれます：
-
-- **Agent Card（エージェントカード）**: エージェントのメタデータ
-  - 表示名、説明文、機能リスト（capabilities）
-  - 実行プロファイル（self_hosted, managed等）
-  - 多言語対応情報
-
-- **Endpoint Manifest（エンドポイント仕様書）**: エージェントのAPI仕様
-  - OpenAPI 3.0形式
-  - 利用可能なエンドポイント一覧
-  - リクエスト/レスポンス形式
-
-- **Signature Bundle（署名情報）**: セキュリティ検証用
-  - 公開鍵
-  - 署名アルゴリズム
-  - ペイロードダイジェスト
-
-- **Organization（組織情報）**: 提出元の組織
-  - 組織ID、名称
-  - 連絡先メールアドレス
-  - 運用者の公開鍵
-
-#### レビューパイプライン
-
-各Submissionは以下のステージを順番に通過します：
-
-```
-Submission作成
-  ↓
-① PreCheck（事前チェック）
-  ↓
-② Security Gate（セキュリティ検査）
-  ↓
-③ Functional Accuracy（機能精度テスト）
-  ↓
-④ Judge Panel（自動判定）
-  ↓
-⑤ Human Review（人間による最終レビュー）
-  ↓
-⑥ Publish（公開）
-```
-
-各ステージで合格すると次のステージに進み、問題があれば差し戻されます。
-
-#### Submission ID
-
-各Submissionには一意の識別子（UUID形式）が付与されます。
-例: `9c912c17-c36d-4898-bae9-d768156a6193`
-
-このIDを使って、進捗状況の確認やレビュー結果の取得を行います。
-
----
-
-## テストシナリオ
-
-### 🆕 シナリオ0: 認証システムのテスト（ブラウザ）
-
-最新の実装では、JWT認証とユーザー登録・ログイン機能が追加されました。
-
-#### Step 1: アカウント登録ページを開く
-
-1. **ブラウザでアカウント登録ページを開く:**
-   ```
-   http://localhost:3002/register-account
-   ```
-
-2. **フォームに入力:**
-   - メールアドレス: `test-company@example.com`
-   - パスワード: `SecurePass123!`
-   - ロール: `Company` を選択
-   - 組織名: `Test Corporation`
-
-3. **「Register」ボタンをクリック**
-
-**確認ポイント:**
-- ✅ アカウント登録成功メッセージが表示される
-- ✅ アクセストークンとリフレッシュトークンが発行される（DevToolsのNetworkタブで確認）
-- ✅ ログイン状態になる
-
-#### Step 2: ログインページを開く
-
-1. **ブラウザでログインページを開く:**
-   ```
-   http://localhost:3002/login
-   ```
-
-2. **登録したアカウントでログイン:**
-   - メールアドレス: `test-company@example.com`
-   - パスワード: `SecurePass123!`
-
-3. **「Login」ボタンをクリック**
-
-**確認ポイント:**
-- ✅ ログイン成功
-- ✅ ダッシュボードまたはステータスページにリダイレクトされる
-- ✅ トークンがlocalStorageに保存される（DevToolsのApplicationタブで確認）
-
-#### Step 3: セキュリティ機能の確認
-
-**リフレッシュトークンのハッシュ化を確認:**
-
-```bash
-# PostgreSQLに接続
-docker compose exec postgres sh -c 'psql -U $POSTGRES_USER -d $POSTGRES_DB'
-
-# refresh_tokensテーブルを確認
-SELECT token_hash FROM refresh_tokens LIMIT 1;
-
-# 期待される結果: 64文字のSHA256ハッシュ値
-# 例: a3f5c8d2e1b4f6a9c7e2d5b8a1f3c6e9d2b5a8c1f6e3d9b2a7c4e1f8d3b6a9c5
-
-\q
-```
-
-**確認ポイント:**
-- ✅ token_hashが64文字の16進数文字列（平文JWTではない）
-- ✅ パスワードがbcryptでハッシュ化されている
-
----
-
-### 🆕 シナリオ0-2: Governance & Catalog APIのテスト（ブラウザ + curl）
-
-#### Step 1: Agent Catalogの表示確認
-
-1. **ブラウザでCatalog APIを呼び出し（開発者ツールのConsoleで）:**
-   ```javascript
-   fetch('http://localhost:3002/api/catalog?limit=10')
-     .then(res => res.json())
-     .then(data => console.log(data));
-   ```
-
-**期待される結果:**
-```json
-{
-  "agents": [],
-  "pagination": {
-    "total": 0,
-    "limit": 10,
-    "offset": 0,
-    "hasMore": false
-  }
-}
-```
-
-**確認ポイント:**
-- ✅ 認証なしでアクセス可能（公開API）
-- ✅ 空の配列が返される（まだpublished状態のSubmissionがない場合）
-- ✅ CORSエラーが発生しない
-
-#### Step 2: 管理者アカウントでGovernance APIテスト
-
-1. **管理者アカウントを登録:**
-   - http://localhost:3002/register-account を開く
-   - メールアドレス: `admin@example.com`
-   - パスワード: `AdminPass123!`
-   - ロール: `Admin` を選択
-   - 「Register」ボタンをクリック
-
-2. **DevToolsでアクセストークンを取得:**
-   - Networkタブで `/auth/register` のレスポンスを確認
-   - `accessToken` の値をコピー
-
-3. **curlでGovernance APIを呼び出し:**
-   ```bash
-   # アクセストークンを環境変数に設定
-   ACCESS_TOKEN="eyJhbGciOiJIUzI1NiIs..."
-
-   # 監査レジャー一覧を取得
-   curl -X GET "http://localhost:3002/api/governance/audit-ledger?limit=10" \
-     -H "Authorization: Bearer $ACCESS_TOKEN"
-   ```
-
-**期待される結果:**
-```json
-{
-  "entries": [],
-  "pagination": {
-    "total": 0,
-    "limit": 10,
-    "offset": 0,
-    "hasMore": false
-  }
-}
-```
-
-**確認ポイント:**
-- ✅ 認証トークンで正常アクセス可能
-- ✅ トークンなしで401エラー
-- ✅ companyロールで403エラー（RBAC動作確認）
-
----
-
-### 🧪 シナリオ1: APIヘルスチェック
-
-最も基本的な動作確認です。
-
-```bash
-# ヘルスチェック
-curl http://localhost:3002/health
-```
-
-**期待される出力:**
-```json
-{"status":"ok","timestamp":"2025-11-13T04:01:13.286Z"}
-```
-
-**確認ポイント:**
-- ✅ HTTPステータス 200
-- ✅ JSONレスポンスに`status: "ok"`が含まれる
-
----
-
-### 🧪 シナリオ2: Submission UIの表示確認（NEW!）
-
-ブラウザで新しいSubmission UIの動作を確認します。
-
-1. **Submission UIを開く:**
+1. **ブラウザでSubmission UIを開く:**
    ```
    http://localhost:3002
    ```
 
-2. **確認ポイント:**
-   - ✅ ログインページまたはダッシュボードが表示される
-   - ✅ ナビゲーションメニューが表示される
-   - ✅ JavaScriptエラーがコンソールにない（ブラウザのDevToolsで確認）
+2. **ホームページの表示確認:**
+   - ✅ 「Agent Hub」タイトルが表示される
+   - ✅ 4つの機能説明カード（セキュリティ評価、信頼性スコア、自動判定、継続的モニタリング）
+   - ✅ 「エージェントを登録する」ボタンが表示される
+   - ✅ 「ログイン」リンクが表示される
 
-3. **エージェント登録ページを開く:**
+3. **スクリーンショット撮影:**
+   - ホームページ全体のスクリーンショットを保存
+
+### Step 0-2: 企業アカウント登録ページを開く
+
+1. **「ログイン」リンクをクリック:**
+   ```
+   http://localhost:3002/login
+   ```
+
+2. **ログインページで「新規登録」リンクをクリック:**
+   - ページ下部の「アカウントをお持ちでない方は新規登録」リンク
+
+3. **企業アカウント登録ページに遷移:**
+   ```
+   http://localhost:3002/register-account
+   ```
+
+### Step 0-3: 企業情報とユーザー情報を入力
+
+**フォームに以下の情報を入力:**
+
+**組織情報セクション:**
+- **組織名**: `テスト株式会社`
+- **組織の連絡先メールアドレス**: `contact@test-company.jp`
+- **Webサイト（オプション）**: `https://test-company.jp`
+
+**ユーザーアカウント情報セクション:**
+- **ログイン用メールアドレス**: `user1@test-company.jp`
+- **パスワード**: `SecurePass123!`
+- **パスワード（確認）**: `SecurePass123!`
+
+**確認ポイント:**
+- ✅ 各入力欄にバリデーションメッセージが表示される（エラー時）
+- ✅ メールアドレス形式チェックが動作する
+- ✅ パスワード不一致時にエラーメッセージが表示される
+- ✅ パスワード8文字以上のチェックが動作する
+
+### Step 0-4: アカウント作成実行
+
+1. **「アカウントを作成」ボタンをクリック**
+
+2. **成功時の動作確認:**
+   - ✅ ローディング表示（「登録中...」ボタン）
+   - ✅ 登録成功後、自動的にホームページ（`/`）にリダイレクト
+   - ✅ ログイン状態になっている（ブラウザのDevToolsでlocalStorageを確認）
+
+3. **localStorage確認（DevToolsで確認）:**
+   ```javascript
+   // ブラウザのDevTools > Application > Local Storage > http://localhost:3002
+   localStorage.getItem('accessToken')  // JWT accessトークンが保存されている
+   localStorage.getItem('refreshToken')  // JWT refreshトークンが保存されている
+   localStorage.getItem('user')  // ユーザー情報が保存されている
+   ```
+
+**確認ポイント:**
+- ✅ `accessToken`が存在する（JWTトークン形式: `eyJ...`）
+- ✅ `user`にユーザー情報が保存されている（JSON形式）
+
+### Step 0-5: データベース確認（オプション）
+
+```bash
+# 登録された組織を確認
+docker compose exec postgres sh -c 'psql -U $POSTGRES_USER -d $POSTGRES_DB -c "SELECT id, name, contact_email, verified FROM organizations ORDER BY created_at DESC LIMIT 1;"'
+
+# 登録されたユーザーを確認
+docker compose exec postgres sh -c 'psql -U $POSTGRES_USER -d $POSTGRES_DB -c "SELECT id, email, role, organization_id FROM users ORDER BY created_at DESC LIMIT 1;"'
+
+# リフレッシュトークンがハッシュ化されて保存されていることを確認
+docker compose exec postgres sh -c 'psql -U $POSTGRES_USER -d $POSTGRES_DB -c "SELECT id, user_id, LEFT(token_hash, 20) as token_preview, expires_at, revoked FROM refresh_tokens ORDER BY created_at DESC LIMIT 1;"'
+```
+
+**期待される出力:**
+- ✅ 組織が登録されている（`verified = false`）
+- ✅ ユーザーが登録されている（`role = company`）
+- ✅ リフレッシュトークンがSHA256ハッシュで保存されている（64文字の16進数文字列）
+
+### Step 0-6: ログアウトとログイン
+
+1. **ログアウト（localStorage削除）:**
+   ```javascript
+   // DevTools > Consoleで実行
+   localStorage.clear()
+   ```
+
+2. **ページをリロード:**
+   - F5キーまたはブラウザのリロードボタン
+
+3. **ログインページを開く:**
+   ```
+   http://localhost:3002/login
+   ```
+
+4. **ログイン情報を入力:**
+   - **メールアドレス**: `user1@test-company.jp`
+   - **パスワード**: `SecurePass123!`
+
+5. **「ログイン」ボタンをクリック**
+
+**確認ポイント:**
+- ✅ ログイン成功後、ホームページにリダイレクト
+- ✅ localStorageに再びトークンが保存される
+- ✅ ナビゲーションバーにユーザー名またはメールアドレスが表示される
+
+---
+
+## 🧪 テストシナリオ1: エージェント登録から審査完了まで（成功パス）
+
+**目的**: 企業ユーザーがエージェントを登録し、Trust Score算出、自動判定、最終承認までの全フローを確認
+
+**前提条件**: シナリオ0でアカウント登録とログインが完了していること
+
+### Step 1-1: エージェント登録ページを開く
+
+1. **ホームページの「エージェントを登録する」ボタンをクリック:**
    ```
    http://localhost:3002/register
    ```
 
-4. **確認ポイント:**
-   - ✅ Agent Card URLの入力フィールドが表示される
-   - ✅ Agent Endpointの入力フィールドが表示される
-   - ✅ 署名バンドルのアップロードフィールドが表示される（オプション）
-   - ✅ 「Submit for Review」ボタンが表示される
+2. **認証チェック確認:**
+   - ✅ ログイン済みの場合: 登録ページが表示される
+   - ✅ 未ログインの場合: `/login?redirect=/register` にリダイレクトされる
 
----
+### Step 1-2: エージェント情報を入力
 
-### 🧪 シナリオ2-2: Review UIの表示確認
+**フォームに以下の情報を入力:**
 
-ブラウザで動作を確認します。
+- **エージェントカードURL**: `https://example.com/agent-card.json`
+- **エンドポイントURL**: `https://api.example.com/agent`
+- **署名バンドル（オプション）**: ファイルをアップロード（またはスキップ）
 
-1. **Review UIを開く:**
-   ```
-   http://localhost:3001
-   ```
+**バリデーション確認:**
+- ✅ 無効なURL（`http://`や`https://`なし）でエラーメッセージ表示
+- ✅ 空白入力でエラーメッセージ表示
+- ✅ 有効なURLで緑色のチェックマーク表示
 
-2. **確認ポイント:**
-   - ✅ Agent Store Review UIのページが表示される
-   - ✅ Submission ID入力フィールドが表示される
-   - ✅ JavaScriptエラーがコンソールにない（ブラウザのDevToolsで確認）
+### Step 1-3: エージェント登録実行
 
----
+1. **「登録する」ボタンをクリック**
 
-### 🧪 シナリオ3: Temporal Web UIの確認
+2. **成功時の動作確認:**
+   - ✅ ローディング表示（「登録中...」ボタン）
+   - ✅ 登録成功後、自動的にステータスページにリダイレクト
+     ```
+     http://localhost:3002/status/[submissionId]
+     ```
 
-Temporalのダッシュボードを確認します。
+3. **ステータスページの表示確認:**
+   - ✅ Submission IDが表示される
+   - ✅ 「登録中」または「審査中」のステータス表示
+   - ✅ ステージ別の進捗表示（PreCheck、Security Gate、Functional Accuracy、Judge Panel、Publish）
 
-1. **Temporal Web UIを開く:**
+### Step 1-4: Temporal Web UIでワークフロー確認
+
+1. **別のブラウザタブでTemporal Web UIを開く:**
    ```
    http://localhost:8233
    ```
 
-2. **確認ポイント:**
-   - ✅ Temporalのダッシュボードが表示される
-   - ✅ Namespace: `default` が選択されている
-   - ✅ Workflowsタブで現在はワークフローが0件
+2. **Workflowsページで最新のワークフローを検索:**
+   - Namespace: `agent-store-default`（またはデフォルトNamespace）
+   - Workflow Type: `reviewPipelineWorkflow`
 
----
+3. **ワークフローの詳細を開く:**
+   - Workflow IDをクリック
 
-### 🧪 シナリオ4: エージェント提出テスト（完全なE2Eテスト）
+4. **ワークフローの実行状況を確認:**
+   - ✅ `Running`ステータスになっている
+   - ✅ Eventログが記録されている（WorkflowExecutionStarted、ActivityTaskScheduled、etc.）
+   - ✅ Queryタブで`queryProgress`を実行して進捗を確認できる
 
-実際にエージェントを提出してレビューパイプラインを動かします。
-
-#### Step 1: テスト用のSubmissionを準備
-
-```bash
-cat > /tmp/test-submission.json << 'EOF'
+**Query実行方法:**
+```json
+// Temporal Web UI > Workflow詳細 > Queriesタブ
+// Query Type: queryProgress
+// 結果例:
 {
-  "agentId": "550e8400-e29b-41d4-a716-446655440001",
-  "cardDocument": {
-    "id": "550e8400-e29b-41d4-a716-446655440000",
-    "agentId": "550e8400-e29b-41d4-a716-446655440001",
-    "defaultLocale": "en",
-    "status": "draft",
-    "executionProfile": "self_hosted",
-    "translations": [
-      {
-        "locale": "en",
-        "displayName": "E2E Test Agent",
-        "shortDescription": "An agent for end-to-end browser testing",
-        "capabilities": ["text-processing", "data-analysis"]
-      }
-    ]
+  "terminalState": "running",
+  "stages": {
+    "precheck": {"status": "completed", "attempts": 1},
+    "security": {"status": "running", "attempts": 1},
+    "functional": {"status": "pending", "attempts": 0},
+    "judge": {"status": "pending", "attempts": 0},
+    "human": {"status": "pending", "attempts": 0},
+    "publish": {"status": "pending", "attempts": 0}
   },
-  "endpointManifest": {
-    "openapi": "3.0.0",
-    "info": {
-      "title": "Test Agent API",
-      "version": "1.0.0"
-    },
-    "servers": [{"url": "https://example.com/agent"}],
-    "paths": {
-      "/query": {
-        "post": {
-          "summary": "Process queries",
-          "description": "Handles text processing and data analysis",
-          "tags": ["text-processing", "data-analysis"]
-        }
-      }
-    }
-  },
-  "signatureBundle": {
-    "algorithm": "RS256",
-    "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA\n-----END PUBLIC KEY-----",
-    "signature": "test-signature-base64",
-    "payloadDigest": "sha256-digest"
-  },
-  "organization": {
-    "organizationId": "test-org-001",
-    "name": "Test Organization",
-    "contactEmail": "test@example.com",
-    "operatorPublicKey": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA\n-----END PUBLIC KEY-----"
-  }
+  "trustScore": null
 }
-EOF
 ```
 
-**注意:** `SKIP_SIGNATURE_VERIFICATION=true` 環境変数が設定されている場合、署名検証はスキップされます（開発・テストモード）。
+### Step 1-5: 各ステージの進行確認
 
-#### Step 2: エージェントを提出
+**ステージの実行順序:**
+
+1. **PreCheck** (約5秒)
+   - ✅ Submission IDの検証
+   - ✅ Agent IDとRevision IDの生成
+   - ✅ ステータス: `completed`
+
+2. **Security Gate** (約30-60秒)
+   - ✅ プロンプトインジェクション耐性テスト実行
+   - ✅ Refusal Rate算出（0-1）
+   - ✅ Security Score算出（0-30点）
+   - ✅ ステータス: `completed`
+
+3. **Functional Accuracy** (約30-60秒)
+   - ✅ エージェントの機能正確性テスト実行
+   - ✅ Average Distance算出（0-1）
+   - ✅ Functional Score算出（0-40点）
+   - ✅ ステータス: `completed`
+
+4. **Judge Panel** (約30-60秒)
+   - ✅ LLM Judgeによる総合評価
+   - ✅ Judge Score算出（0-20点）
+   - ✅ ステータス: `completed`
+
+5. **Trust Score Calculation** (即座)
+   - ✅ Trust Score合計算出（0-100点）
+   - ✅ Auto Decision決定（`auto_approved` / `auto_rejected` / `requires_human_review`）
+   - ✅ Temporal EventログにTrust Score情報が記録される
+
+**Temporal Event確認:**
+```json
+// Event Type: WorkflowTaskCompleted
+// Event: trust_score_calculated
+{
+  "trustScore": 85,
+  "breakdown": {
+    "security": 30,
+    "functional": 35,
+    "judge": 15,
+    "implementation": 10
+  },
+  "autoDecision": "auto_approved",
+  "reasoning": {
+    "security": "Security Gate passed with excellent refusal rate: 92.5%",
+    "functional": "Functional Accuracy excellent: 91.2% match rate",
+    "judge": "Judge Panel approved with score: 78",
+    "implementation": "Implementation quality: default score"
+  }
+}
+```
+
+### Step 1-6: Trust Score自動判定の確認
+
+**Auto Decision分岐:**
+
+#### ケース1: auto_approved (Trust Score >= 80)
+
+**Temporal Eventログ:**
+```json
+{
+  "event": "auto_approved",
+  "data": {
+    "trustScore": 85,
+    "reasoning": {...}
+  },
+  "severity": "info"
+}
+```
+
+**動作:**
+- ✅ Human Reviewステージをスキップ
+- ✅ 自動的にPublishステージへ進行
+- ✅ ワークフローステータス: `published`
+
+**Submission UIステータスページ:**
+- ✅ Trust Score表示: `85/100`
+- ✅ ステータス: `承認済み`
+- ✅ 最終判定: `自動承認`
+
+#### ケース2: requires_human_review (Trust Score 40-79)
+
+**Temporal Eventログ:**
+```json
+{
+  "event": "requires_human_review",
+  "data": {
+    "trustScore": 65,
+    "reasoning": {...}
+  },
+  "severity": "warn"
+}
+```
+
+**動作:**
+- ✅ Human Reviewステージへエスカレート
+- ✅ ワークフローステータス: `running` (Human Review待ち)
+- ✅ Review UIに通知が届く
+
+**Submission UIステータスページ:**
+- ✅ Trust Score表示: `65/100`
+- ✅ ステータス: `人間レビュー待ち`
+- ✅ 最終判定: `要審査`
+
+#### ケース3: auto_rejected (Trust Score < 40)
+
+**Temporal Eventログ:**
+```json
+{
+  "event": "auto_rejected",
+  "data": {
+    "trustScore": 35,
+    "reasoning": {...}
+  },
+  "severity": "error"
+}
+```
+
+**動作:**
+- ✅ ワークフロー終了（rejected）
+- ✅ 残りのステージは`skipped`
+
+**Submission UIステータスページ:**
+- ✅ Trust Score表示: `35/100`
+- ✅ ステータス: `却下済み`
+- ✅ 最終判定: `自動却下`
+
+### Step 1-7: データベース確認
+
+**Trust Score永続化確認:**
 
 ```bash
-curl -X POST http://localhost:3002/api/v1/submissions \
-  -H "Content-Type: application/json" \
-  -d @/tmp/test-submission.json
+# Submissionsテーブルを確認
+docker compose exec postgres sh -c 'psql -U $POSTGRES_USER -d $POSTGRES_DB -c "SELECT id, trust_score, security_score, functional_score, judge_score, implementation_score, auto_decision FROM submissions ORDER BY created_at DESC LIMIT 1;"'
+```
+
+**期待される出力:**
+```
+                  id                  | trust_score | security_score | functional_score | judge_score | implementation_score | auto_decision
+--------------------------------------+-------------+----------------+------------------+-------------+----------------------+---------------
+ 550e8400-e29b-41d4-a716-446655440000 |          85 |             30 |               35 |          15 |                   10 | auto_approved
+```
+
+**Trust Score履歴確認:**
+
+```bash
+# Trust Score Historyテーブルを確認
+docker compose exec postgres sh -c 'psql -U $POSTGRES_USER -d $POSTGRES_DB -c "SELECT submission_id, total_score, security_score, functional_score, judge_score, implementation_score, auto_decision, created_at FROM trust_score_history ORDER BY created_at DESC LIMIT 1;"'
+```
+
+**期待される出力:**
+- ✅ 最新のTrust Scoreが記録されている
+- ✅ 各ステージのスコアが記録されている
+- ✅ `auto_decision`が正しく記録されている
+
+### Step 1-8: Publishステージの確認（auto_approved時のみ）
+
+**Trust Score >= 80の場合:**
+
+1. **Publishステージが実行される:**
+   - ✅ Temporal EventログにPublishイベントが記録される
+   - ✅ ワークフローステータス: `Completed`
+   - ✅ Terminal State: `published`
+
+2. **Catalog APIで公開エージェント確認:**
+
+```bash
+# 公開エージェント一覧を取得
+curl -X GET "http://localhost:3000/api/catalog/agents" | jq
 ```
 
 **期待される出力:**
 ```json
 {
-  "submissionId": "9c912c17-c36d-4898-bae9-d768156a6193",
-  "state": "precheck_pending",
-  "manifestWarnings": []
+  "agents": [
+    {
+      "id": "agent-uuid",
+      "agentCardUrl": "https://example.com/agent-card.json",
+      "agentEndpoint": "https://api.example.com/agent",
+      "trustScore": 85,
+      "organizationName": "テスト株式会社",
+      "publishedAt": "2025-11-15T12:00:00Z"
+    }
+  ]
+}
+```
+
+3. **Submission UIでステータス確認:**
+   - ✅ ステータス: `公開済み`
+   - ✅ Trust Score: `85/100`
+   - ✅ 公開日時が表示される
+
+### Step 1-9: エンドツーエンドテスト完了確認
+
+**チェックリスト:**
+- [x] 企業アカウント登録成功
+- [x] ログイン成功
+- [x] エージェント登録成功
+- [x] Temporal Workflowが実行される
+- [x] 各ステージ（PreCheck、Security、Functional、Judge）が完了
+- [x] Trust Scoreが算出される
+- [x] Auto Decisionが正しく動作する
+- [x] データベースにTrust Scoreが永続化される
+- [x] Trust Score >= 80の場合、Publishステージが実行される
+- [x] Catalog APIで公開エージェントを確認できる
+
+---
+
+## 🧪 テストシナリオ2: Trust Score自動判定の検証
+
+**目的**: Trust Scoreの各判定閾値（auto_approved、requires_human_review、auto_rejected）を検証
+
+### Step 2-1: 高スコアエージェント（auto_approved）のテスト
+
+**目標Trust Score**: 80点以上
+
+**テスト手順:**
+1. エージェントを登録（Step 1-1 ~ 1-3）
+2. Temporal Web UIでワークフロー確認
+3. Trust Score算出結果を確認
+
+**期待される動作:**
+- ✅ Trust Score: 80-100点
+- ✅ Auto Decision: `auto_approved`
+- ✅ Human Reviewステージがスキップされる
+- ✅ Publishステージが自動実行される
+- ✅ ワークフローステータス: `Completed`
+- ✅ Terminal State: `published`
+
+**スコア内訳例:**
+```json
+{
+  "security": 30,      // 満点
+  "functional": 40,    // 満点
+  "judge": 20,         // 満点
+  "implementation": 10, // デフォルト
+  "total": 100
+}
+```
+
+### Step 2-2: 中スコアエージェント（requires_human_review）のテスト
+
+**目標Trust Score**: 40-79点
+
+**期待される動作:**
+- ✅ Trust Score: 40-79点
+- ✅ Auto Decision: `requires_human_review`
+- ✅ Human Reviewステージへエスカレート
+- ✅ ワークフローステータス: `Running` (Human Review待ち)
+
+**スコア内訳例:**
+```json
+{
+  "security": 15,      // 中程度
+  "functional": 30,    // 良好
+  "judge": 10,         // 要検討
+  "implementation": 10, // デフォルト
+  "total": 65
+}
+```
+
+**Human Reviewの動作確認:**
+
+1. **Review UIを開く:**
+   ```
+   http://localhost:3001
+   ```
+
+2. **管理者でログイン（管理者アカウントが必要）:**
+   - メール: `admin@example.com`
+   - パスワード: `AdminPass123!`
+
+3. **レビュー待ちSubmissionを確認:**
+   - ✅ Trust Score: `65/100`が表示される
+   - ✅ ステータス: `人間レビュー待ち`
+   - ✅ 各ステージの詳細が表示される
+
+4. **手動で承認または却下:**
+   - 「承認」ボタンをクリック → Publishステージへ進行
+   - 「却下」ボタンをクリック → ワークフロー終了（rejected）
+
+### Step 2-3: 低スコアエージェント（auto_rejected）のテスト
+
+**目標Trust Score**: 40点未満
+
+**期待される動作:**
+- ✅ Trust Score: 0-39点
+- ✅ Auto Decision: `auto_rejected`
+- ✅ ワークフロー即座に終了
+- ✅ 残りのステージが`skipped`
+- ✅ Terminal State: `rejected`
+
+**スコア内訳例:**
+```json
+{
+  "security": 0,       // 失敗
+  "functional": 20,    // 低品質
+  "judge": 0,          // reject
+  "implementation": 10, // デフォルト
+  "total": 30
+}
+```
+
+**Submission UIでの表示:**
+- ✅ ステータス: `却下済み`
+- ✅ Trust Score: `30/100`
+- ✅ 却下理由が表示される
+
+**データベース確認:**
+```bash
+docker compose exec postgres sh -c 'psql -U $POSTGRES_USER -d $POSTGRES_DB -c "SELECT id, trust_score, auto_decision FROM submissions WHERE auto_decision = '\''auto_rejected'\'' ORDER BY created_at DESC LIMIT 1;"'
+```
+
+---
+
+## 🧪 テストシナリオ3: 組織管理機能のテスト
+
+**目的**: 組織管理API（CRUD）が正しく動作することを確認
+
+### Step 3-1: 組織一覧取得（管理者専用）
+
+**前提**: 管理者アカウントでログイン済み
+
+```bash
+# 管理者トークン取得
+ACCESS_TOKEN=$(curl -X POST http://localhost:3003/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "admin@example.com", "password": "AdminPass123!"}' \
+  | jq -r '.accessToken')
+
+# 組織一覧取得
+curl -X GET "http://localhost:3000/api/organizations?limit=10&offset=0" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" | jq
+```
+
+**期待される出力:**
+```json
+{
+  "organizations": [
+    {
+      "id": "org-uuid",
+      "name": "テスト株式会社",
+      "contactEmail": "contact@test-company.jp",
+      "website": "https://test-company.jp",
+      "verified": false,
+      "userCount": 1,
+      "submissionCount": 3,
+      "createdAt": "2025-11-15T00:00:00Z",
+      "updatedAt": "2025-11-15T00:00:00Z"
+    }
+  ],
+  "pagination": {
+    "total": 1,
+    "limit": 10,
+    "offset": 0,
+    "hasMore": false
+  }
 }
 ```
 
 **確認ポイント:**
-- ✅ HTTPステータス 202 (Accepted)
-- ✅ `submissionId`が返される（UUIDフォーマット）
-- ✅ `state`が`"precheck_pending"`
+- ✅ 組織一覧が取得できる
+- ✅ `userCount`と`submissionCount`が正しい
+- ✅ Paginationが動作する
 
-**⚠️ 重要:** 次のステップのために`submissionId`の値を控えておいてください（例: `9c912c17-c36d-4898-bae9-d768156a6193`）
-
-#### Step 3: Temporal Workflowの確認
-
-1. **Temporal Web UIを開く:**
-   ```
-   http://localhost:8233
-   ```
-
-2. **Workflowsタブを確認:**
-   - `review-pipeline-{submissionId}` という名前のワークフローが表示されるはず
-   - ステータスが`Running`になっている
-
-3. **ワークフローの詳細を確認:**
-   - ワークフロー名をクリック
-   - **Event History**タブで各ステージの実行を確認
-   - **Pending Activities**で現在実行中のアクティビティを確認
-   - **Query**セクションで`queryProgress`を実行して進捗を確認
-
-#### Step 4: Review UIで状態確認
-
-1. **Review UIを開く:**
-   ```
-   http://localhost:3001
-   ```
-
-2. **Submission IDを入力:**
-   - ページ上部の「Submission ID」フィールドに、Step 2で取得したSubmission ID（例: `9c912c17-c36d-4898-bae9-d768156a6193`）を入力
-   - 「最新の進捗を取得」ボタンをクリック
-
-3. **確認ポイント:**
-   - ✅ 証拠ビューアセクションに進捗情報が表示される
-   - ✅ ステージ選択プルダウンで各ステージ（PreCheck, Security Gate, Functional Accuracy等）が選択可能
-   - ✅ 種別選択プルダウンでLedger/Artifactが選択可能
-   - ✅ 各ステージのステータスが確認できる
-   - ✅ Human Review決定セクションで承認/差戻しボタンが表示される
-
-#### Step 5: Temporal Workerログでワークフロー実行を確認
+### Step 3-2: 組織詳細取得（自組織またはadmin）
 
 ```bash
-# Step 2で取得したsubmissionIdを使用
-SUBMISSION_ID="9c912c17-c36d-4898-bae9-d768156a6193"
+# 組織IDを取得（上記の組織一覧から）
+ORG_ID="org-uuid"
 
-# Temporal Workerのログを確認
-docker logs agent-store-temporal-worker --tail 50 | grep -A 5 -B 5 "${SUBMISSION_ID}"
+# 組織詳細取得
+curl -X GET "http://localhost:3000/api/organizations/$ORG_ID" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" | jq
 ```
 
 **期待される出力:**
+```json
+{
+  "id": "org-uuid",
+  "name": "テスト株式会社",
+  "contactEmail": "contact@test-company.jp",
+  "website": "https://test-company.jp",
+  "verified": false,
+  "userCount": 1,
+  "submissionCount": 3,
+  "createdAt": "2025-11-15T00:00:00Z",
+  "updatedAt": "2025-11-15T00:00:00Z"
+}
 ```
-[activities] preCheckSubmission 9c912c17-c36d-4898-bae9-d768156a6193
-[activities] runSecurityGate submission=9c912c17-c36d-4898-bae9-d768156a6193
-[sandbox-runner] generated artifacts in /app/sandbox-runner/artifacts/9c912c17-c36d-4898-bae9-d768156a6193-rev1
-[activities] runFunctionalAccuracy submission=9c912c17-c36d-4898-bae9-d768156a6193
-[sandbox-runner] generated artifacts in /app/sandbox-runner/artifacts/9c912c17-c36d-4898-bae9-d768156a6193-rev1
-[activities] notifyHumanReview submission=9c912c17-c36d-4898-bae9-d768156a6193 reason=functional_accuracy_failure
+
+**アクセス制御確認:**
+- ✅ 自組織のユーザーは自組織の情報を取得できる
+- ✅ 他組織のユーザーは403 Forbiddenエラー
+- ✅ 管理者はすべての組織情報を取得できる
+
+### Step 3-3: 組織情報更新
+
+```bash
+# 組織名を更新
+curl -X PUT "http://localhost:3000/api/organizations/$ORG_ID" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "テスト株式会社（更新後）",
+    "website": "https://new-test-company.jp"
+  }' | jq
+```
+
+**期待される出力:**
+```json
+{
+  "id": "org-uuid",
+  "name": "テスト株式会社（更新後）",
+  "contactEmail": "contact@test-company.jp",
+  "website": "https://new-test-company.jp",
+  "verified": false,
+  "createdAt": "2025-11-15T00:00:00Z",
+  "updatedAt": "2025-11-15T12:00:00Z"
+}
 ```
 
 **確認ポイント:**
-- ✅ PreCheck、Security Gate、Functional Accuracyの各ステージが実行されている
-- ✅ アーティファクトが生成されている
-- ✅ Human Review待機状態になっている（`notifyHumanReview`が呼ばれている）
+- ✅ 組織名が更新される
+- ✅ `updatedAt`が更新される
+- ✅ 他のフィールドは変更されない
 
-**注意:** 現在のPoCでは、GETエンドポイント（`GET /api/v1/submissions/{id}`）は未実装です。進捗確認はTemporal UIまたはReview UIから行ってください。
-
----
-
-### 🧪 シナリオ5: Human Review 承認/差戻しテスト
-
-Human Reviewステージで管理者が承認または差戻しを行うテストです。
-
-**前提条件:**
-- シナリオ4でエージェントを提出済み
-- ワークフローがHuman Review待機状態になっている
-
-#### Step 1: Review UIでHuman Review待機状態を確認
-
-1. **Review UIを開く:**
-   ```
-   http://localhost:3001
-   ```
-
-2. **Submission IDを入力して進捗を取得:**
-   - シナリオ4で取得したSubmission IDを入力
-   - 「最新の進捗を取得」ボタンをクリック
-
-3. **Human Review待機状態の確認:**
-   - ✅ ステージ選択プルダウンで「human」が選択可能
-   - ✅ 「Human Review 決定」セクションが表示されている
-   - ✅ 承認ボタンと差戻しボタンが有効になっている
-
-#### Step 2A: 承認パターンのテスト
-
-1. **メモ欄に承認理由を入力（任意）:**
-   ```
-   すべてのステージが正常に完了したため承認します。
-   ```
-
-2. **「承認」ボタンをクリック**
-
-3. **確認ポイント:**
-   - ✅ 「決定を送信しました」というメッセージが表示される
-   - ✅ Temporal Workerのログに承認処理が記録される
-
-4. **ワークフローの進行を確認:**
-   ```bash
-   # Temporal Workerのログを確認
-   docker logs agent-store-temporal-worker --tail 30
-   ```
-
-   **期待される出力:**
-   ```
-   [activities] human decision received: approved
-   [activities] publishToStore submission=...
-   ```
-
-5. **Temporal Web UIで最終状態を確認:**
-   - http://localhost:8233
-   - ワークフローのステータスが`Completed`になっている
-   - Event HistoryでPublishステージまで完了していることを確認
-
-#### Step 2B: 差戻しパターンのテスト
-
-別のSubmissionで差戻しをテストします。
-
-1. **新しいSubmissionを作成:**
-   ```bash
-   # シナリオ4のStep 1-2を実行して新しいSubmissionを作成
-   # 新しいSubmission IDを控えておく
-   ```
-
-2. **Human Review待機状態になるまで待つ:**
-   ```bash
-   # ワークフローがHuman Reviewまで進むのを待つ（数秒〜数十秒）
-   docker logs agent-store-temporal-worker --tail 30 | grep "notifyHumanReview"
-   ```
-
-3. **Review UIで差戻し操作:**
-   - メモ欄に差戻し理由を入力:
-     ```
-     セキュリティ上の懸念があるため差戻します。再提出時には署名を修正してください。
-     ```
-   - 「差戻し」ボタンをクリック
-
-4. **確認ポイント:**
-   - ✅ 「決定を送信しました」というメッセージが表示される
-   - ✅ Temporal Workerのログに差戻し処理が記録される
-
-5. **ワークフローの終了を確認:**
-   ```bash
-   docker logs agent-store-temporal-worker --tail 30
-   ```
-
-   **期待される出力:**
-   ```
-   [activities] human decision received: rejected
-   [workflow] terminal state: rejected
-   ```
-
-6. **Temporal Web UIで最終状態を確認:**
-   - ワークフローのステータスが`Completed`になっている
-   - Event Historyで差戻しが記録されている
-   - メタデータに差戻し理由が保存されている
-
-#### Step 3: データベースで記録を確認
+### Step 3-4: 組織認証状態の更新（admin専用）
 
 ```bash
-# PostgreSQLに接続
-docker compose exec postgres psql -U agent_store_user -d agent_store_db
+# 組織を認証済みにする
+curl -X PATCH "http://localhost:3000/api/organizations/$ORG_ID/verify" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"verified": true}' | jq
+```
 
-# Human Review決定が記録されているか確認
-SELECT id, state, progress->'human' as human_stage
-FROM submissions
-WHERE id = '<your-submission-id>' \gx
-
-# 終了
-\q
+**期待される出力:**
+```json
+{
+  "id": "org-uuid",
+  "name": "テスト株式会社（更新後）",
+  "contactEmail": "contact@test-company.jp",
+  "website": "https://new-test-company.jp",
+  "verified": true,
+  "createdAt": "2025-11-15T00:00:00Z",
+  "updatedAt": "2025-11-15T12:05:00Z"
+}
 ```
 
 **確認ポイント:**
-- ✅ `state`が`published`（承認の場合）または`rejected`（差戻しの場合）
-- ✅ `progress->'human'`にdecisionとdecisionNotesが記録されている
+- ✅ `verified`が`true`に更新される
+- ✅ 管理者以外は403 Forbiddenエラー
 
----
-
-### 🧪 シナリオ6: データベース直接確認
-
-PostgreSQLに直接接続して提出データを確認します。
+### Step 3-5: 組織のユーザー一覧取得
 
 ```bash
-# PostgreSQLに接続
-docker compose exec postgres psql -U agent_store_user -d agent_store_db
-
-# 提出データを確認
-SELECT id, state, created_at FROM submissions ORDER BY created_at DESC LIMIT 5;
-
-# エージェントカード情報を確認
-SELECT id, agent_id, display_name FROM agent_cards LIMIT 5;
-
-# レビュー進捗を確認（JSONカラム）
-SELECT id, state, progress FROM submissions WHERE id = '<your-submission-id>';
-
-# 終了
-\q
+# 組織のユーザー一覧
+curl -X GET "http://localhost:3000/api/organizations/$ORG_ID/users" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" | jq
 ```
 
----
-
-## 📊 期待される動作フロー
-
-完全なレビューパイプラインの流れ：
-
-```mermaid
-graph LR
-    A[Submission] --> B[PreCheck]
-    B --> C[Security Gate]
-    C --> D[Functional Accuracy]
-    D --> E[Judge Panel]
-    E --> F[Human Review]
-    F --> G[Publish]
+**期待される出力:**
+```json
+{
+  "users": [
+    {
+      "id": "user-uuid",
+      "email": "user1@test-company.jp",
+      "role": "company",
+      "organizationId": "org-uuid",
+      "createdAt": "2025-11-15T00:00:00Z",
+      "updatedAt": "2025-11-15T00:00:00Z"
+    }
+  ]
+}
 ```
 
-1. **Submission** → API経由で提出（`POST /v1/submissions`）
-2. **PreCheck** → AgentCardのバリデーション（自動）
-   - JSON Schemaバリデーション
-   - 必須フィールドの確認
-3. **Security Gate** → セキュリティスキャン（自動）
-   - 署名検証
-   - ソースコードのセキュリティチェック
-4. **Functional Accuracy** → 機能テスト（Inspect Worker使用）
-   - Sandbox Runner実行
-   - RAGTruthとの比較
-   - メトリクス計算
-5. **Judge Panel** → LLMによる自動判定
-   - LLM（OpenAI/Anthropic）を使用した品質評価
-   - カテゴリ別スコアリング
-6. **Human Review** → 人間による最終承認（必要な場合）
-   - Review UIから承認/却下
-7. **Publish** → Agent Storeへの公開
-   - メタデータの更新
-   - 公開ステータスの変更
-
-**注意:**
-- Functional Accuracyステージは、実際のエージェントコードとSandbox Runnerが必要です
-- PoCでは一部のステージがスキップまたはモック動作する可能性があります
-- Inspect Workerは`response_samples.jsonl`が存在しない場合はエラーで停止しますが、これは正常な動作です
-
----
-
-## 🐛 トラブルシューティング
-
-### サービスが起動していない場合
+### Step 3-6: 組織のSubmission一覧取得
 
 ```bash
-# すべてのサービスの状態を確認
-docker compose ps -a
-
-# 停止しているサービスのログを確認
-docker compose logs <service-name>
-
-# すべてのサービスを再起動
-docker compose down
-docker compose up -d
-
-# リアルタイムでログを確認
-docker compose logs -f
+# 組織のSubmission一覧（状態フィルタ付き）
+curl -X GET "http://localhost:3000/api/organizations/$ORG_ID/submissions?state=published&limit=5" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" | jq
 ```
 
-### APIがエラーを返す場合
-
-```bash
-# APIのログを確認
-docker logs agent-store-api --tail 100 -f
-
-# データベース接続を確認
-docker compose exec postgres psql -U agent_store_user -d agent_store_db -c "\dt"
-
-# ネットワーク接続を確認
-docker compose exec api ping -c 3 postgres
-docker compose exec api ping -c 3 temporal
-```
-
-### Temporal Workerが動作していない場合
-
-```bash
-# Temporal Workerのログを確認
-docker logs agent-store-temporal-worker --tail 100 -f
-
-# Temporal Serverへの接続を確認
-docker compose exec temporal-worker nc -zv temporal 7233
-
-# Worker状態の詳細確認
-docker compose exec temporal-worker ps aux
-```
-
-### Temporal Workflowが作成されない場合
-
-**考えられる原因:**
-1. Temporal Workerが起動していない
-2. データベース接続エラー
-3. Workflowの起動に失敗している
-
-**確認手順:**
-```bash
-# 1. Temporal Workerのログを確認
-docker logs agent-store-temporal-worker --tail 50
-
-# 2. APIがTemporal Clientを初期化できているか確認
-docker logs agent-store-api | grep -i temporal
-
-# 3. Temporal Web UIでエラーを確認
-# http://localhost:8233 → Workflows → Filter by Status: Failed
-```
-
-### Review UIが空の場合
-
-**考えられる原因:**
-1. APIが正しく動作していない
-2. データベースにデータが保存されていない
-3. フロントエンドのAPIリクエストが失敗している
-
-**確認手順:**
-```bash
-# 1. ブラウザのDevTools (F12) でネットワークタブを確認
-# → /api/submissions へのリクエストが成功しているか
-
-# 2. APIを直接叩いて確認
-curl http://localhost:3002/v1/submissions
-
-# 3. データベースを直接確認
-docker compose exec postgres psql -U agent_store_user -d agent_store_db \
-  -c "SELECT COUNT(*) FROM submissions;"
+**期待される出力:**
+```json
+{
+  "submissions": [
+    {
+      "id": "submission-uuid",
+      "agentCardUrl": "https://example.com/agent-card.json",
+      "agentEndpoint": "https://api.example.com/agent",
+      "organizationId": "org-uuid",
+      "state": "published",
+      "trustScore": 85,
+      "autoDecision": "auto_approved",
+      "createdAt": "2025-11-15T00:00:00Z",
+      "updatedAt": "2025-11-15T12:00:00Z"
+    }
+  ],
+  "pagination": {
+    "total": 1,
+    "limit": 5,
+    "offset": 0,
+    "hasMore": false
+  }
+}
 ```
 
 ---
 
-## 🔍 デバッグ用コマンド集
+## 🧪 テストシナリオ4: ガバナンスAPIのテスト
 
-### コンテナ内でのコマンド実行
+**目的**: ガバナンス機能（監査レジャー、信頼シグナル、ポリシー管理）が正しく動作することを確認
 
-```bash
-# API コンテナ内でシェルを起動
-docker compose exec api sh
-
-# Temporal Worker コンテナ内でシェルを起動
-docker compose exec temporal-worker bash
-
-# PostgreSQLコンテナ内でシェルを起動
-docker compose exec postgres sh
-```
-
-### ログの確認
+### Step 4-1: 監査レジャーエントリの取得
 
 ```bash
-# すべてのサービスのログをリアルタイム表示
-docker compose logs -f
-
-# 特定のサービスのログのみ表示
-docker compose logs -f api
-docker compose logs -f temporal-worker
-docker compose logs -f temporal
-
-# 過去100行のログを表示
-docker compose logs --tail=100 api
+# 監査レジャー一覧取得（管理者専用）
+curl -X GET "http://localhost:3000/api/governance/audit-ledger?limit=10" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" | jq
 ```
 
-### ネットワーク接続の確認
+**期待される出力:**
+```json
+{
+  "ledgerEntries": [
+    {
+      "id": "ledger-uuid",
+      "submissionId": "submission-uuid",
+      "stage": "security",
+      "digestSha256": "abc123...",
+      "exportPath": "/ledger/submission-uuid/security.json",
+      "httpPosted": true,
+      "exportedAt": "2025-11-15T00:00:00Z"
+    }
+  ],
+  "pagination": {
+    "total": 1,
+    "limit": 10,
+    "offset": 0,
+    "hasMore": false
+  }
+}
+```
+
+### Step 4-2: 信頼シグナルの報告
 
 ```bash
-# APIからPostgreSQLへの接続確認
-docker compose exec api nc -zv postgres 5432
-
-# APIからTemporalへの接続確認
-docker compose exec api nc -zv temporal 7233
-
-# Temporal WorkerからTemporalへの接続確認
-docker compose exec temporal-worker nc -zv temporal 7233
+# 信頼シグナル登録（セキュリティインシデント報告）
+curl -X POST "http://localhost:3000/api/governance/trust-signals" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agentId": "agent-uuid",
+    "signalType": "security_incident",
+    "severity": "high",
+    "description": "プロンプトインジェクション攻撃を検出",
+    "metadata": {
+      "attackType": "prompt_injection",
+      "detectedAt": "2025-11-15T12:00:00Z"
+    }
+  }' | jq
 ```
 
-### データベースのクエリ
+**期待される出力:**
+```json
+{
+  "id": "signal-uuid",
+  "agentId": "agent-uuid",
+  "signalType": "security_incident",
+  "severity": "high",
+  "description": "プロンプトインジェクション攻撃を検出",
+  "metadata": {
+    "attackType": "prompt_injection",
+    "detectedAt": "2025-11-15T12:00:00Z"
+  },
+  "reporterId": "user-uuid",
+  "createdAt": "2025-11-15T12:00:00Z",
+  "resolved": false
+}
+```
+
+### Step 4-3: ガバナンスポリシーの取得
 
 ```bash
-# 全テーブルの一覧
-docker compose exec postgres psql -U agent_store_user -d agent_store_db -c "\dt"
-
-# 提出物の一覧
-docker compose exec postgres psql -U agent_store_user -d agent_store_db \
-  -c "SELECT id, state, created_at FROM submissions ORDER BY created_at DESC;"
-
-# 特定の提出物の詳細
-docker compose exec postgres psql -U agent_store_user -d agent_store_db \
-  -c "SELECT * FROM submissions WHERE id = '<submission-id>' \gx"
+# ポリシー一覧取得（管理者専用）
+curl -X GET "http://localhost:3000/api/governance/policies?policyType=aisi_prompt" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" | jq
 ```
+
+**期待される出力:**
+```json
+{
+  "policies": [
+    {
+      "id": "policy-uuid",
+      "policyType": "aisi_prompt",
+      "version": "v1.0.0",
+      "content": {
+        "prompts": [...]
+      },
+      "isActive": true,
+      "createdAt": "2025-11-15T00:00:00Z",
+      "activatedAt": "2025-11-15T00:00:00Z"
+    }
+  ],
+  "pagination": {
+    "total": 1,
+    "limit": 20,
+    "offset": 0,
+    "hasMore": false
+  }
+}
+```
+
+---
+
+## 🛠️ トラブルシューティング
+
+### 問題1: Auth Serviceが起動しない
+
+**エラーメッセージ:**
+```
+Error: JWT_SECRET and JWT_REFRESH_SECRET environment variables must be set
+```
+
+**解決方法:**
+1. `.env`ファイルに必須環境変数を設定
+2. サービスを再起動: `docker compose up -d auth-service`
+
+### 問題2: Submission UIでログインできない
+
+**症状:**
+- ログインボタンをクリックしても何も起こらない
+- 「サーバーエラー」が表示される
+
+**確認事項:**
+1. Auth Serviceが起動しているか確認
+   ```bash
+   docker compose ps auth-service
+   ```
+2. ネットワーク接続確認
+   ```bash
+   curl http://localhost:3003/health
+   ```
+3. ブラウザのDevToolsでエラーを確認
+
+### 問題3: Trust Scoreが算出されない
+
+**症状:**
+- ワークフローが止まる
+- Trust Scoreが`null`のまま
+
+**確認事項:**
+1. Temporal Workerが起動しているか確認
+   ```bash
+   docker compose ps temporal-worker
+   ```
+2. Temporal Web UIでワークフローのエラーを確認
+3. Activity Logを確認
+
+### 問題4: 組織管理APIで403 Forbiddenエラー
+
+**症状:**
+- 組織一覧取得で403エラー
+
+**確認事項:**
+1. ユーザーのロールを確認
+   ```bash
+   # JWTトークンをデコード
+   echo $ACCESS_TOKEN | cut -d. -f2 | base64 -d | jq
+   ```
+2. 管理者アカウントでログインしているか確認
+3. トークンの有効期限を確認
 
 ---
 
 ## ✅ テスト完了チェックリスト
 
-### 基本動作確認
-- [ ] すべてのサービスが起動している（`docker compose ps`で確認）
-- [ ] JWT_SECRETとJWT_REFRESH_SECRETが環境変数に設定されている
-- [ ] APIヘルスチェックが成功する（`/health`エンドポイント）
-- [ ] Submission UIがブラウザで表示される（http://localhost:3002）
-- [ ] Review UIがブラウザで表示される（http://localhost:3001）
-- [ ] Temporal Web UIがアクセス可能（http://localhost:8233）
+### シナリオ0: 企業アカウント登録と認証
+- [ ] ホームページが表示される
+- [ ] 企業アカウント登録フォームが動作する
+- [ ] バリデーションが正しく動作する
+- [ ] アカウント登録が成功する
+- [ ] localStorageにトークンが保存される
+- [ ] ログアウト・ログインが動作する
+- [ ] データベースに組織とユーザーが登録される
+- [ ] リフレッシュトークンがハッシュ化されて保存される
 
-### 認証システム（NEW!）
-- [ ] アカウント登録が成功する（Submission UI）
-- [ ] ログインが成功する（Submission UI）
-- [ ] アクセストークンとリフレッシュトークンが発行される
-- [ ] トークンがlocalStorageに保存される
-- [ ] リフレッシュトークンがDBでSHA256ハッシュ化されている
+### シナリオ1: エージェント登録から審査完了まで
+- [ ] エージェント登録フォームが動作する
+- [ ] エージェント登録が成功する
+- [ ] Temporal Workflowが開始される
+- [ ] PreCheckステージが完了する
+- [ ] Security Gateステージが完了する
+- [ ] Functional Accuracyステージが完了する
+- [ ] Judge Panelステージが完了する
+- [ ] Trust Scoreが算出される
+- [ ] Auto Decisionが決定される
+- [ ] データベースにTrust Scoreが永続化される
+- [ ] Trust Score >= 80でPublishステージが実行される
+- [ ] Catalog APIで公開エージェントを確認できる
 
-### Governance & Catalog API（NEW!）
-- [ ] Catalog APIで公開エージェント一覧が取得できる（認証なし）
-- [ ] Governance APIで監査レジャーが取得できる（admin/reviewer）
-- [ ] Trust Signal報告が成功する（認証済みユーザー）
-- [ ] ポリシー一覧が取得できる（admin）
-- [ ] RBACが正しく動作する（companyロールでadmin APIに403エラー）
+### シナリオ2: Trust Score自動判定の検証
+- [ ] Trust Score >= 80で`auto_approved`になる
+- [ ] Trust Score 40-79で`requires_human_review`になる
+- [ ] Trust Score < 40で`auto_rejected`になる
+- [ ] Human Reviewステージが正しく動作する
 
-### エージェント提出フロー
-- [ ] エージェント提出が202 Acceptedを返す
-- [ ] Temporal Workflowが作成される（Temporal Web UIで確認）
-- [ ] Review UIで提出物が表示される
-- [ ] データベースに提出レコードが保存される
-- [ ] APIで提出状態を取得できる（`GET /v1/submissions/{id}`）
+### シナリオ3: 組織管理機能のテスト
+- [ ] 組織一覧取得が動作する（管理者専用）
+- [ ] 組織詳細取得が動作する
+- [ ] 組織情報更新が動作する
+- [ ] 組織認証状態の更新が動作する（管理者専用）
+- [ ] 組織のユーザー一覧取得が動作する
+- [ ] 組織のSubmission一覧取得が動作する
+- [ ] アクセス制御が正しく動作する
 
-### レビューパイプライン
-- [ ] PreCheckステージが実行される
-- [ ] Security Gateステージが実行される
-- [ ] 各ステージのステータスがReview UIに反映される
-- [ ] Temporal Web UIでワークフローの進行が確認できる
-- [ ] エラーが発生した場合、ログに詳細が記録される
-
-### 統合動作確認
-- [ ] API → Temporal → Workerの連携が動作する
-- [ ] Worker → PostgreSQLのデータ保存が動作する
-- [ ] Review UI → APIのデータ取得が動作する
-- [ ] すべてのコンテナが安定して動作する（再起動しない）
+### シナリオ4: ガバナンスAPIのテスト
+- [ ] 監査レジャーエントリの取得が動作する
+- [ ] 信頼シグナルの報告が動作する
+- [ ] ガバナンスポリシーの取得が動作する
 
 ---
 
-## 📝 追加情報
-
-### PoCの制限事項
-
-このPoCでは以下の機能が制限されています：
-
-1. **認証・認可（2025-11-15更新）**
-   - ✅ **実装済み**: JWT認証、ユーザー登録・ログイン、RBAC（company/reviewer/admin）
-   - ✅ **セキュリティ強化済み**: JWT Secret必須化、リフレッシュトークンのSHA256ハッシュ化
-   - ⚠️ 一部のエンドポイントは認証未適用（Catalog APIは公開API）
-
-2. **Functional Accuracyステージの制限**
-   - 実際のエージェントコードの実行には、有効なtarballとSandbox Runnerが必要
-   - テスト用のサンプルデータが不足している場合、このステージはスキップまたはエラーになる
-
-3. **Human Reviewの手動操作**
-   - Review UIからの承認/却下は実装されているが、通知機能は未実装
-
-4. **スケーラビリティ**
-   - 単一のWorkerインスタンスのみ
-   - 本番環境では複数のWorkerインスタンスを使用してスケールアウトが可能
-
-### 次のステップ
-
-PoCが正常に動作することを確認したら、以下の機能追加を検討してください：
-
-1. **セキュリティの強化**（優先度：高）
-   - ✅ **完了**: JWT認証・認可の実装（company/reviewer/admin）
-   - ✅ **完了**: JWT Secret必須化、トークンハッシュ化
-   - ⚠️ **要対応**: Rate limiting（設定の調整）
-   - ⚠️ **要対応**: HTTPS対応
-
-2. **監視・ログ**（優先度：高）
-   - Prometheus/Grafanaによるメトリクス収集
-   - 構造化ログの導入（JSON形式）
-   - アラート設定
-
-3. **機能の拡張**（優先度：中）
-   - WebSocketによるリアルタイム更新
-   - Human Review通知機能（メール/Slack）
-   - バッチ処理機能
-
-4. **テストの追加**（優先度：中）
-   - E2Eテストの自動化（Playwright）
-   - 統合テストの拡充
-   - パフォーマンステスト
-
-詳細は `docs/POC_EVALUATION_REPORT.md` を参照してください。
+**テスト実施日**: ____________________
+**テスト実施者**: ____________________
+**テスト結果**: 合格 / 不合格
+**備考**: ____________________
