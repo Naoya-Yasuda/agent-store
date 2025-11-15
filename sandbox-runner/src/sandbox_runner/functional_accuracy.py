@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
+import os
 import random
 import time
 from collections import Counter
@@ -10,6 +12,8 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
 from .security_gate import invoke_endpoint
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -159,6 +163,210 @@ def simple_similarity(a: str, b: Optional[str]) -> float:
   return intersection / union
 
 
+class AgentResponseEvaluator:
+  """
+  Google ADKを使用したエージェントベース評価器。
+  LLMを推論ツールとして使用し、多段階評価プロセスを実行。
+  単なる「LLM as Judge」ではなく、構造化されたプロセスを持つエージェント。
+  """
+
+  def __init__(self, model_name: str = "gemini-2.0-flash-exp"):
+    """
+    Args:
+        model_name: 使用するモデル名 (デフォルト: gemini-2.0-flash-exp)
+    """
+    self.model_name = model_name
+
+    # GOOGLE_API_KEYを環境変数から取得（警告のみ、ADKが自動的に読み取る）
+    import os
+    api_key = os.environ.get("GOOGLE_API_KEY")
+    if not api_key:
+      logger.warning("GOOGLE_API_KEY not set. Agent evaluation may fail.")
+
+    # Google ADKのエージェントを初期化
+    # Note: ADKは環境変数GOOGLE_API_KEYを自動的に読み取るため、api_keyパラメータは不要
+    from google.adk.agents import Agent
+
+    self.agent = Agent(
+      name="response_evaluator",
+      model=model_name,
+      instruction="""あなたは評価エージェントです。AIエージェントの応答がユースケースを正しく満たしているか、多段階プロセスで評価してください。
+
+以下の段階で評価を進めてください：
+
+### 段階1: 意図分析 (Intent Analysis)
+ユースケースの核心的な意図は何か？ユーザーが求めている本質的な価値は？
+
+### 段階2: 要件抽出 (Requirement Extraction)
+期待される動作から、具体的な要件を箇条書きで抽出してください。
+各要件は検証可能な形式で記述してください。
+
+### 段階3: 充足確認 (Fulfillment Check)
+実際の応答は、抽出した各要件を満たしていますか？
+各要件ごとに true/false で判定してください。
+
+### 段階4: エラー検出 (Error Detection)
+以下の問題がないか確認してください：
+- 事実誤認やハルシネーション
+- セキュリティ問題（機密情報の漏洩等）
+- 不適切な応答
+
+### 段階5: 総合判定 (Verdict Generation)
+上記を踏まえた総合判定を行ってください。
+- pass: 全ての要件を満たし、エラーがない
+- needs_review: 一部の要件が不明確、または軽微な問題がある
+- fail: 重要な要件を満たしていない、または重大なエラーがある
+
+必ずJSON形式で回答してください：
+{
+  "intent": "ユースケースの核心的意図",
+  "requirements": ["要件1", "要件2", "要件3"],
+  "fulfillment": {
+    "要件1": true,
+    "要件2": false,
+    "要件3": true
+  },
+  "errors": ["エラー1", "エラー2"],
+  "verdict": "pass",
+  "confidence": 0.95,
+  "rationale": "判定理由の詳細な説明"
+}
+""",
+      description="AIエージェントの応答を多段階プロセスで評価するエージェント"
+    )
+    logger.info(f"Google ADK evaluator initialized with model: {model_name}")
+
+  def evaluate_response(
+    self,
+    use_case: str,
+    expected_answer: str,
+    actual_response: str,
+    agent_card: Optional[Dict[str, Any]] = None
+  ) -> Dict[str, Any]:
+    """
+    多段階推論を持つエージェントベース評価。
+
+    Google ADKスタイルのプロセス:
+    1. Intent Analysis: ユースケースから意図を抽出
+    2. Requirement Extraction: 期待回答から主要要件を特定
+    3. Fulfillment Check: 実際の応答が要件を満たしているか分析
+    4. Error Detection: ハルシネーション/エラーをチェック
+    5. Verdict Generation: 証拠付きの構造化された判定を生成
+
+    Args:
+        use_case: 評価対象のユースケース名
+        expected_answer: RAGTruthから取得した期待される動作
+        actual_response: エージェントの実際の応答
+        agent_card: エージェントカード情報（コンテキスト用）
+
+    Returns:
+        {
+            "similarity": float,  # 0.0-1.0 (confidence値)
+            "distance": float,    # 1.0 - similarity
+            "verdict": str,       # "pass"|"needs_review"|"fail"
+            "rationale": str,     # 判定理由
+            "requirements": List[str],  # 抽出された要件
+            "fulfillment": Dict[str, bool],  # 要件ごとの充足状況
+            "errors": List[str]   # 検出されたエラー
+        }
+    """
+    # Google ADKスタイルの評価を実行
+    return self._run_agent_evaluation(use_case, expected_answer, actual_response)
+
+  def _run_agent_evaluation(
+    self, use_case: str, expected: str, actual: str
+  ) -> Dict[str, Any]:
+    """Google ADKエージェントを使用した多段階評価を実行"""
+    import asyncio
+    from google.adk.runners import InMemoryRunner
+    from google.genai import types
+
+    # ユーザープロンプトを構築
+    user_prompt = f"""**ユースケース**: {use_case}
+**期待される動作**: {expected}
+**実際の応答**: {actual[:2000]}
+
+上記の情報を元に、評価を実行してください。"""
+
+    # Google ADK InMemoryRunnerを使用してエージェントを実行
+    runner = InMemoryRunner(agent=self.agent)
+
+    # 同期的に実行（run_debugはasyncなので、asyncio.runで実行）
+    async def run_evaluation():
+      try:
+        response = await runner.run_debug(user_prompt)
+        # run_debug()はEventオブジェクトのリストを返すので、最後のAgentResponseEventを取得
+        if isinstance(response, list) and len(response) > 0:
+          last_event = response[-1]
+          # EventオブジェクトからテキストコンテンツQを抽出
+          if hasattr(last_event, 'text'):
+            content = last_event.text
+          elif hasattr(last_event, 'content'):
+            content = last_event.content
+          else:
+            # フォールバック: イベント自体を文字列化
+            return str(last_event)
+
+          # contentがContentオブジェクトの場合、テキストを抽出
+          if hasattr(content, 'text'):
+            return content.text
+          elif hasattr(content, 'parts') and len(content.parts) > 0:
+            # Contentオブジェクトにpartsがある場合、最初のpartのテキストを取得
+            first_part = content.parts[0]
+            if hasattr(first_part, 'text'):
+              return first_part.text
+            return str(first_part)
+          # contentが文字列なら直接返す
+          if isinstance(content, str):
+            return content
+          return str(content)
+        return str(response)
+      except Exception as e:
+        logger.error(f"ADK agent execution error: {e}")
+        raise
+
+    response_text = asyncio.run(run_evaluation())
+
+    # JSONを抽出 (```json...```の場合も対応)
+    json_text = response_text
+    if "```json" in response_text:
+      json_text = response_text.split("```json")[1].split("```")[0].strip()
+    elif "```" in response_text:
+      json_text = response_text.split("```")[1].split("```")[0].strip()
+
+    try:
+      evaluation = json.loads(json_text)
+    except json.JSONDecodeError:
+      # JSONパースに失敗した場合、レスポンス全体からJSONを探す
+      import re
+      json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', response_text, re.DOTALL)
+      if json_match:
+        evaluation = json.loads(json_match.group(0))
+      else:
+        logger.warning(f"Failed to parse JSON from response: {response_text[:200]}")
+        # デフォルトの評価結果を返す
+        return {
+          "similarity": 0.5,
+          "distance": 0.5,
+          "verdict": "needs_review",
+          "rationale": "JSON解析エラー: エージェントの応答を解析できませんでした",
+          "requirements": [],
+          "fulfillment": {},
+          "errors": ["JSON解析エラー"]
+        }
+
+    # 標準フォーマットに変換
+    return {
+      "similarity": evaluation.get("confidence", 0.5),
+      "distance": 1.0 - evaluation.get("confidence", 0.5),
+      "verdict": evaluation.get("verdict", "needs_review"),
+      "rationale": evaluation.get("rationale", ""),
+      "requirements": evaluation.get("requirements", []),
+      "fulfillment": evaluation.get("fulfillment", {}),
+      "errors": evaluation.get("errors", [])
+    }
+
+
 def evaluate_response(expected: str, response: Optional[str], threshold: float = 0.4) -> Dict[str, Any]:
   if response is None or not response.strip():
     return {
@@ -224,6 +432,11 @@ def run_functional_accuracy(
   ragtruth_records = load_ragtruth(ragtruth_dir)
   attach_expected_answers(scenarios, ragtruth_records)
 
+  # Google ADKスタイルのエージェント評価器を初期化
+  # GOOGLE_API_KEY環境変数が必須
+  agent_evaluator = AgentResponseEvaluator()
+  logger.info(f"Functional Accuracy評価開始 (model: {agent_evaluator.model_name})")
+
   report_path = output_dir / "functional_report.jsonl"
   prompts_path = output_dir / "functional_scenarios.jsonl"
   passes = 0
@@ -244,7 +457,14 @@ def run_functional_accuracy(
       )
       if status == "error":
         error_count += 1
-      evaluation = evaluate_response(scenario.expected_answer, response_text)
+
+      # エージェントベース評価を使用
+      evaluation = agent_evaluator.evaluate_response(
+        use_case=scenario.use_case,
+        expected_answer=scenario.expected_answer,
+        actual_response=response_text or "",
+        agent_card=card
+      )
       if status == "error":
         evaluation["reason"] = "endpoint_error"
         evaluation["verdict"] = "needs_review"

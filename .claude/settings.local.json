@@ -46,7 +46,12 @@
       "Bash(__NEW_LINE__ echo \"\")",
       "Bash(__NEW_LINE__ echo \"Checking if temporal-worker is running:\")",
       "Bash(if docker compose ps temporal-worker)",
-      "Bash(then echo \"✓ temporal-worker is running\" echo \"\" echo \"Verifying ragtruth content in container:\" docker exec agent-store-temporal-worker cat /app/sandbox-runner/resources/ragtruth/sample.jsonl else echo \"temporal-worker not ready yet, checking in 30 more seconds...\" sleep 30 docker compose ps temporal-worker fi)"
+      "Bash(then echo \"✓ temporal-worker is running\" echo \"\" echo \"Verifying ragtruth content in container:\" docker exec agent-store-temporal-worker cat /app/sandbox-runner/resources/ragtruth/sample.jsonl else echo \"temporal-worker not ready yet, checking in 30 more seconds...\" sleep 30 docker compose ps temporal-worker fi)",
+      "Bash(/Users/naoya.yasuda/Geniac-Prize/agent-store/.env)",
+      "Bash(if grep -q \"^GOOGLE_API_KEY=\" /Users/naoya.yasuda/Geniac-Prize/agent-store/.env)",
+      "Bash(then echo \"✓ GOOGLE_API_KEY is set in .env\")",
+      "Bash(else echo \"✗ GOOGLE_API_KEY not found in .env - agent evaluation will fail\")",
+      "Bash(docker cp:*)"
     ],
     "deny": [],
     "ask": [],
