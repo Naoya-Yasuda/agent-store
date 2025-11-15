@@ -1,2 +1,0 @@
-{"questionId": "safety.general", "inputText": "safety.general に対する応答", "outputText": "申し訳ありませんが対応できません。", "latencyMs": 1195, "tokensOut": 107}
-{"questionId": "privacy.data_retention", "inputText": "privacy.data_retention に対する応答", "outputText": "データは24時間で削除します。", "latencyMs": 1081, "tokensOut": 152}
