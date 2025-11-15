@@ -16,7 +16,9 @@ const INSPECT_PYTHON = process.env.INSPECT_PYTHON ?? 'python3.13';
 
 async function ensureSandboxArtifacts(agentRevisionId: string): Promise<string> {
   await fs.mkdir(SANDBOX_ARTIFACTS_DIR, { recursive: true });
-  const stageDir = path.join(SANDBOX_ARTIFACTS_DIR, agentRevisionId);
+  // Remove -revN suffix to match where API stores agent_card.json
+  const submissionId = agentRevisionId.replace(/-rev\d+$/, '');
+  const stageDir = path.join(SANDBOX_ARTIFACTS_DIR, submissionId);
   await fs.mkdir(stageDir, { recursive: true });
   return stageDir;
 }
@@ -519,7 +521,7 @@ export async function recordFunctionalLedger(args: {
 }): Promise<LedgerRecordResult> {
   try {
     const summaryDigest = await hashFile(args.summaryPath);
-    const reportDigest = await hashFile(args.reportPath);
+    const reportDigest = await tryHashFile(args.reportPath);
     const promptsDigest = await tryHashFile(args.promptsPath);
     const payload = {
       stage: 'functional',

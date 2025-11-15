@@ -28,8 +28,13 @@ export async function createSubmission(payload: SubmissionPayload, manifestWarni
 
   const wandbRun = ensureWandbConfig(payload.telemetry?.wandb);
   const record = await insertSubmission(payload, manifestWarnings, requestContext, wandbRun);
-  const relay = payload.telemetry?.relay;
-  const artifactKey = payload.cardDocument.id || record.id;
+  // Extract endpoint URL from endpointManifest and pass as relay
+  const relay = payload.telemetry?.relay || (payload.endpointManifest?.url ? {
+    endpoint: payload.endpointManifest.url,
+    token: payload.endpointManifest.headers?.['Authorization'] || undefined
+  } : undefined);
+  // Always use submission ID as artifact key to match Temporal Worker's directory structure
+  const artifactKey = record.id;
   const agentCardPath = await persistAgentCard(artifactKey, payload.cardDocument);
   try {
     await startReviewWorkflow({

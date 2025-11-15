@@ -105,7 +105,7 @@ services:
     networks:
       - agent-store-network
     volumes:
-      - ./sandbox-runner/artifacts:/app/artifacts
+      - ./sandbox-runner/artifacts:/app/sandbox-runner/artifacts
       - ./logs:/app/logs
 
   # Express API Server
@@ -136,7 +136,7 @@ services:
       - agent-store-network
     volumes:
       - ./logs:/app/logs
-      - ./sandbox-runner/artifacts:/app/artifacts
+      - ./sandbox-runner/artifacts:/app/sandbox-runner/artifacts
       - ./api:/app/api:cached
       - ./db:/app/db:cached
       - ./schemas:/app/schemas:cached

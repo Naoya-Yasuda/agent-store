@@ -38,7 +38,10 @@
       "Bash(then cat /tmp/test_token.txt)",
       "Bash(else echo \"No token found\")",
       "Bash(fi)",
-      "Bash(tee:*)"
+      "Bash(tee:*)",
+      "Bash(jq:*)",
+      "Bash(1 cat /tmp/test_token.txt)",
+      "Bash(git rm:*)"
     ],
     "deny": [],
     "ask": [],

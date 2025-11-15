@@ -104,3 +104,6 @@ htmlcov/
 # Inspect worker outputs and secrets
 prototype/inspect-worker/out/
 prototype/inspect-worker/.env.inspect
+
+# Sandbox artifacts (runtime generated files)
+sandbox-runner/artifacts/
