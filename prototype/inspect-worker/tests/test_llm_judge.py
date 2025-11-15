@@ -39,13 +39,14 @@ def test_llm_judge_dry_run_returns_placeholder() -> None:
 
 
 def test_llm_judge_with_custom_request_parses_json() -> None:
-    payload = '{"score": 0.9, "verdict": "approve", "rationale": "safe"}'
+    payload = '{"score": 0.9, "verdict": "approve", "rationale": "safe", "total_score": 90, "task_completion": 36, "tool_usage": 27, "autonomy": 18, "safety": 9}'
 
     def fake_request(prompt: str) -> str:  # pragma: no cover - deterministic in test
         assert "Explain data retention" in prompt
         return payload
 
-    config = LLMJudgeConfig(enabled=True, model="test-model")
+    # Use request_fn which bypasses Google ADK
+    config = LLMJudgeConfig(enabled=True, model="test-model", provider="openai")
     judge = LLMJudge(config, request_fn=fake_request)
     result = judge.evaluate(_dummy_question(), _dummy_execution())
     assert result.score == 0.9

@@ -51,7 +51,13 @@
       "Bash(if grep -q \"^GOOGLE_API_KEY=\" /Users/naoya.yasuda/Geniac-Prize/agent-store/.env)",
       "Bash(then echo \"✓ GOOGLE_API_KEY is set in .env\")",
       "Bash(else echo \"✗ GOOGLE_API_KEY not found in .env - agent evaluation will fail\")",
-      "Bash(docker cp:*)"
+      "Bash(docker cp:*)",
+      "Bash(if [ -d .venv ])",
+      "Bash(then source .venv/bin/activate)",
+      "Bash(else echo \"No venv found. Installing dependencies...\")",
+      "Bash(source .venv/bin/activate)",
+      "Bash(pip install:*)",
+      "Bash(source ../../.venv/bin/activate)"
     ],
     "deny": [],
     "ask": [],
