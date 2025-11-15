@@ -198,6 +198,17 @@ Docker Composeを使わずに個別に起動する場合：
 - `pip install -r requirements.txt`
 - `pip install -e sandbox-runner` でローカルCLIを有効化（Google ADKテンプレートを含むSandbox Runnerコマンドが利用可能になります）。
 - `pytest` を実行するとリポジトリ内のユニットテストのみが走ります（`pytest.ini`で外部チェックアウトを除外）。
+
+## サンプルエージェントでの動作確認
+
+Docker構成で `sample-agent` コンテナ（`sample-agent` ディレクトリ）を同時に立ち上げた状態で、Review UI の**エージェント登録画面**から以下の情報を使ってサンプルを登録するとセットアップの検証ができます。
+
+| 項目 | 設定例（Sample Agent 用） | 説明 |
+| --- | --- | --- |
+| エージェントカードURL（必須） | `http://sample-agent:4000/agent-card.json` | Agent Card とは公開されている自己紹介データ（名前、バージョン、対応する API など）を定義した JSON データ。署名付きなので改ざん検知にも使われます。 |
+| エンドポイントURL（必須） | `http://sample-agent:4000/agent/chat` | 実際に対話リクエストを送る先の API。Sample Agent は LLM を使用した応答を返すため、エンドツーエンドのリクエストフローを確認できます。 |
+
+登録後は Review UI 上の「テスト実行」や Sandbox Runner の `--agent-id sample-agent` などで通信確認を行い、正しく応答が返ることを確認してください。実運用で使う場合は上記 URL を自社エージェントに差し替え、実際の証明書・鍵・署名付き Agent Card を用意する必要があります。
 - W&B MCPを使ってステージログ/アーティファクトを収集する場合は `. .venv/bin/activate && export WANDB_DISABLED=false` を設定してから各コマンドを実行してください（デフォルトでは有効化されますが、明示的にフラグを確認できます）。Submission APIから`telemetry.wandb`フィールドでRun ID/Project/Entity/BaseURLを渡すと、同じRunをTemporalやSandbox Runnerが再利用できます。
 - LLM Judgeを有効化したい場合はSubmission payloadの`telemetry.llmJudge`（例: `{ "enabled": true, "model": "gpt-4o-mini", "provider": "openai", "temperature": 0.1 }`）を指定すると、Temporalワークフロー経由でInspect Worker CLIの`--judge-llm-*`フラグに伝播されます。dry-runを強制したい場合は`dryRun: true`を指定してください。
 - Security Gateをローカルで試す場合は `sandbox-runner` で

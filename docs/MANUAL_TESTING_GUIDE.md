@@ -85,7 +85,7 @@ docker compose ps
 | `agent-store-auth-service` | 3003 | 認証サーバー（JWT発行） |
 | `agent-store-submission-ui` | 3002 | エージェント登録UI（企業向け） |
 | `agent-store-review-ui` | 3001 | レビュー管理UI（管理者向け） |
-| `agent-store-mock-agent` | 4000 | LLM搭載フライト予約エージェント（テスト用） |
+| `agent-store-sample-agent` | 4000 | LLM搭載フライト予約エージェント（テスト用） |
 | `agent-store-postgres` | 5432 | メインデータベース |
 | `agent-store-temporal-postgres` | 5433 | Temporal用データベース |
 | `agent-store-temporal` | 7233 | Temporalサーバー |
@@ -283,14 +283,14 @@ docker compose exec postgres sh -c 'psql -U $POSTGRES_USER -d $POSTGRES_DB -c "S
 
 **🔴 重要: Docker環境では、コンテナ間通信のためサービス名を使用してください**
 
-- **エージェントカードURL**: `http://mock-agent:4000/agent-card.json`
-- **エンドポイントURL**: `http://mock-agent:4000/agent/chat`
+- **エージェントカードURL**: `http://sample-agent:4000/agent-card.json`
+- **エンドポイントURL**: `http://sample-agent:4000/agent/chat`
 - **署名バンドル（オプション）**: ファイルをアップロード（またはスキップ）
 
 **📝 説明:**
-- `localhost`ではなく`mock-agent`を使用する理由：
+- `localhost`ではなく`sample-agent`を使用する理由：
   - APIコンテナ内から見た`localhost`はAPIコンテナ自身を指します
-  - `mock-agent`はDockerネットワーク内のサービス名です
+  - `sample-agent`はDockerネットワーク内のサービス名です
   - これにより、コンテナ間で正しく通信できます
 
 **バリデーション確認:**

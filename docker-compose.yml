@@ -230,12 +230,12 @@ services:
     volumes:
       - ./sandbox-runner/artifacts:/app/sandbox-runner/artifacts
 
-  # Mock Flight Agent (for testing)
-  mock-agent:
+  # Sample Flight Agent (for testing)
+  sample-agent:
     build:
-      context: ./mock-agent
+      context: ./sample-agent
       dockerfile: Dockerfile
-    container_name: agent-store-mock-agent
+    container_name: agent-store-sample-agent
     env_file:
       - .env
     environment:

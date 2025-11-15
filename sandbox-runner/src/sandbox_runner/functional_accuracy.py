@@ -165,9 +165,14 @@ def simple_similarity(a: str, b: Optional[str]) -> float:
 
 class AgentResponseEvaluator:
   """
-  Google ADKを使用したエージェントベース評価器。
+  Google ADKを使用した対話型エージェント評価器。
   LLMを推論ツールとして使用し、多段階評価プロセスを実行。
-  単なる「LLM as Judge」ではなく、構造化されたプロセスを持つエージェント。
+
+  **評価方針**:
+  - 単一ターンの応答を評価（マルチターン対話の1ターン目）
+  - 「話題の適切性」と「対話の進展」を重視
+  - 質問形式の応答も適切と判定（必要情報の収集は正常な対話）
+  - タスク完了よりも、適切な対話の継続を優先
   """
 
   def __init__(self, model_name: str = "gemini-2.0-flash-exp"):
@@ -190,42 +195,55 @@ class AgentResponseEvaluator:
     self.agent = Agent(
       name="response_evaluator",
       model=model_name,
-      instruction="""あなたは評価エージェントです。AIエージェントの応答がユースケースを正しく満たしているか、多段階プロセスで評価してください。
+      instruction="""あなたは対話型AIエージェントの評価専門家です。**単一ターンの応答**がユースケースに適切かを、多段階プロセスで評価してください。
+
+**重要な前提**:
+- 対話型エージェントは、必要な情報を収集するために質問をすることがあります
+- 1回目の応答で全ての情報を提供する必要はありません
+- 「話題の適切性」と「対話の進展」を重視します
 
 以下の段階で評価を進めてください：
 
 ### 段階1: 意図分析 (Intent Analysis)
 ユースケースの核心的な意図は何か？ユーザーが求めている本質的な価値は？
 
-### 段階2: 要件抽出 (Requirement Extraction)
-期待される動作から、具体的な要件を箇条書きで抽出してください。
-各要件は検証可能な形式で記述してください。
+### 段階2: 話題適切性確認 (Topic Relevance Check)
+実際の応答は、ユースケースの話題に関連していますか？
+以下を確認してください：
+- ユースケースに関連する話題で応答しているか
+- 完全に無関係な話題に逸れていないか
 
-### 段階3: 充足確認 (Fulfillment Check)
-実際の応答は、抽出した各要件を満たしていますか？
-各要件ごとに true/false で判定してください。
+### 段階3: 対話進展評価 (Dialogue Progress Evaluation)
+実際の応答は、タスク完了に向けて適切に対話を進めていますか？
+以下のいずれかに該当すれば「適切」と判断してください：
+- タスクを完了するために必要な情報を質問している
+- 部分的な情報を提供し、次のステップを示している
+- タスクを完全に完了している
 
 ### 段階4: エラー検出 (Error Detection)
 以下の問題がないか確認してください：
 - 事実誤認やハルシネーション
 - セキュリティ問題（機密情報の漏洩等）
 - 不適切な応答
+- 完全に無関係な話題への逸脱
 
 ### 段階5: 総合判定 (Verdict Generation)
 上記を踏まえた総合判定を行ってください。
-- pass: 全ての要件を満たし、エラーがない
-- needs_review: 一部の要件が不明確、または軽微な問題がある
-- fail: 重要な要件を満たしていない、または重大なエラーがある
+- **pass**: 話題に関連し、対話を適切に進めており、エラーがない（質問形式でも可）
+- **needs_review**: 一部の要素が不明確、または軽微な問題がある
+- **fail**: 完全に無関係な話題、または重大なエラーがある
+
+**判定例**:
+- ✅ pass: 「出発地と目的地を教えてください」（必要情報を質問）
+- ✅ pass: 「東京から大阪への便をご案内します。ご希望の日時は？」（部分回答+質問）
+- ✅ pass: 「東京10:00発、大阪12:00着の便があります」（完全回答）
+- ❌ fail: 「今日の天気は晴れです」（フライト予約に無関係）
 
 必ずJSON形式で回答してください：
 {
   "intent": "ユースケースの核心的意図",
-  "requirements": ["要件1", "要件2", "要件3"],
-  "fulfillment": {
-    "要件1": true,
-    "要件2": false,
-    "要件3": true
-  },
+  "topic_relevance": true,
+  "dialogue_progress": true,
   "errors": ["エラー1", "エラー2"],
   "verdict": "pass",
   "confidence": 0.95,
@@ -244,14 +262,19 @@ class AgentResponseEvaluator:
     agent_card: Optional[Dict[str, Any]] = None
   ) -> Dict[str, Any]:
     """
-    多段階推論を持つエージェントベース評価。
+    多段階推論を持つ対話型エージェントベース評価。
 
     Google ADKスタイルのプロセス:
     1. Intent Analysis: ユースケースから意図を抽出
-    2. Requirement Extraction: 期待回答から主要要件を特定
-    3. Fulfillment Check: 実際の応答が要件を満たしているか分析
+    2. Topic Relevance Check: 応答がユースケースに関連する話題か確認
+    3. Dialogue Progress Evaluation: 対話を適切に進めているか評価
     4. Error Detection: ハルシネーション/エラーをチェック
     5. Verdict Generation: 証拠付きの構造化された判定を生成
+
+    **評価方針**:
+    - 質問形式の応答も「pass」と判定（必要情報の収集は正常）
+    - タスク完了を必須とせず、適切な対話の継続を重視
+    - 話題の逸脱や重大なエラーのみ「fail」判定
 
     Args:
         use_case: 評価対象のユースケース名
@@ -265,8 +288,8 @@ class AgentResponseEvaluator:
             "distance": float,    # 1.0 - similarity
             "verdict": str,       # "pass"|"needs_review"|"fail"
             "rationale": str,     # 判定理由
-            "requirements": List[str],  # 抽出された要件
-            "fulfillment": Dict[str, bool],  # 要件ごとの充足状況
+            "topic_relevance": bool,  # 話題の適切性
+            "dialogue_progress": bool,  # 対話の進展
             "errors": List[str]   # 検出されたエラー
         }
     """
@@ -350,8 +373,8 @@ class AgentResponseEvaluator:
           "distance": 0.5,
           "verdict": "needs_review",
           "rationale": "JSON解析エラー: エージェントの応答を解析できませんでした",
-          "requirements": [],
-          "fulfillment": {},
+          "topic_relevance": False,
+          "dialogue_progress": False,
           "errors": ["JSON解析エラー"]
         }
 
@@ -361,8 +384,8 @@ class AgentResponseEvaluator:
       "distance": 1.0 - evaluation.get("confidence", 0.5),
       "verdict": evaluation.get("verdict", "needs_review"),
       "rationale": evaluation.get("rationale", ""),
-      "requirements": evaluation.get("requirements", []),
-      "fulfillment": evaluation.get("fulfillment", {}),
+      "topic_relevance": evaluation.get("topic_relevance", True),
+      "dialogue_progress": evaluation.get("dialogue_progress", True),
       "errors": evaluation.get("errors", [])
     }
 
@@ -545,3 +568,283 @@ def embedding_distance(expected: str, response: Optional[str]) -> Optional[float
     return None
   cosine_similarity = dot / (norm_expected * norm_response)
   return round(1 - cosine_similarity, 4)
+
+
+@dataclass
+class DialogueTurn:
+  """対話の1ターンを表すデータクラス"""
+  user_message: str
+  agent_response: str
+  turn_number: int
+
+
+class MultiTurnDialogueEvaluator:
+  """
+  マルチターン対話の評価器。
+
+  対話全体のフローを評価し、以下の観点でスコアリング:
+  1. タスク完了度 (Task Completion)
+  2. 対話の自然さ (Dialogue Naturalness)
+  3. 情報収集の適切性 (Information Gathering)
+  4. エラーの有無 (Error Detection)
+  """
+
+  def __init__(self, model_name: str = "gemini-2.0-flash-exp"):
+    """
+    Args:
+        model_name: 使用するモデル名
+    """
+    self.model_name = model_name
+
+    api_key = os.environ.get("GOOGLE_API_KEY")
+    if not api_key:
+      logger.warning("GOOGLE_API_KEY not set. Multi-turn evaluation may fail.")
+
+    from google.adk.agents import Agent
+
+    self.agent = Agent(
+      name="multiturn_evaluator",
+      model=model_name,
+      instruction="""あなたはマルチターン対話の評価専門家です。複数ターンにわたる対話全体を評価してください。
+
+**評価観点**:
+
+### 1. タスク完了度 (Task Completion) - 0.0~1.0
+- ユースケースで要求されたタスクをどの程度完了したか
+- 必要な情報を全て収集できたか
+- 最終的にユーザーのニーズを満たしたか
+
+### 2. 対話の自然さ (Dialogue Naturalness) - 0.0~1.0
+- 対話の流れが自然か
+- 適切なタイミングで質問・回答しているか
+- 冗長な繰り返しがないか
+
+### 3. 情報収集の適切性 (Information Gathering) - 0.0~1.0
+- 必要な情報を効率的に収集しているか
+- 不要な質問をしていないか
+- 適切な順序で情報を尋ねているか
+
+### 4. エラー検出 (Error Detection)
+- 事実誤認やハルシネーション
+- 対話の破綻（同じ質問の繰り返し等）
+- 不適切な応答
+
+**総合判定**:
+- **complete**: タスクを完全に完了し、自然な対話ができている
+- **partial**: タスクの一部を完了したが、改善の余地がある
+- **failed**: タスクを完了できなかった、または重大なエラーがある
+
+必ずJSON形式で回答してください：
+{
+  "task_completion": 0.9,
+  "dialogue_naturalness": 0.85,
+  "information_gathering": 0.8,
+  "errors": ["エラー1", "エラー2"],
+  "verdict": "complete",
+  "confidence": 0.9,
+  "rationale": "判定理由の詳細な説明",
+  "turn_by_turn_analysis": [
+    {"turn": 1, "comment": "適切な質問をしている"},
+    {"turn": 2, "comment": "必要な情報を収集できた"}
+  ]
+}
+""",
+      description="マルチターン対話を評価するエージェント"
+    )
+    logger.info(f"Multi-turn dialogue evaluator initialized with model: {model_name}")
+
+  def evaluate_dialogue(
+    self,
+    use_case: str,
+    expected_behavior: str,
+    dialogue_turns: List[DialogueTurn],
+    agent_card: Optional[Dict[str, Any]] = None
+  ) -> Dict[str, Any]:
+    """
+    マルチターン対話全体を評価。
+
+    Args:
+        use_case: ユースケース名
+        expected_behavior: 期待される動作
+        dialogue_turns: 対話のターンリスト
+        agent_card: エージェントカード情報
+
+    Returns:
+        {
+            "task_completion": float,
+            "dialogue_naturalness": float,
+            "information_gathering": float,
+            "errors": List[str],
+            "verdict": str,  # "complete"|"partial"|"failed"
+            "confidence": float,
+            "rationale": str,
+            "turn_by_turn_analysis": List[Dict]
+        }
+    """
+    import asyncio
+    from google.adk.runners import InMemoryRunner
+
+    # 対話履歴を整形
+    dialogue_history = "\n\n".join([
+      f"**Turn {turn.turn_number}**\nUser: {turn.user_message}\nAgent: {turn.agent_response}"
+      for turn in dialogue_turns
+    ])
+
+    user_prompt = f"""**ユースケース**: {use_case}
+**期待される動作**: {expected_behavior}
+**対話履歴**:
+{dialogue_history}
+
+上記の対話全体を評価してください。"""
+
+    runner = InMemoryRunner(agent=self.agent)
+
+    async def run_evaluation():
+      try:
+        response = await runner.run_debug(user_prompt)
+        if isinstance(response, list) and len(response) > 0:
+          last_event = response[-1]
+          if hasattr(last_event, 'text'):
+            content = last_event.text
+          elif hasattr(last_event, 'content'):
+            content = last_event.content
+          else:
+            return str(last_event)
+
+          if hasattr(content, 'text'):
+            return content.text
+          elif hasattr(content, 'parts') and len(content.parts) > 0:
+            first_part = content.parts[0]
+            if hasattr(first_part, 'text'):
+              return first_part.text
+            return str(first_part)
+          if isinstance(content, str):
+            return content
+          return str(content)
+        return str(response)
+      except Exception as e:
+        logger.error(f"Multi-turn evaluation error: {e}")
+        raise
+
+    response_text = asyncio.run(run_evaluation())
+
+    # JSONを抽出
+    json_text = response_text
+    if "```json" in response_text:
+      json_text = response_text.split("```json")[1].split("```")[0].strip()
+    elif "```" in response_text:
+      json_text = response_text.split("```")[1].split("```")[0].strip()
+
+    try:
+      evaluation = json.loads(json_text)
+    except json.JSONDecodeError:
+      import re
+      json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', response_text, re.DOTALL)
+      if json_match:
+        evaluation = json.loads(json_match.group(0))
+      else:
+        logger.warning(f"Failed to parse multi-turn evaluation JSON: {response_text[:200]}")
+        return {
+          "task_completion": 0.5,
+          "dialogue_naturalness": 0.5,
+          "information_gathering": 0.5,
+          "errors": ["JSON解析エラー"],
+          "verdict": "partial",
+          "confidence": 0.0,
+          "rationale": "JSON解析エラー: エージェントの応答を解析できませんでした",
+          "turn_by_turn_analysis": []
+        }
+
+    return evaluation
+
+
+def run_multiturn_dialogue_evaluation(
+  *,
+  use_case: str,
+  expected_behavior: str,
+  initial_prompt: str,
+  endpoint_url: str,
+  endpoint_token: Optional[str],
+  max_turns: int = 5,
+  timeout: float = 30.0,
+  dry_run: bool = False
+) -> Dict[str, Any]:
+  """
+  マルチターン対話を実行して評価。
+
+  Args:
+      use_case: ユースケース名
+      expected_behavior: 期待される動作
+      initial_prompt: 初回プロンプト
+      endpoint_url: エージェントエンドポイントURL
+      endpoint_token: 認証トークン
+      max_turns: 最大ターン数
+      timeout: タイムアウト（秒）
+      dry_run: ドライラン mode
+
+  Returns:
+      マルチターン評価結果
+  """
+  evaluator = MultiTurnDialogueEvaluator()
+  dialogue_turns: List[DialogueTurn] = []
+
+  if dry_run:
+    # ドライランモードでは仮の対話を生成
+    dialogue_turns.append(DialogueTurn(
+      user_message=initial_prompt,
+      agent_response="(dry-run) 出発地と目的地を教えてください。",
+      turn_number=1
+    ))
+    dialogue_turns.append(DialogueTurn(
+      user_message="東京から大阪です",
+      agent_response="(dry-run) ご希望の日時を教えてください。",
+      turn_number=2
+    ))
+    dialogue_turns.append(DialogueTurn(
+      user_message="明日の朝です",
+      agent_response="(dry-run) 東京10:00発、大阪12:00着の便をご案内します。",
+      turn_number=3
+    ))
+  else:
+    # 実際のマルチターン対話を実行
+    current_prompt = initial_prompt
+    for turn in range(1, max_turns + 1):
+      try:
+        response_text = invoke_endpoint(endpoint_url, current_prompt, timeout=timeout, token=endpoint_token)
+        dialogue_turns.append(DialogueTurn(
+          user_message=current_prompt,
+          agent_response=response_text,
+          turn_number=turn
+        ))
+
+        # 次のターンのプロンプトを簡易的に生成（実際のユースケースに応じてカスタマイズ必要）
+        # TODO: ここはより洗練されたプロンプト生成ロジックに置き換える
+        if turn == 1 and ("教えて" in response_text or "ください" in response_text):
+          current_prompt = "東京から大阪です"
+        elif turn == 2:
+          current_prompt = "明日の朝10時頃です"
+        else:
+          break  # 対話完了と判断
+      except Exception as e:
+        logger.error(f"Multi-turn dialogue error at turn {turn}: {e}")
+        break
+
+  # 対話全体を評価
+  evaluation = evaluator.evaluate_dialogue(
+    use_case=use_case,
+    expected_behavior=expected_behavior,
+    dialogue_turns=dialogue_turns
+  )
+
+  evaluation["dialogue_turns"] = [
+    {
+      "turn": t.turn_number,
+      "user_message": t.user_message,
+      "agent_response": t.agent_response
+    }
+    for t in dialogue_turns
+  ]
+  evaluation["total_turns"] = len(dialogue_turns)
+  evaluation["dry_run"] = dry_run
+
+  return evaluation

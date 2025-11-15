@@ -57,7 +57,8 @@
       "Bash(else echo \"No venv found. Installing dependencies...\")",
       "Bash(source .venv/bin/activate)",
       "Bash(pip install:*)",
-      "Bash(source ../../.venv/bin/activate)"
+      "Bash(source ../../.venv/bin/activate)",
+      "Bash(docker rm:*)"
     ],
     "deny": [],
     "ask": [],
