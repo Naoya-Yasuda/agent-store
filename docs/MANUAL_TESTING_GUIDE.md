@@ -677,6 +677,34 @@ docker compose exec postgres sh -c 'psql -U $POSTGRES_USER -d $POSTGRES_DB -c "S
 
 ---
 
+## 🧪 シナリオ5: Review UI 証拠ビューアのブラウザ確認
+
+**目的**: Review UI の証拠ビュー／Manual バナー／Ledger／Relay／LLM Override をブラウザで操作し、表示とフォーカスが期待どおりに動作するか確認する。
+
+**アクセスURL**: `http://localhost:3001`
+
+### Step 5-1: Review Dashboard で Submission を読み込む
+1. Review UI（`http://localhost:3001`）を開き、管理者アカウントでログイン
+2. Submission ID `demo-manual`（または検証用ID）を入力して「最新の進捗を取得」ボタンを押す
+3. Manual 判定のカードが表示され、証拠ビュー関連のボタンがアクティブになることを確認
+
+### Step 5-2: Manual バナーと証拠ビューの操作
+1. 「証拠ビューを開く」「該当カードへ移動」「LLM設定を見直して再実行」をクリックし、スクロールやハイライトが動作すること
+2. Manual カードに `manual` タグや赤系ハイライトが付き、Developer Tools で focus/class が変化することを確認
+
+### Step 5-3: LLM Override / 再実行フォーム
+1. Manualカード由来のモデル名（例: `gpt-4o`）やスコアがフォームにプリセットされていることを確認
+2. `judge` ステージを選んで「再実行」を押し、Network タブで `/review/retry` への POST が送られることを確認
+
+### Step 5-4: Ledger と Relay セクションの検証
+1. Ledger 記録中の `downloadAvailable: false` エントリが赤背景で詳細テキストを表示すること
+2. Relay ログ検索に `question-123` を投入し、結果一覧がフィルタされて表示されること
+
+### Step 5-5: UI ステータスとフィードバック
+1. Trust Score / Auto Decision / ステージステータスが Manual バナー付近に正しく描画されているか確認
+2. ボタン操作後に DOM クラスや aria 属性が変化し、想定どおりのUIフィードバックが出ることを確認
+
+
 ## 🧪 テストシナリオ3: 組織管理機能のテスト
 
 **目的**: 組織管理API（CRUD）が正しく動作することを確認

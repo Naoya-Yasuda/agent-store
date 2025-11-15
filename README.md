@@ -252,7 +252,7 @@ Docker Composeを使わずに個別に起動する場合：
 - **Docker Compose Smoke Test**（E2E=End-to-End=端から端の一連動作確認）: 本コミットで追加。`docker compose up` で `postgres` / `temporal-postgres` / `temporal` / `temporal-worker` / `api` / `inspect-worker` を起動し、`curl http://localhost:3000/health` と `tctl cluster health` を用いてAPIおよびTemporalの可用性を自動チェック後、`docker compose down -v` で環境を掃除します。
 - **Inspect Worker Tests**: `scripts/test_inspect_worker.sh` をGitHub Actionsで実行し、Judge Panel/Relayロジックのpytestを常に走らせます（`WANDB_DISABLED=true`でネットワーク資格情報が不要なDry Run相当の検証）。
 - **Review UI (Next.js) テスト**: `cd review-ui && npm run test` でVitest＋Testing Libraryによるフォーム・バリデーションを実行。Judge manualフローのE2E検証に向けてPlaywright導入を予定しており、`npx playwright test` で `/review/progress` のモックレスポンスを用いたUI自動テストを実行する計画です。
-- Playwright E2Eテストのシナリオとセットアップ手順は [docs/testing/review-ui-playwright-plan.md](docs/testing/review-ui-playwright-plan.md) を参照してください。
+Playwright E2Eテストのシナリオとセットアップ手順は `review-ui/tests/e2e/judge-manual.spec.ts` をベースに整理されています。
 - **Review UI Playwright (CI)**: `.github/workflows/review-ui-playwright.yml` が `npm run test -- --run`（Vitest）と `npm run test:e2e`（Playwright）をPRごとに実行し、Judge Panelのmanualフローが退行していないかを自動検証します。
 
 ### APIセキュリティ指針
