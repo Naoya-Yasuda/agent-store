@@ -26,9 +26,11 @@ export async function authenticate(
   next: NextFunction
 ): Promise<void> {
   try {
+    console.log('[auth] Authenticating request to:', req.path);
     const authHeader = req.headers.authorization;
 
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.error('[auth] Missing or invalid authorization header');
       res.status(401).json({
         error: 'unauthorized',
         message: 'Missing or invalid authorization header',
@@ -39,6 +41,7 @@ export async function authenticate(
     const token = authHeader.substring(7);
 
     // Auth Serviceでトークン検証
+    console.log('[auth] Verifying token with auth service:', AUTH_SERVICE_URL);
     const response = await fetch(`${AUTH_SERVICE_URL}/auth/verify`, {
       method: 'POST',
       headers: {
@@ -48,12 +51,14 @@ export async function authenticate(
     });
 
     if (!response.ok) {
+      console.error('[auth] Token verification failed, status:', response.status);
       res.status(401).json({
         error: 'unauthorized',
         message: 'Invalid or expired token',
       });
       return;
     }
+    console.log('[auth] Token verified successfully');
 
     const data = await response.json();
 

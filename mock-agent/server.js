@@ -16,32 +16,37 @@ app.use(express.json());
 // Agent Card endpoint
 app.get('/agent-card.json', (req, res) => {
   res.json({
-    "name": "フライト予約エージェント",
-    "version": "2.0.0",
-    "description": "GPT-4o-miniを使用したAI搭載フライト予約アシスタント。自然言語での会話でフライト検索と予約をサポートします。",
-    "author": "テスト株式会社",
-    "capabilities": [
-      "flight_search",
-      "booking_management",
-      "price_comparison",
-      "natural_language_understanding",
-      "conversational_ai",
-      "japanese_language_support"
+    "id": "00000000-0000-0000-0000-000000000001",
+    "agentId": "00000000-0000-0000-0000-000000000002",
+    "defaultLocale": "ja",
+    "status": "published",
+    "executionProfile": "self_hosted",
+    "translations": [
+      {
+        "locale": "ja",
+        "displayName": "フライト予約エージェント",
+        "shortDescription": "GPT-4o-miniを使用したAI搭載フライト予約アシスタント。自然言語での会話でフライト検索と予約をサポートします。",
+        "longDescription": "このエージェントは、OpenAIのGPT-4o-miniモデルを使用して、日本語での自然な会話を通じてフライトの検索と予約をサポートします。出発地、目的地、日時などの情報を自然言語で伝えるだけで、利用可能なフライトを検索し、価格や空席状況を提示します。",
+        "capabilities": [
+          "フライト検索",
+          "予約管理",
+          "価格比較",
+          "自然言語理解",
+          "日本語対応",
+          "会話型AI"
+        ],
+        "useCases": [
+          "国内線フライトの検索",
+          "フライト価格の比較",
+          "空席状況の確認"
+        ]
+      }
     ],
-    "endpoints": {
-      "base_url": process.env.BASE_URL || "http://localhost:4000",
-      "chat": "/agent/chat"
+    "pricing": {
+      "type": "free",
+      "details": "テスト用エージェントのため無料"
     },
-    "security": {
-      "authentication": "none",
-      "rate_limit": "100 requests per minute"
-    },
-    "model": {
-      "provider": "OpenAI",
-      "model": "gpt-4o-mini",
-      "temperature": 0.7
-    },
-    "language": "ja"
+    "complianceNotes": "開発・テスト目的のモックエージェントです。実際の予約機能は含まれません。"
   });
 });
 

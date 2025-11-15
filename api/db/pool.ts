@@ -1,12 +1,11 @@
 import { Pool } from 'pg';
 
-let pool: Pool | undefined;
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+});
 
 export function getDbPool(): Pool {
-  if (!pool) {
-    pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-    });
-  }
   return pool;
 }
+
+export default pool;

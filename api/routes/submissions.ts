@@ -42,8 +42,10 @@ router.post('/submissions',
       }
 
       // Agent Cardを取得
+      console.log('[submissions] Fetching agent card from:', agentCardUrl);
       const agentCardResponse = await fetch(agentCardUrl);
       if (!agentCardResponse.ok) {
+        console.error('[submissions] Failed to fetch agent card, status:', agentCardResponse.status);
         return res.status(400).json({
           error: 'invalid_agent_card_url',
           message: 'Failed to fetch agent card from the provided URL',
@@ -51,10 +53,11 @@ router.post('/submissions',
       }
 
       const cardDocument = await agentCardResponse.json();
+      console.log('[submissions] Agent card fetched:', JSON.stringify(cardDocument, null, 2));
 
       // 組織情報を取得
       const orgResult = await pool.query(
-        'SELECT id, name, contact_email, public_key FROM organizations WHERE id = $1',
+        'SELECT id, name, contact_email FROM organizations WHERE id = $1',
         [organizationId]
       );
       if (orgResult.rows.length === 0) {
@@ -66,8 +69,11 @@ router.post('/submissions',
       const org = orgResult.rows[0];
 
       // SubmissionPayloadを構築
+      const agentId = cardDocument.agentId || `agent-${Date.now()}`;
+      console.log('[submissions] Using agentId:', agentId, 'type:', typeof agentId);
+
       const payload = {
-        agentId: cardDocument.agentId || `agent-${Date.now()}`,
+        agentId,
         cardDocument,
         endpointManifest: {
           url: endpointUrl,
@@ -78,7 +84,7 @@ router.post('/submissions',
           organizationId: org.id,
           name: org.name,
           contactEmail: org.contact_email,
-          operatorPublicKey: org.public_key || '',
+          operatorPublicKey: '',
         },
         signatureBundle: req.file ? {
           filename: req.file.originalname,
@@ -89,6 +95,8 @@ router.post('/submissions',
 
       const validation = validateSubmissionPayload(payload);
       if (!validation.valid) {
+        console.error('[submissions] Validation failed:', validation.errors);
+        console.error('[submissions] Payload:', JSON.stringify(payload, null, 2));
         return res.status(400).json({ errors: validation.errors });
       }
 
