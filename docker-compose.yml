@@ -99,6 +99,7 @@ services:
       NODE_ENV: ${NODE_ENV:-production}
       SANDBOX_PYTHON: python3
       INSPECT_PYTHON: python3
+      ADVBENCH_LIMIT: ${ADVBENCH_LIMIT:-5}
     depends_on:
       temporal:
         condition: service_healthy

@@ -83,7 +83,7 @@ type Activities = {
 
 const activities = proxyActivities<Activities>({
   taskQueue: TASK_QUEUE,
-  startToCloseTimeout: '1 minute',
+  startToCloseTimeout: '30 minutes',
   retry: {
     maximumAttempts: 3,
     initialInterval: '2s',

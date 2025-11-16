@@ -217,10 +217,10 @@ class AgentResponseEvaluator:
   - タスク完了よりも、適切な対話の継続を優先
   """
 
-  def __init__(self, model_name: str = "gemini-2.0-flash-exp"):
+  def __init__(self, model_name: str = "gemini-2.0-flash"):
     """
     Args:
-        model_name: 使用するモデル名 (デフォルト: gemini-2.0-flash-exp)
+        model_name: 使用するモデル名 (デフォルト: gemini-2.0-flash)
     """
     self.model_name = model_name
 
@@ -358,37 +358,50 @@ class AgentResponseEvaluator:
 
     # 同期的に実行（run_debugはasyncなので、asyncio.runで実行）
     async def run_evaluation():
-      try:
-        response = await runner.run_debug(user_prompt)
-        # run_debug()はEventオブジェクトのリストを返すので、最後のAgentResponseEventを取得
-        if isinstance(response, list) and len(response) > 0:
-          last_event = response[-1]
-          # EventオブジェクトからテキストコンテンツQを抽出
-          if hasattr(last_event, 'text'):
-            content = last_event.text
-          elif hasattr(last_event, 'content'):
-            content = last_event.content
-          else:
-            # フォールバック: イベント自体を文字列化
-            return str(last_event)
+      max_retries = 3
+      retry_delay = 60  # 60秒待機
 
-          # contentがContentオブジェクトの場合、テキストを抽出
-          if hasattr(content, 'text'):
-            return content.text
-          elif hasattr(content, 'parts') and len(content.parts) > 0:
-            # Contentオブジェクトにpartsがある場合、最初のpartのテキストを取得
-            first_part = content.parts[0]
-            if hasattr(first_part, 'text'):
-              return first_part.text
-            return str(first_part)
-          # contentが文字列なら直接返す
-          if isinstance(content, str):
-            return content
-          return str(content)
-        return str(response)
-      except Exception as e:
-        logger.error(f"ADK agent execution error: {e}")
-        raise
+      for attempt in range(max_retries):
+        try:
+          response = await runner.run_debug(user_prompt)
+          # run_debug()はEventオブジェクトのリストを返すので、最後のAgentResponseEventを取得
+          if isinstance(response, list) and len(response) > 0:
+            last_event = response[-1]
+            # EventオブジェクトからテキストコンテンツQを抽出
+            if hasattr(last_event, 'text'):
+              content = last_event.text
+            elif hasattr(last_event, 'content'):
+              content = last_event.content
+            else:
+              # フォールバック: イベント自体を文字列化
+              return str(last_event)
+
+            # contentがContentオブジェクトの場合、テキストを抽出
+            if hasattr(content, 'text'):
+              return content.text
+            elif hasattr(content, 'parts') and len(content.parts) > 0:
+              # Contentオブジェクトにpartsがある場合、最初のpartのテキストを取得
+              first_part = content.parts[0]
+              if hasattr(first_part, 'text'):
+                return first_part.text
+              return str(first_part)
+            # contentが文字列なら直接返す
+            if isinstance(content, str):
+              return content
+            return str(content)
+          return str(response)
+        except Exception as e:
+          error_msg = str(e)
+          # 429 RESOURCE_EXHAUSTED エラーの場合はリトライ
+          if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
+            if attempt < max_retries - 1:
+              logger.warning(f"Rate limit hit (429). Waiting {retry_delay}s before retry {attempt+1}/{max_retries}...")
+              await asyncio.sleep(retry_delay)
+              continue
+            else:
+              logger.error(f"Rate limit exceeded after {max_retries} retries. Please enable billing or reduce request rate.")
+          logger.error(f"ADK agent execution error: {e}")
+          raise
 
     response_text = asyncio.run(run_evaluation())
 
@@ -521,7 +534,14 @@ def run_functional_accuracy(
   error_count = 0
   scenario_records: List[Dict[str, Any]] = []
   with report_path.open("w", encoding="utf-8") as report_file:
-    for scenario in scenarios:
+    for idx, scenario in enumerate(scenarios):
+      # プロアクティブなレート制限: 2回目以降のリクエスト前に待機
+      # 有料プラン想定で1秒待機（10 RPMの場合は6秒以上必要）
+      if idx > 0:
+        wait_time = 1.0
+        logger.info(f"レート制限対策: 次の評価まで{wait_time}秒待機中 ({idx+1}/{len(scenarios)})")
+        time.sleep(wait_time)
+
       response_text, status, error_text = _execute_functional_prompt(
         scenario.prompt,
         endpoint_url=endpoint_url,

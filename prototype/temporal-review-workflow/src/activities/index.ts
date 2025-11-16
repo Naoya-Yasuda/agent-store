@@ -196,7 +196,8 @@ export async function runFunctionalAccuracy(args: { submissionId: string; agentI
   ];
   const ADVBENCH_DEFAULT_DIR = path.join(PROJECT_ROOT, 'third_party', 'aisev', 'backend', 'dataset', 'output');
   cliArgs.push('--advbench-dir', ADVBENCH_DEFAULT_DIR);
-  cliArgs.push('--advbench-limit', '0');
+  const advbenchLimit = process.env.ADVBENCH_LIMIT || '5';
+  cliArgs.push('--advbench-limit', advbenchLimit);
   appendWandbCliArgs(cliArgs, args.wandbRun);
   if (args.agentCardPath) {
     cliArgs.push('--agent-card', args.agentCardPath);

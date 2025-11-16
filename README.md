@@ -146,7 +146,11 @@ flowchart TD
 
 `scripts/setup_aisev.sh` で取得する `third_party/aisev` ディレクトリには、AISI が公開する汎用的な攻撃/QA データ（通称 AdvBench）一式が含まれます。Agent Store ではこのデータを攻撃プロンプトや評価質問の素材として再利用しており、「AdvBench = AISI aisev の汎用データを再加工した攻撃・検証リソース」と認識しています。`backend/dataset/output/*.csv` に含まれる `text` カラムはそのまま Functional Accuracy や Judge Panel の評価シナリオとして差し込めます。
 
-Sandbox Runner では、Functional Accuracy を走らせるときに `--advbench-dir third_party/aisev/backend/dataset/output` を指定すると AdvBench の CSV を読み込み、汎用質問を追加評価できます（`--advbench-limit` で取り込む上限数を制御）。必要であれば任意の AdvBench データを差し替えたり、`--advbench-limit 0` で全件取り込んで多角的な安全性・機能性チェックをかけることができます。
+Sandbox Runner 側の Functional Accuracy は `templates` を読み込むときに `--advbench-dir third_party/aisev/backend/dataset/output` / `--advbench-limit`（`scripts/run_inspect_flow.sh` や `prototype/temporal-review-workflow/src/activities/index.ts` で自動セット）を使って AdvBench CSV を追加でシナリオ化し、`functional_report.jsonl` / `functional_summary.json` に `advbenchScenarios` / `advbenchEnabled` を出力します。これにより `/stage/functional?submissionId=<ID>` にアクセスすると、AdvBench と AgentCard 両方の prompt/response/verdict をフィルタ付きで一覧できます。
+
+各ステージ（PreCheck・Security Gate・Functional Accuracy・Judge Panel・Human Review・Publish）の役割と関連コードは `docs/stage_descriptions.md` にまとめてありますので、リーディングガイドとしてご覧ください。
+
+Functional Accuracy の詳細は `http://localhost:3001/stage/functional?submissionId=<id>` のような段階専用ページで確認でき、右上の「Functional Report」「Functional Summary」リンクやテーブルが `functional_report.jsonl` から prompt/response を読み込む仕組みになっています。Judge Panel も同様の `/stage/judge` ページで `judge_report.jsonl` / `relay_logs.jsonl` を確認できるので、審査側・登録者向けに evidence をドリルダウンできます。
 
 ### Docker Composeで一括起動（推奨）
 
@@ -215,6 +219,16 @@ Docker構成で `sample-agent` コンテナ（`sample-agent` ディレクトリ�
 | エンドポイントURL（必須） | `http://sample-agent:4000/agent/chat` | 実際に対話リクエストを送る先の API。Sample Agent は LLM を使用した応答を返すため、エンドツーエンドのリクエストフローを確認できます。 |
 
 登録後は Review UI 上の「テスト実行」や Sandbox Runner の `--agent-id sample-agent` などで通信確認を行い、正しく応答が返ることを確認してください。実運用で使う場合は上記 URL を自社エージェントに差し替え、実際の証明書・鍵・署名付き Agent Card を用意する必要があります。
+
+### Agent Card URL に入れるべきもの
+
+Review UI のエージェント登録フォームで入力する「Agent Card URL」には、署名済み JSON 形式の Agent Card ファイルの公開 URL を指定します。Agent Card には `name`/`version`/`capabilities`/`useCases`/`endpoints`/`signatures` などが記載され、提出済みのエージェントを検証する根拠になります。実務では以下のような URL が候補です。
+
+- 自社のストレージ（S3 など）で署名済 Agent Card をホスティングしたもの。
+- GitHub などの静的ホスティング（raw URL）のうち、署名付き JSON が置かれた場所。
+- Review システムで提供する Sample Agent の `http://mock-agent:4000/agent-card.json`（テスト時のみ）。
+
+`scripts/setup_aisev.sh` や `sandbox-runner` CLI を使う場合は、`agent_card.json` を `sandbox-runner/artifacts/<id>` 配下から取り出して URL を用意するか、`--agent-card` オプションで直接パスを指定します。提出前に `agent_card.json` の内容と署名（`signatures`）を常に確認し、Review UI で同じ URL を使うようにしてください。
 - W&B MCPを使ってステージログ/アーティファクトを収集する場合は `. .venv/bin/activate && export WANDB_DISABLED=false` を設定してから各コマンドを実行してください（デフォルトでは有効化されますが、明示的にフラグを確認できます）。Submission APIから`telemetry.wandb`フィールドでRun ID/Project/Entity/BaseURLを渡すと、同じRunをTemporalやSandbox Runnerが再利用できます。
 - LLM Judgeを有効化したい場合はSubmission payloadの`telemetry.llmJudge`（例: `{ "enabled": true, "model": "gpt-4o-mini", "provider": "openai", "temperature": 0.1 }`）を指定すると、Temporalワークフロー経由でInspect Worker CLIの`--judge-llm-*`フラグに伝播されます。dry-runを強制したい場合は`dryRun: true`を指定してください。
 - Security Gateをローカルで試す場合は `sandbox-runner` で
