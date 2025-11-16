@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import json
 import logging
 import math
@@ -78,6 +79,47 @@ def load_ragtruth(dir_path: Path) -> List[Dict[str, Any]]:
         except json.JSONDecodeError:
           continue
   return records
+
+
+def load_advbench_scenarios(dir_path: Path, max_records: Optional[int] = None) -> List[Scenario]:
+  """
+  AISI 提供の AdvBench (aieva) データセットから Functional Accuracy 用のシナリオを構築。
+
+  Args:
+      dir_path: `third_party/aisev/backend/dataset/output` のような AdvBench CSV を含むディレクトリ
+      max_records: 生成する最大レコード数（None は制限なし）
+
+  Returns:
+      Scenario のリスト。 `text` カラムをプロンプト、`requirement` や `ten_perspective` をユースケースとする。
+  """
+  scenarios: List[Scenario] = []
+  if not dir_path.exists():
+    return scenarios
+
+  csv_files = sorted(dir_path.glob("*.csv"))
+  total = 0
+
+  for csv_file in csv_files:
+    with csv_file.open(encoding="utf-8", newline="") as handle:
+      reader = csv.DictReader(handle)
+      for idx, row in enumerate(reader):
+        if max_records is not None and total >= max_records:
+          return scenarios
+        prompt = row.get("text", "").strip()
+        if not prompt:
+          continue
+        use_case = row.get("requirement") or row.get("ten_perspective") or row.get("gsn_perspective") or "AdvBench汎用質問"
+        scenarios.append(
+          Scenario(
+            id=f"advbench-{csv_file.stem}-{idx+1}",
+            locale="ja-JP",
+            use_case=use_case,
+            prompt=prompt,
+            expected_answer=""
+          )
+        )
+        total += 1
+  return scenarios
 
 
 def tokenize(text: str) -> List[str]:
@@ -438,7 +480,9 @@ def run_functional_accuracy(
   dry_run: bool,
   endpoint_url: Optional[str],
   endpoint_token: Optional[str],
-  timeout: float
+  timeout: float,
+  advbench_dir: Optional[Path] = None,
+  advbench_limit: Optional[int] = None
 ) -> Dict[str, Any]:
   output_dir.mkdir(parents=True, exist_ok=True)
   if not agent_card_path.exists():
@@ -454,6 +498,13 @@ def run_functional_accuracy(
   scenarios = generate_scenarios(card, agent_id=agent_id, revision=revision, max_scenarios=max_scenarios)
   ragtruth_records = load_ragtruth(ragtruth_dir)
   attach_expected_answers(scenarios, ragtruth_records)
+  advbench_scenarios: List[Scenario] = []
+  if advbench_dir:
+    advbench_scenarios = load_advbench_scenarios(advbench_dir, max_records=advbench_limit)
+    if advbench_scenarios:
+      attach_expected_answers(advbench_scenarios, ragtruth_records)
+      scenarios.extend(advbench_scenarios)
+      logger.info(f"Functional AccuracyにAdvBenchシナリオを追加 ({len(advbench_scenarios)}件)")
 
   # Google ADKスタイルのエージェント評価器を初期化
   # GOOGLE_API_KEY環境変数が必須

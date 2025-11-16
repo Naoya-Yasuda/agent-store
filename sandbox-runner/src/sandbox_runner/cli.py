@@ -54,7 +54,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--functional-timeout", type=float, default=20.0, help="Functional endpoint timeout seconds")
     parser.add_argument("--agent-card", help="Path to AgentCard JSON used for functional accuracy evaluation")
     default_ragtruth_dir = Path(__file__).resolve().parents[2] / "resources" / "ragtruth"
+    default_advbench_dir = Path(__file__).resolve().parents[3] / "third_party" / "aisev" / "backend" / "dataset" / "output"
     parser.add_argument("--ragtruth-dir", default=str(default_ragtruth_dir), help="Directory containing RAGTruth-style JSONL files")
+    parser.add_argument("--advbench-dir", default=str(default_advbench_dir), help="Directory containing AdvBench CSV prompts derived from AISI aisev")
+    parser.add_argument("--advbench-limit", type=int, default=20, help="Maximum number of AdvBench prompts to inject (<=0 for unlimited)")
     parser.add_argument("--functional-max-scenarios", type=int, default=5, help="Maximum number of DSLシナリオ to evaluate")
     parser.add_argument("--skip-functional", action="store_true", help="Skip functional accuracy evaluation")
     return parser.parse_args(argv)
@@ -263,6 +266,8 @@ def main(argv: list[str] | None = None) -> int:
             revision=args.revision,
             agent_card_path=Path(args.agent_card),
             ragtruth_dir=Path(args.ragtruth_dir),
+            advbench_dir=Path(args.advbench_dir),
+            advbench_limit=(args.advbench_limit if args.advbench_limit > 0 else None),
             output_dir=functional_output,
             max_scenarios=max(1, args.functional_max_scenarios),
             dry_run=args.dry_run,

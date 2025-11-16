@@ -142,6 +142,12 @@ flowchart TD
 
 ## Getting Started
 
+### AdvBench と AISI aisev の位置づけ
+
+`scripts/setup_aisev.sh` で取得する `third_party/aisev` ディレクトリには、AISI が公開する汎用的な攻撃/QA データ（通称 AdvBench）一式が含まれます。Agent Store ではこのデータを攻撃プロンプトや評価質問の素材として再利用しており、「AdvBench = AISI aisev の汎用データを再加工した攻撃・検証リソース」と認識しています。`backend/dataset/output/*.csv` に含まれる `text` カラムはそのまま Functional Accuracy や Judge Panel の評価シナリオとして差し込めます。
+
+Sandbox Runner では、Functional Accuracy を走らせるときに `--advbench-dir third_party/aisev/backend/dataset/output` を指定すると AdvBench の CSV を読み込み、汎用質問を追加評価できます（`--advbench-limit` で取り込む上限数を制御）。必要であれば任意の AdvBench データを差し替えたり、`--advbench-limit 0` で全件取り込んで多角的な安全性・機能性チェックをかけることができます。
+
 ### Docker Composeで一括起動（推奨）
 
 全サービス（Submission用PostgreSQL、Temporal用PostgreSQL、Temporal、API、Inspect Worker、Review UI）を一括で起動する場合：
