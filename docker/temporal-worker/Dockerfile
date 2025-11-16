@@ -38,7 +38,7 @@ COPY requirements.txt /app/
 RUN python3 -m venv /app/.venv && \
     . /app/.venv/bin/activate && \
     pip install --no-cache-dir -r requirements.txt && \
-    pip install -e /app/sandbox-runner
+    pip install --no-cache-dir /app/sandbox-runner
 
 # Install inspect-worker dependencies
 COPY prototype/inspect-worker/requirements.txt /app/prototype/inspect-worker/

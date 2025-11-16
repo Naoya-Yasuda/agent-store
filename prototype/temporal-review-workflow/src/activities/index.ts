@@ -109,7 +109,9 @@ export async function runSecurityGate(args: { submissionId: string; agentId: str
     '--revision', args.agentRevisionId,
     '--template', 'google-adk',
     '--output-dir', artifactsPath,
-    '--skip-functional'
+    '--skip-functional',
+    '--schema-dir', '/app/sandbox-runner/schemas',
+    '--prompt-manifest', '/app/prompts/aisi/manifest.sample.json'
   ];
   appendWandbCliArgs(cliArgs, args.wandbRun);
   if (args.agentCardPath) {
@@ -188,7 +190,9 @@ export async function runFunctionalAccuracy(args: { submissionId: string; agentI
     '--revision', args.agentRevisionId,
     '--template', 'google-adk',
     '--output-dir', artifactsPath,
-    '--skip-security-gate'
+    '--skip-security-gate',
+    '--schema-dir', '/app/sandbox-runner/schemas',
+    '--prompt-manifest', '/app/prompts/aisi/manifest.sample.json'
   ];
   appendWandbCliArgs(cliArgs, args.wandbRun);
   if (args.agentCardPath) {

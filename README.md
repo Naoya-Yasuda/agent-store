@@ -676,6 +676,141 @@ Review UIに承認/差戻しボタンとAPIエンドポイントを実装し、T
 #### 9. Inspect Workerトレーサビリティ
 - Judge Panel CLIがW&BタイムラインやイベントAPIと整合するよう、トレースIDをArtifacts・Ledgerへ書き込み
 
+## 開発者向けAPI動作確認手順
+
+### curlを使ったエージェント登録フローのテスト
+
+開発中にAPI経由でエージェント登録ワークフロー全体が正常に動作しているか確認する手順です。
+
+#### 前提条件
+```bash
+# システムが起動していること
+docker compose up -d
+
+# テストユーザー（testuser@example.com / TestPassword123!）が作成されていること
+# 初回のみ、Submission UIからユーザー登録するか、auth-serviceのデータベースに直接作成
+```
+
+#### ステップ1: ログイン認証情報の準備
+
+```bash
+# ログイン情報をファイルに保存（パスワードにエスケープが必要な文字があるため）
+cat > /tmp/login.json <<'EOF'
+{"email":"testuser@example.com","password":"TestPassword123!"}
+EOF
+```
+
+#### ステップ2: ログインしてアクセストークン取得
+
+```bash
+# ログイン（auth-serviceはポート3003で公開）
+LOGIN_RESPONSE=$(curl -s -X POST http://localhost:3003/auth/login \
+  -H 'Content-Type: application/json' \
+  -d @/tmp/login.json)
+
+# トークンと組織IDを抽出
+ACCESS_TOKEN=$(echo "$LOGIN_RESPONSE" | python3 -c "import json,sys; print(json.load(sys.stdin)['accessToken'])")
+ORG_ID=$(echo "$LOGIN_RESPONSE" | python3 -c "import json,sys; print(json.load(sys.stdin)['user']['organizationId'])")
+
+echo "Access Token: ${ACCESS_TOKEN:0:50}..."
+echo "Organization ID: $ORG_ID"
+```
+
+#### ステップ3: エージェント登録の提出
+
+```bash
+# サンプルエージェントを登録（内部ネットワーク名を使用）
+SUBMIT_RESPONSE=$(curl -s -X POST http://localhost:3000/api/submissions \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -F "agentCardUrl=http://sample-agent:4000/agent-card.json" \
+  -F "endpointUrl=http://sample-agent:4000/agent/chat" \
+  -F "organization_id=$ORG_ID")
+
+# レスポンスを確認
+echo "$SUBMIT_RESPONSE" | python3 -m json.tool
+
+# 提出IDを抽出
+SUBMISSION_ID=$(echo "$SUBMIT_RESPONSE" | python3 -c "import json,sys; data=json.load(sys.stdin); print(data.get('submissionId') or data.get('id') or '')")
+echo "Submission ID: $SUBMISSION_ID"
+```
+
+#### ステップ4: 審査進捗の監視
+
+```bash
+# 5秒ごとに進捗を確認（最大5分間）
+for i in {1..60}; do
+  sleep 5
+  PROGRESS=$(curl -s http://localhost:3000/api/submissions/$SUBMISSION_ID/progress \
+    -H "Authorization: Bearer $ACCESS_TOKEN")
+
+  STATE=$(echo "$PROGRESS" | python3 -c "import json,sys; print(json.load(sys.stdin).get('terminalState', 'unknown'))" 2>/dev/null || echo "error")
+  SECURITY_STATUS=$(echo "$PROGRESS" | python3 -c "import json,sys; print(json.load(sys.stdin).get('stages', {}).get('security_gate', {}).get('status', 'N/A'))" 2>/dev/null || echo "N/A")
+  FUNCTIONAL_STATUS=$(echo "$PROGRESS" | python3 -c "import json,sys; print(json.load(sys.stdin).get('stages', {}).get('functional_accuracy', {}).get('status', 'N/A'))" 2>/dev/null || echo "N/A")
+
+  echo "[$i/60] State: $STATE | Security: $SECURITY_STATUS | Functional: $FUNCTIONAL_STATUS"
+
+  # 終了状態に達したらループを抜ける
+  if [[ "$STATE" == "functional_passed" ]] || [[ "$STATE" == "functional_failed" ]] || \
+     [[ "$STATE" == "judge_pending" ]] || [[ "$STATE" == "security_gate_flagged" ]]; then
+    echo "Review completed with state: $STATE"
+    echo "$PROGRESS" | python3 -m json.tool
+    break
+  fi
+done
+```
+
+#### 完全な自動テストスクリプト
+
+上記の手順を1つのスクリプトにまとめたものが `/tmp/delete_and_submit.sh` として用意されています：
+
+```bash
+# 既存の提出を削除して新規提出をテスト
+bash /tmp/delete_and_submit.sh
+```
+
+このスクリプトは以下を実行します：
+1. ログイン認証
+2. 古い提出の削除（同じエンドポイントURLは重複登録不可のため）
+3. 新規エージェント登録
+4. 審査進捗の自動監視（Security Gate → Functional Accuracy → Judge Panel）
+
+#### 期待される結果
+
+正常に動作している場合：
+- **Security Gate**: `completed` (約20-30秒)
+- **Functional Accuracy**: `completed` (約20-30秒)
+- **Judge Panel**: `running` または `completed` (約1-2分)
+- 最終状態: `judge_pending` または `judge_running`
+
+#### トラブルシューティング
+
+**Q: "Missing or invalid authorization header" エラーが出る**
+```bash
+# トークンが正しく取得できているか確認
+echo $ACCESS_TOKEN
+# 空の場合はログインに失敗している。auth-serviceのログを確認：
+docker compose logs auth-service --tail 50
+```
+
+**Q: "This endpoint URL has already been registered" エラーが出る**
+```bash
+# 既存の提出を削除してから再試行
+curl -s -X DELETE http://localhost:3000/api/submissions/{SUBMISSION_ID} \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+**Q: Security GateまたはFunctional Accuracyが失敗する**
+```bash
+# temporal-workerのログを確認
+docker compose logs temporal-worker --tail 100
+
+# sandbox-runnerが正しく動作しているか確認
+docker exec agent-store-temporal-worker bash -c \
+  "source /app/.venv/bin/activate && python -m sandbox_runner.cli --help"
+```
+
+---
+
 ## ドキュメント
 
 - **[DOCKER_QUICKSTART.md](DOCKER_QUICKSTART.md)** - Docker Composeを使った簡単なセットアップガイド
