@@ -95,7 +95,7 @@ export async function preCheckSubmission(args: { submissionId: string }): Promis
   console.log(`[activities] preCheckSubmission ${args.submissionId}`);
   return {
     passed: true,
-    agentId: `agent-${args.submissionId}`,
+    agentId: args.submissionId, // Use submissionId directly as agentId (UUID without prefix)
     agentRevisionId: `${args.submissionId}-rev1`,
     warnings: []
   };
