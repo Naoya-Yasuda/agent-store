@@ -363,6 +363,8 @@ export async function runJudgePanel(args: { submissionId: string; agentId: strin
 
 export async function notifyHumanReview(args: { submissionId: string; agentId: string; agentRevisionId: string; reason: string; attachments?: string[] }): Promise<'approved' | 'rejected'> {
   console.log(`[activities] notifyHumanReview submission=${args.submissionId} reason=${args.reason}`);
+  // Update submission state to awaiting_human_review to mark Judge Panel as completed
+  await updateSubmissionState({ submissionId: args.submissionId, state: 'awaiting_human_review' });
   return 'approved';
 }
 
