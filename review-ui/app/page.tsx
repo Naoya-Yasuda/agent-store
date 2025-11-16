@@ -227,6 +227,13 @@ export default function ReviewDashboard() {
   const judgeCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [focusedJudgeQuestion, setFocusedJudgeQuestion] = useState<string | null>(null);
   const artifactSectionRef = useRef<HTMLDivElement | null>(null);
+  const focusArtifact = useCallback((stage: StageName, type: string) => {
+    setSelectedEvidenceStage(stage);
+    setSelectedArtifactType(type);
+    setTimeout(() => {
+      artifactSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 60);
+  }, []);
 
   const llmOverrideResult = useMemo<LlmOverrideResult>(() => {
     if (!llmOverrideEnabled) {
@@ -668,6 +675,20 @@ export default function ReviewDashboard() {
     const llmOverrideHistory = stageEvents.filter((evt) => evt.stage === 'judge' && evt.event === 'llm_override_received');
     const manualRecords = reportData.filter((item) => item.verdict === 'manual');
     const rejectedRecords = reportData.filter((item) => item.verdict === 'reject');
+    const totalQuestions = summary.questions ?? 0;
+    const questionSources = Array.from(new Set(reportData.map((item) => (item?.source ?? 'agent_card')).filter(Boolean)));
+    const manualCount = summary.manual ?? 0;
+    const rejectedCount = summary.rejected ?? 0;
+    const flaggedCount = summary.flagged ?? 0;
+    const llmCallCount = summary.llmCallCount ?? summary.llm_calls ?? 0;
+    const summaryRelayErrors = summary.relayErrorCount ?? summary.relayErrors ?? summary.relay_error_count ?? 0;
+    const scoreBreakdown = {
+      taskCompletion: summary.taskCompletion ?? summary.task_completion ?? summary.task_completion_score,
+      toolUsage: summary.toolCorrectness ?? summary.tool_usage ?? summary.tool_correctness,
+      autonomy: summary.autonomy ?? summary.autonomy_score,
+      safety: summary.safety ?? summary.safety_score,
+      totalScore: summary.totalScore ?? summary.total_score
+    };
     const judgeStage = progress.stages.judge;
     const verdict = typeof summary.verdict === 'string' ? summary.verdict : undefined;
     const awaitingHuman = progress.stages.human?.details?.reason === 'judge_manual_review';
@@ -743,6 +764,32 @@ export default function ReviewDashboard() {
     return (
       <section style={{ display: 'grid', gap: 12 }}>
         <h3 style={{ margin: 0 }}>Judge 詳細</h3>
+        <div style={{ border: '1px solid #d0d7de', borderRadius: 10, padding: 12, background: '#f8fafc' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'baseline', marginBottom: 6 }}>
+            <span style={{ fontWeight: 600 }}>Judge Panel レビュー項目</span>
+            <span style={{ fontSize: 12, color: '#57606a' }}>docs/design/reviewer_checklist.md</span>
+          </div>
+          <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13 }}>
+            <li>
+              質問生成: 全 <strong>{totalQuestions}</strong> 件（プロンプトソース: {questionSources.join(' / ') || '未取得'}）。AgentCard・AdvBench を両方カバーしているか確認。
+            </li>
+            <li>
+              Execution 証跡: Relay 呼び出し {llmCallCount} 回、エラー {summaryRelayErrors} 件。Relayログで禁止語や HTTP エラーを確認し、Evidence として保存。<br />
+              <button type="button" style={{ marginTop: 4 }} onClick={() => focusArtifact('judge', 'relay')}>Relayログを表示</button>
+            </li>
+            <li>
+              LLMスコア: Task Completion {scoreBreakdown.taskCompletion ?? 'n/a'}/40, Tool {scoreBreakdown.toolUsage ?? 'n/a'}/30, Autonomy {scoreBreakdown.autonomy ?? 'n/a'}/20, Safety {scoreBreakdown.safety ?? 'n/a'}/10 → 合計 {scoreBreakdown.totalScore ?? 'n/a'}。
+            </li>
+            <li>
+              Minority Veto: Manual {manualCount} 件 / Rejected {rejectedCount} 件 / Flagged {flaggedCount} 件。ばらつきや過大な差があれば judge_report.jsonl で各モデルの verdict を確認。<br />
+              <button type="button" style={{ marginTop: 4 }} onClick={() => focusArtifact('judge', 'report')}>Judge Report を表示</button>
+            </li>
+            <li>
+              Human Review トリガー: manual/flagged 判定時は Judgeレポート・Relayログ・summary にリンクがあるので、必要な証拠を添えて人手レビューへエスカレーション。<br />
+              <button type="button" style={{ marginTop: 4 }} onClick={() => focusArtifact('judge', 'summary')}>Judge Summary を表示</button>
+            </li>
+          </ul>
+        </div>
         {manualBannerVisible && (
           <div style={{ border: '1px solid #bf8700', background: '#fff4ce', borderRadius: 10, padding: 12, display: 'grid', gap: 6 }}>
             <div style={{ fontWeight: 600, color: '#744500' }}>Judge Panel からの manual 判定</div>
@@ -1083,9 +1130,16 @@ export default function ReviewDashboard() {
     const ragTruthArtifact = summary.ragTruthArtifact ?? summary.ragtruthArtifact ?? summary.promptsArtifact;
     const ragTruthNotes = summary.ragTruthNotes ?? summary.ragtruthNotes;
     const reportData = (artifactStates['functional:report']?.data as any[]) ?? [];
+    const totalScenarios = summary.scenarios ?? 0;
+    const advbenchCount = summary.advbenchScenarios ?? 0;
+    const advbenchLimit = typeof summary.advbenchLimit === 'number' ? summary.advbenchLimit : undefined;
+    const agentCardScenarios = Math.max(totalScenarios - advbenchCount, 0);
     const failingRecords = reportData
       .filter((item) => item?.evaluation?.verdict && item.evaluation.verdict !== 'pass')
       .sort((a, b) => ((b?.evaluation?.distance ?? 0) - (a?.evaluation?.distance ?? 0)));
+    const topicMismatchCount = reportData.filter((item) => item?.evaluation?.topic_relevance === false).length;
+    const dialogueStuckCount = reportData.filter((item) => item?.evaluation?.dialogue_progress === false).length;
+    const evaluationErrorCount = reportData.filter((item) => (item?.evaluation?.errors?.length ?? 0) > 0).length;
     const searchTerm = functionalSearchTerm.trim().toLowerCase();
     const filteredFailing = searchTerm
       ? failingRecords.filter((item) => JSON.stringify(item).toLowerCase().includes(searchTerm))
@@ -1114,6 +1168,31 @@ export default function ReviewDashboard() {
     return (
       <section style={{ display: 'grid', gap: 12 }}>
         <h3 style={{ margin: 0 }}>Functional Accuracy 統計</h3>
+        <div style={{ border: '1px solid #d0d7de', borderRadius: 10, padding: 12, background: '#f8fafc' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'baseline', marginBottom: 6 }}>
+            <span style={{ fontWeight: 600 }}>Functional Accuracy レビュー項目</span>
+            <span style={{ fontSize: 12, color: '#57606a' }}>docs/design/reviewer_checklist.md</span>
+          </div>
+          <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13 }}>
+            <li>
+              AgentCard 用ユースケース <strong>{agentCardScenarios} 件</strong> &amp; AdvBench 異常検知 <strong>{advbenchCount} 件</strong>（上限 {advbenchLimit ?? '無制限'}）を両方評価しています。<br />
+              <button type="button" style={{ marginTop: 4 }} onClick={() => focusArtifact('functional', 'report')}>Functional Report を表示</button>
+            </li>
+            <li>
+              {ragTruthCount} 件の RAGTruth 期待値で回答例を確認し、「期待される動作」フィールドが常にセットされているかチェックしてください。
+            </li>
+            <li>
+              トピックの一致 (`topic_relevance`) が false のシナリオ {topicMismatchCount} 件、対話進展 (`dialogue_progress`) に課題あり {dialogueStuckCount} 件、エラー検出 {evaluationErrorCount} 件が出ていないか確認します。
+            </li>
+            <li>
+              判定分布: Pass {summary.passed ?? summary.passes ?? '-'} / NeedsReview {summary.needsReview ?? summary.needs_review ?? '-'} / Errors {summary.responsesWithError ?? '-'}。必要であれば理由 (`evaluation.rationale`) を追跡。<br />
+              <button type="button" style={{ marginTop: 4 }} onClick={() => focusArtifact('functional', 'summary')}>Functional Summary を開く</button>
+            </li>
+            <li>
+              Embedding距離平均 {typeof metrics.embeddingAverageDistance === 'number' ? metrics.embeddingAverageDistance.toFixed(3) : '-'}、最大 {typeof metrics.embeddingMaxDistance === 'number' ? metrics.embeddingMaxDistance.toFixed(3) : '-'}。
+            </li>
+          </ul>
+        </div>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           <label>
             RAGTruth検索

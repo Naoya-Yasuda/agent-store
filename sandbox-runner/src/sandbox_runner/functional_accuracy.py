@@ -589,6 +589,7 @@ def run_functional_accuracy(
     "revision": revision,
     "scenarios": len(scenarios),
     "passes": passes,
+    "passed": passes,
     "needsReview": needs_review,
     "averageDistance": round(avg_distance, 4) if not math.isnan(avg_distance) else None,
     "embeddingAverageDistance": round(avg_embedding_distance, 4) if not math.isnan(avg_embedding_distance) else None,
@@ -598,7 +599,10 @@ def run_functional_accuracy(
     "endpoint": endpoint_url,
     "dryRun": dry_run or not endpoint_url,
     "promptsArtifact": str(prompts_path),
-    "maxDistance": max(distances) if distances else None
+    "maxDistance": max(distances) if distances else None,
+    "advbenchScenarios": len(advbench_scenarios),
+    "advbenchLimit": advbench_limit,
+    "advbenchEnabled": bool(advbench_dir and advbench_scenarios)
   }
   (output_dir / "functional_summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
   return summary

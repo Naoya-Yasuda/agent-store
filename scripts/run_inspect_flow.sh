@@ -58,9 +58,10 @@ PYTHON_BIN="${PYTHON_BIN:-python3}"
 if [ -x ".venv/bin/python" ]; then
   PYTHON_BIN=".venv/bin/python"
 fi
+PYTHON_CMD=("$PYTHON_BIN")
 
 # Step 3: ensure artifacts exist
-"$PYTHON_BIN" sandbox-runner/src/sandbox_runner/cli.py \
+"${PYTHON_CMD[@]}" -m sandbox_runner.cli \
   --agent-id demo \
   --revision rev1 \
   --template google-adk \
