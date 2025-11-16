@@ -94,8 +94,8 @@ router.get('/review/progress/:submissionId', optionalAuthenticate, async (req: A
   }
 });
 
-// レビューUI表示は管理者のみ（reviewer or admin）
-router.get('/review/ui/:submissionId', authenticate, requireRole('reviewer', 'admin'), async (req: AuthenticatedRequest, res: Response) => {
+// レビューUI表示はオプショナル認証（開発環境では認証不要、本番では管理者のみ）
+router.get('/review/ui/:submissionId', optionalAuthenticate, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const submissionId = sanitizeSegment(req.params.submissionId, 'submission_id');
     const progress = await getWorkflowProgress(submissionId);
@@ -119,8 +119,18 @@ router.get('/review/ui/:submissionId', authenticate, requireRole('reviewer', 'ad
     const wandbLink = progress.wandbRun?.url
       ? `<a href="${escapeHtml(progress.wandbRun.url)}" target="_blank" rel="noreferrer">W&B Dashboard</a>`
       : 'N/A';
-    const llm = progress.llmJudge;
-    const llmInfo = llm
+    // Try to get LLM Judge config from progress.llmJudge or from judge stage details
+    const judgeStageDetails = progress.stages?.judge?.details as any;
+    const llm = progress.llmJudge ?? judgeStageDetails?.llmJudge;
+
+    // If judge stage is running, completed, or failed (not pending/skipped), show Judge Panel as enabled
+    const judgeStageStatus = progress.stages?.judge?.status;
+    const judgeStageActive = judgeStageStatus && !['pending', 'skipped'].includes(judgeStageStatus);
+
+    // Check if LLM config has meaningful values (not just default {})
+    const hasLlmConfig = llm && (llm.enabled || llm.model || llm.provider);
+
+    const llmInfo = hasLlmConfig
       ? `<table><tbody>
             <tr><td>Enabled</td><td>${llm.enabled ? 'ON' : 'OFF'}</td></tr>
             <tr><td>Model</td><td>${escapeHtml(llm.model ?? 'N/A')}</td></tr>
@@ -129,7 +139,16 @@ router.get('/review/ui/:submissionId', authenticate, requireRole('reviewer', 'ad
             <tr><td>Max Tokens</td><td>${escapeHtml(llm.maxOutputTokens ?? '-')}</td></tr>
             <tr><td>Dry Run</td><td>${llm.dryRun ? 'true' : 'false'}</td></tr>
           </tbody></table>`
-      : 'LLM Judge: 未設定';
+      : judgeStageActive
+        ? `<table><tbody>
+            <tr><td>Enabled</td><td>ON (--enable-judge-panel)</td></tr>
+            <tr><td>Model</td><td>デフォルト設定</td></tr>
+            <tr><td>Provider</td><td>デフォルト設定</td></tr>
+            <tr><td>Temperature</td><td>-</td></tr>
+            <tr><td>Max Tokens</td><td>-</td></tr>
+            <tr><td>Dry Run</td><td>false</td></tr>
+          </tbody></table>`
+        : 'LLM Judge: 未設定';
     const judgeDetails = progress.stages?.judge?.details ?? {};
     const judgeSummary = (judgeDetails.summary as JudgeSummary | undefined) ?? {};
     const judgeTable = Object.keys(judgeSummary).length

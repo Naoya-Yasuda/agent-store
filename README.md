@@ -809,6 +809,49 @@ docker exec agent-store-temporal-worker bash -c \
   "source /app/.venv/bin/activate && python -m sandbox_runner.cli --help"
 ```
 
+**Q: Human Reviewはどうやって実施する？**
+
+Human Reviewが必要なSubmissionには以下の方法でレビュー判定を送信できます：
+
+**方法1: Review UI（ブラウザ）**
+```
+http://localhost:3001/review/ui/<submission-id>
+```
+
+**方法2: CLIスクリプト**
+```bash
+# 承認する場合
+bash /tmp/approve_submission.sh <submission-id> "承認理由（オプション）"
+
+# 例：
+bash /tmp/approve_submission.sh f32025b9-c8e3-4034-b5d3-7f738dedc11f "Trust Scoreが75点で問題なし"
+
+# 却下する場合
+bash /tmp/reject_submission.sh <submission-id> "却下理由（オプション）"
+
+# 例：
+bash /tmp/reject_submission.sh f32025b9-c8e3-4034-b5d3-7f738dedc11f "セキュリティ上の懸念あり"
+```
+
+**方法3: Temporal CLI（直接シグナル送信）**
+```bash
+# 承認
+docker exec agent-store-temporal-worker npx temporal workflow signal \
+  --workflow-id "review-pipeline-<submission-id>" \
+  --name "signalHumanDecision" \
+  --input '["approved", "承認理由"]' \
+  --namespace default \
+  --address temporal:7233
+
+# 却下
+docker exec agent-store-temporal-worker npx temporal workflow signal \
+  --workflow-id "review-pipeline-<submission-id>" \
+  --name "signalHumanDecision" \
+  --input '["rejected", "却下理由"]' \
+  --namespace default \
+  --address temporal:7233
+```
+
 ---
 
 ## ドキュメント

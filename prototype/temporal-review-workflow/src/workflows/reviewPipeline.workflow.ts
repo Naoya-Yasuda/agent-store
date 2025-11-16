@@ -754,6 +754,7 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
         wandbUrl: context.wandbRun?.url
       });
       updateStage('judge', {
+        status: 'completed',
         message: `judge verdict: ${judge.verdict}`,
         details: {
           summary: judge.summary,
