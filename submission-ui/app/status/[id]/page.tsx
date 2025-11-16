@@ -274,6 +274,33 @@ export default function StatusPage() {
                   <span className="text-gray-900">{progress.trustScore.implementation} / 10</span>
                 </div>
               </div>
+
+              {/* Human Review Button */}
+              {progress.trustScore.autoDecision === 'requires_human_review' && (
+                <div className="mt-6 pt-4 border-t border-blue-200">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900 mb-1">
+                        👤 このエージェントは人間によるレビューが必要です
+                      </p>
+                      <p className="text-xs text-gray-600">
+                        管理者が詳細を確認し、承認または差し戻しを行います
+                      </p>
+                    </div>
+                    <a
+                      href={`http://localhost:3001/review/ui/${submissionId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-md transition-colors"
+                    >
+                      <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                      </svg>
+                      管理者レビュー画面を開く
+                    </a>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -307,6 +334,23 @@ export default function StatusPage() {
                   {stage.error && (
                     <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded">
                       <p className="text-sm text-red-800">{stage.error}</p>
+                    </div>
+                  )}
+
+                  {/* Show detailed info button for failed/completed stages */}
+                  {(stage.status === 'failed' || stage.status === 'completed') && (
+                    <div className="mt-3">
+                      <a
+                        href={`http://localhost:3001/review/ui/${submissionId}#${stageName}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center text-sm text-blue-600 hover:text-blue-800 font-medium"
+                      >
+                        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        詳細を確認する
+                      </a>
                     </div>
                   )}
                 </div>

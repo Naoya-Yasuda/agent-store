@@ -153,15 +153,20 @@ services:
   review-ui:
     build:
       context: .
-      dockerfile: docker/review-ui/Dockerfile
+      dockerfile: docker/review-ui/Dockerfile.dev
     container_name: agent-store-review-ui
     env_file:
       - .env
     environment:
-      NODE_ENV: ${NODE_ENV:-production}
+      NODE_ENV: development
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000}
     ports:
       - "3001:3000"
+    volumes:
+      # Mount source code for hot reload
+      - ./review-ui:/app
+      - /app/node_modules
+      - /app/.next
     depends_on:
       - api
     networks:
@@ -171,7 +176,7 @@ services:
   submission-ui:
     build:
       context: .
-      dockerfile: docker/submission-ui/Dockerfile
+      dockerfile: docker/submission-ui/Dockerfile.dev
       args:
         NEXT_PUBLIC_AUTH_URL: ${NEXT_PUBLIC_AUTH_URL:-http://localhost:3003}
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:3000}
@@ -179,11 +184,16 @@ services:
     env_file:
       - .env
     environment:
-      NODE_ENV: ${NODE_ENV:-production}
+      NODE_ENV: development
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:3000}
       NEXT_PUBLIC_AUTH_URL: ${NEXT_PUBLIC_AUTH_URL:-http://localhost:3003}
     ports:
       - "3002:3000"
+    volumes:
+      # Mount source code for hot reload
+      - ./submission-ui:/app
+      - /app/node_modules
+      - /app/.next
     depends_on:
       - api
       - auth-service

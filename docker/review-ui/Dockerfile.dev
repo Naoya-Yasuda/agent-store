@@ -1,0 +1,19 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install dependencies
+COPY review-ui/package*.json ./
+RUN npm install
+
+# Copy source code
+COPY review-ui/ .
+
+# Environment variables
+ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:3000
+ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}
+
+EXPOSE 3000
+
+# Run in development mode with hot reload
+CMD ["npm", "run", "dev"]
