@@ -1,10 +1,10 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { buildLlmOverride, LlmOverrideResult } from '../src/lib/judgeOverride';
 import { TrustScoreCard } from '../src/components/TrustScoreCard';
-
-type StageName = 'precheck' | 'security' | 'functional' | 'judge' | 'human' | 'publish';
+import { stageIcons, stageLabels, stageOrder, StageName } from '../src/lib/stageData';
 
 type ArtifactDescriptor = {
   stage: StageName | string;
@@ -125,25 +125,6 @@ type StageEventEntry = {
   timestamp?: string;
   data?: Record<string, unknown>;
   severity?: 'info' | 'warn' | 'error';
-};
-
-const stageOrder: StageName[] = ['precheck', 'security', 'functional', 'judge', 'human', 'publish'];
-const stageLabels: Record<StageName, string> = {
-  precheck: 'PreCheck',
-  security: 'Security Gate',
-  functional: 'Functional Accuracy',
-  judge: 'Judge Panel',
-  human: 'Human Review',
-  publish: 'Publish'
-};
-
-const stageIcons: Record<StageName, string> = {
-  precheck: '🧾',
-  security: '🛡️',
-  functional: '🧪',
-  judge: '⚖️',
-  human: '🙋',
-  publish: '🚀'
 };
 
 const evidenceStageOptions: { stage: StageName; artifacts: string[] }[] = [
@@ -1776,15 +1757,20 @@ export default function ReviewDashboard() {
                     </div>
                     <div style={{ fontSize: 12, color: '#57606a' }}>Attempts: {info?.attempts ?? 0}</div>
                     {info?.message && <div style={{ fontSize: 12 }}>{info.message}</div>}
-                    {warnings.length > 0 && (
-                      <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                        {warnings.map((warning, index) => (
-                          <span key={`${stage}-warning-${index}`} style={{ fontSize: 12, background: '#fff5f5', color: '#d1242f', border: '1px solid #d1242f', borderRadius: 4, padding: '2px 6px' }}>
-                            {warning}
+                  {warnings.length > 0 && (
+                    <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                      {warnings.map((warning, index) => (
+                        <span key={`${stage}-warning-${index}`} style={{ fontSize: 12, background: '#fff5f5', color: '#d1242f', border: '1px solid #d1242f', borderRadius: 4, padding: '2px 6px' }}>
+                          {warning}
                           </span>
                         ))}
                       </div>
                     )}
+                    <div style={{ marginTop: 12 }}>
+                      <Link href={`/stage/${stage}?submissionId=${encodeURIComponent(submissionId)}`} style={{ color: '#0969da', fontSize: 12 }}>
+                        詳細を確認する
+                      </Link>
+                    </div>
                   </div>
                 );
               })}

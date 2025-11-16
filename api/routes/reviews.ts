@@ -528,6 +528,7 @@ router.get('/review/artifacts/:agentRevisionId', async (req: Request, res: Respo
   try {
     const { stage = 'security', type = 'report', agentId } = req.query;
     const revision = sanitizeSegment(req.params.agentRevisionId as string, 'agent_revision');
+    const artifactRevision = revision.replace(/-rev\d+$/, '');
     const stageKey = String(stage);
     if (!['security', 'functional', 'judge'].includes(stageKey)) {
       throw new BadRequestError('stage_invalid');
@@ -536,7 +537,7 @@ router.get('/review/artifacts/:agentRevisionId', async (req: Request, res: Respo
       return res.status(400).json({ error: 'agent_id_required' });
     }
     const safeAgentId = agentId ? sanitizeSegment(String(agentId), 'agent_id') : undefined;
-    const baseDir = ensureWithinRepo(path.join(SANDBOX_ARTIFACTS_DIR, revision));
+    const baseDir = ensureWithinRepo(path.join(SANDBOX_ARTIFACTS_DIR, artifactRevision));
     const judgeBase = safeAgentId
       ? ensureWithinRepo(path.join(INSPECT_OUT_DIR, safeAgentId, revision, 'judge'))
       : undefined;

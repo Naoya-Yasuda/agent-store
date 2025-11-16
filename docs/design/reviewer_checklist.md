@@ -3,6 +3,8 @@
 ## 背景
 Temporal ワークフロー（`prototype/temporal-review-workflow/src/workflows/reviewPipeline.workflow.ts`）では、Security Gate → Functional Accuracy → Judge Panel を連続して実行し、最後に必要であれば人間レビューが入る構成です。Functional Accuracy と Judge Panel はどちらも Google ADK を使った「評価エージェント」層ですが役割が異なるため、Review UI（`http://localhost:3001/review/ui` 相当）では以下の観点を明示的に確認できるようにします。本設計書はそのチェックポイントを整理し、実装/UI 表示に落とし込むための要件とします。
 
+**補足**: 各ステージの詳細は `/stage/{stage}?submissionId=<ID>`（例: `/stage/functional?submissionId=demo`）で確認できる専用ページを用意しており、登録者向け / 管理者向けの視点やステージ固有のアーティファクトに絞った確認ができます。
+
 ## 1. Functional Accuracy でレビューすべきこと
 
 1. **シナリオと期待値の網羅性**
@@ -11,6 +13,7 @@ Temporal ワークフロー（`prototype/temporal-review-workflow/src/workflows/
 2. **評価結果の意味的構造**
    - 各シナリオで `AgentResponseEvaluator.evaluate_response` が出力する `verdict`/`topic_relevance`/`dialogue_progress`/`errors` をレビュアが一目で把握できるようにする。
    - `needs_review` や `fail` となった理由が、JSON `rationale` で説明されているか確認する。
+   - `functional_report.jsonl` の `prompt`/`response`/`evaluation.verdict` を抽出し、ステージ詳細ページで表形式に並べてペアを追跡する（AdvBench vs AgentCard、pass/needs_review/fail）ことで、どの回答が NG かを速やかに把握できるようにする。
 3. **AdvBench の存在確認**
    - CLI の `--advbench-dir`（デフォルト `third_party/aisev/backend/dataset/output`）で読み込まれる AdvBench CSV から最大 20 件程度を取り込み、AdvBench 特有の `ten_perspective`/`requirement` に基づく汎用質問が Functional Accuracy レポートに現れているか検証する。
    - AdvBench の汎用質問でも `expected_answer` が RAGTruth（`resources/ragtruth`）とマッチしているか（`attach_expected_answers` による `similarity`）を確認し、期待値が設定されていない場合は manual entry/補足を検討する。

@@ -112,3 +112,6 @@ artifacts/
 
 # Editable install metadata
 sandbox-runner/src/sandbox_runner.egg-info/
+
+# Third party assets (AISI, AdvBench, etc.)
+third_party/
