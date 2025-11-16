@@ -503,15 +503,45 @@ def _run_judge_panel(
         "maxOutputTokens": llm_config.max_output_tokens if llm_config else None,
         "baseUrl": llm_config.base_url if llm_config else None
     }
+
+    # Multi-Model Judge Panel (GPT-4o, Claude 3.5, Gemini 1.5 Pro)の初期化
+    panel_judge_instance = None
+    use_panel = False
+    try:
+        from inspect_worker.panel_judge import MultiModelJudgePanel
+        # 環境変数から各モデルの有効化を確認
+        enable_openai = bool(os.getenv("OPENAI_API_KEY"))
+        enable_anthropic = bool(os.getenv("ANTHROPIC_API_KEY"))
+        enable_google = bool(os.getenv("GOOGLE_API_KEY"))
+
+        if enable_openai or enable_anthropic or enable_google:
+            panel_judge_instance = MultiModelJudgePanel(
+                dry_run=llm_config.dry_run if llm_config else False,
+                enable_openai=enable_openai,
+                enable_anthropic=enable_anthropic,
+                enable_google=enable_google
+            )
+            use_panel = True
+            llm_summary["panelEnabled"] = True
+            llm_summary["panelModels"] = panel_judge_instance.models
+    except Exception as error:
+        llm_summary["panelError"] = str(error)
+        llm_summary["panelEnabled"] = False
+
+    # Single LLM Judge (フォールバック)
     llm_judge_instance = None
-    if llm_config and llm_config.enabled:
+    if llm_config and llm_config.enabled and not use_panel:
         try:
             llm_judge_instance = LLMJudge(llm_config)
         except Exception as error:  # pragma: no cover - env specific
             llm_summary["error"] = str(error)
             llm_summary["enabled"] = False
 
-    orchestrator = MCTSJudgeOrchestrator(llm_judge=llm_judge_instance)
+    orchestrator = MCTSJudgeOrchestrator(
+        llm_judge=llm_judge_instance,
+        panel_judge=panel_judge_instance,
+        use_panel=use_panel
+    )
     verdicts = orchestrator.run_panel(questions, executions)
     llm_summary["calls"] = orchestrator.llm_calls if llm_judge_instance else 0
 
@@ -546,6 +576,18 @@ def _run_judge_panel(
                 "llmDryRun": llm_config.dry_run if llm_config else None,
                 "llmBaseUrl": llm_config.base_url if llm_config else None,
                 "traceId": execution.trace_id if execution else None,
+                # Multi-Model Judge Panel results
+                "panelVerdicts": verdict.panel_verdicts if hasattr(verdict, 'panel_verdicts') else None,
+                "panelAggregatedVerdict": verdict.panel_aggregated_verdict if hasattr(verdict, 'panel_aggregated_verdict') else None,
+                "panelMinorityVeto": verdict.panel_minority_veto if hasattr(verdict, 'panel_minority_veto') else None,
+                # AISI Inspect criteria scores
+                "aisiTaskCompletion": verdict.aisi_task_completion if hasattr(verdict, 'aisi_task_completion') else None,
+                "aisiToolUsage": verdict.aisi_tool_usage if hasattr(verdict, 'aisi_tool_usage') else None,
+                "aisiAutonomy": verdict.aisi_autonomy if hasattr(verdict, 'aisi_autonomy') else None,
+                "aisiSafety": verdict.aisi_safety if hasattr(verdict, 'aisi_safety') else None,
+                "aisiTotalScore": verdict.aisi_total_score if hasattr(verdict, 'aisi_total_score') else None,
+                # Stage-based Multi-Model Panel results
+                "stagePanelVerdicts": verdict.stage_panel_verdicts if hasattr(verdict, 'stage_panel_verdicts') else None,
             }
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
 

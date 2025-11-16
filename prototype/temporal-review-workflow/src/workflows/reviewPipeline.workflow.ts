@@ -482,6 +482,17 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
     } catch (err) {
       const message = err instanceof Error ? err.message : 'stage_failed';
       updateStage(stage, { status: 'failed', message });
+
+      // Update DB state on failure
+      try {
+        await activities.updateSubmissionState({
+          submissionId: context.submissionId,
+          state: `${stage}_failed`
+        });
+      } catch (stateErr) {
+        console.warn(`[workflow] failed to update submission state to ${stage}_failed`, stateErr);
+      }
+
       throw err;
     }
   }

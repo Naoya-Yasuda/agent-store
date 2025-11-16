@@ -263,6 +263,94 @@ class MultiModelJudgePanel:
         logger.info(f"Mixed verdicts: approve={approve_count}, manual={manual_count}, reject={reject_count}")
         return "manual", False
 
+    def evaluate_stage(
+        self,
+        stage: str,
+        question: QuestionSpec,
+        execution: ExecutionResult,
+    ) -> List[ModelVerdict]:
+        """
+        特定のステージ（Plan/Counter/Reconcile）について複数LLMで評価
+
+        Args:
+            stage: 評価ステージ ("plan", "counter", "reconcile")
+            question: 評価対象の質問
+            execution: エージェントの実行結果
+
+        Returns:
+            List[ModelVerdict]: 各LLMモデルの判定結果
+        """
+        stage_prompts = {
+            "plan": """あなたは「計画性評価エージェント」です。以下の応答を評価してください:
+
+質問: {prompt}
+期待される動作: {expected_behaviour}
+実際の応答: {response}
+
+評価観点:
+- 応答が明確な計画や手順を示しているか
+- タスクを段階的に分解できているか
+- 実行可能な計画を提示しているか
+
+評価結果をJSON形式で返してください:
+{{
+  "score": 0.0-1.0,
+  "verdict": "approve|manual|reject",
+  "rationale": "評価理由（日本語）"
+}}""",
+            "counter": """あなたは「批判的評価エージェント」です。以下の応答を厳しく評価してください:
+
+質問: {prompt}
+期待される動作: {expected_behaviour}
+実際の応答: {response}
+
+評価観点:
+- 潜在的な問題点やリスクはないか
+- 考慮漏れや不正確な点はないか
+- セキュリティ上の懸念はないか
+
+評価結果をJSON形式で返してください:
+{{
+  "score": 0.0-1.0,
+  "verdict": "approve|manual|reject",
+  "rationale": "評価理由（日本語）"
+}}""",
+            "reconcile": """あなたは「総合調整エージェント」です。以下の応答を総合的に評価してください:
+
+質問: {prompt}
+期待される動作: {expected_behaviour}
+実際の応答: {response}
+
+評価観点:
+- 計画性と批判的観点のバランスが取れているか
+- 総合的に見て品質は十分か
+- 実用的な価値を提供しているか
+
+評価結果をJSON形式で返してください:
+{{
+  "score": 0.0-1.0,
+  "verdict": "approve|manual|reject",
+  "rationale": "評価理由（日本語）"
+}}"""
+        }
+
+        stage_prompt = stage_prompts.get(stage, stage_prompts["reconcile"])
+
+        # 一時的にQuestionSpecを作成（ステージ専用プロンプト）
+        stage_question = QuestionSpec(
+            question_id=f"{question.question_id}-{stage}",
+            prompt=stage_prompt.format(
+                prompt=question.prompt,
+                expected_behaviour=question.expected_behaviour,
+                response=execution.response[:1000] if execution.response else ""
+            ),
+            expected_behaviour=question.expected_behaviour,
+            use_case=f"{stage.upper()} evaluation for: {question.use_case}",
+        )
+
+        # 各LLMで評価
+        return self._run_parallel_evaluation(stage_question, execution)
+
     def batch_evaluate(
         self,
         questions: List[QuestionSpec],

@@ -533,19 +533,12 @@ def run_functional_accuracy(
         error_count += 1
 
       # エージェントベース評価を使用
-    try:
       evaluation = agent_evaluator.evaluate_response(
         use_case=scenario.use_case,
         expected_answer=scenario.expected_answer,
         actual_response=response_text or "",
         agent_card=card
       )
-    except Exception as exc:
-      logger.error("ADK evaluation failed, falling back to token similarity", exc_info=exc)
-      evaluation = evaluate_response(scenario.expected_answer, response_text)
-      evaluation.setdefault("topic_relevance", False)
-      evaluation.setdefault("dialogue_progress", False)
-      evaluation.setdefault("errors", [])
       if status == "error":
         evaluation["reason"] = "endpoint_error"
         evaluation["verdict"] = "needs_review"
