@@ -88,8 +88,12 @@ def main() -> None:
     response_samples_file = artifacts_dir / "response_samples.jsonl"
     policy_score_file = artifacts_dir / "policy_score.json"
 
+    print(f"[DEBUG] Checking for response_samples.jsonl at: {response_samples_file.absolute()}", file=sys.stderr)
+    print(f"[DEBUG] artifacts_dir exists: {artifacts_dir.exists()}", file=sys.stderr)
+    print(f"[DEBUG] artifacts_dir contents: {list(artifacts_dir.iterdir()) if artifacts_dir.exists() else 'N/A'}", file=sys.stderr)
+
     if not response_samples_file.exists():
-        raise FileNotFoundError("response_samples.jsonl が見つかりません。Sandbox Runnerを実行してください。")
+        raise FileNotFoundError(f"response_samples.jsonl が見つかりません。パス: {response_samples_file.absolute()}")
 
     if args.enable_judge_panel and not args.agent_card:
         raise ValueError("Judge Panelを有効にする場合は --agent-card を指定してください")

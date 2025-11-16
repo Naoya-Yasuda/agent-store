@@ -273,13 +273,16 @@ export async function runJudgePanel(args: { submissionId: string; agentId: strin
   console.log(`[activities] runJudgePanel submission=${args.submissionId} prompt=${args.promptVersion}`);
   const outDir = path.join(INSPECT_OUT_DIR, args.agentId, args.agentRevisionId);
   await fs.mkdir(outDir, { recursive: true });
+  // Remove -revN suffix to match where sandbox-runner stores artifacts
+  const submissionId = args.agentRevisionId.replace(/-rev\d+$/, '');
+  const artifactsPath = path.join(SANDBOX_ARTIFACTS_DIR, submissionId);
   const inspectArgs = [
     '--agent-id', args.agentId,
     '--revision', args.agentRevisionId,
-    '--artifacts', path.join(SANDBOX_ARTIFACTS_DIR, args.agentRevisionId),
+    '--artifacts', artifactsPath,
     '--manifest', path.join(PROJECT_ROOT, 'prompts', 'aisi', 'manifest.tier3.json'),
     '--enable-judge-panel',
-    '--agent-card', args.agentCardPath ?? path.join(SANDBOX_ARTIFACTS_DIR, args.agentRevisionId, 'agent_card.json'),
+    '--agent-card', args.agentCardPath ?? path.join(artifactsPath, 'agent_card.json'),
     '--submission-id', args.submissionId
   ];
   appendWandbCliArgs(inspectArgs, args.wandbRun);
@@ -292,6 +295,7 @@ export async function runJudgePanel(args: { submissionId: string; agentId: strin
     inspectArgs.push('--relay-token', args.relay.token);
   }
   inspectArgs.push(...buildJudgeLlmArgs(args.llmJudge));
+  console.log('[activities] runJudgePanel command:', INSPECT_PYTHON, INSPECT_SCRIPT, ...inspectArgs);
   await runInspectCli(inspectArgs);
   const judgeDir = path.join(outDir, 'judge');
   const summaryPath = path.join(judgeDir, 'judge_summary.json');

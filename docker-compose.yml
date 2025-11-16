@@ -107,6 +107,10 @@ services:
     volumes:
       - ./sandbox-runner/artifacts:/app/sandbox-runner/artifacts
       - ./logs:/app/logs
+      # Development: Mount source files for live updates
+      - ./prototype/inspect-worker/scripts:/app/prototype/inspect-worker/scripts:cached
+      - ./prototype/temporal-review-workflow/src:/app/src:cached
+      - ./sandbox-runner/src:/app/sandbox-runner/src:cached
 
   # Express API Server
   api:
