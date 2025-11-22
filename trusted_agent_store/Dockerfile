@@ -10,7 +10,10 @@ RUN apt-get update && apt-get install -y \
 
 # Install Python dependencies
 COPY requirements.txt .
+COPY sandbox-runner /app/sandbox-runner
+COPY third_party /app/third_party
 RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install -e /app/sandbox-runner
 
 # Copy application code
 COPY . .

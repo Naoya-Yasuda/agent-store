@@ -49,8 +49,14 @@ class SubmissionBase(BaseModel):
     organization_meta: Dict[str, Any]
     request_context: Optional[Dict[str, Any]] = None
 
-class SubmissionCreate(SubmissionBase):
-    pass
+class SubmissionCreate(BaseModel):
+    agent_id: str
+    agent_card_url: str
+    endpoint_manifest: Optional[Dict[str, Any]] = {}
+    endpoint_snapshot_hash: Optional[str] = "hash"
+    signature_bundle: Optional[Dict[str, Any]] = {}
+    organization_meta: Optional[Dict[str, Any]] = {}
+    request_context: Optional[Dict[str, Any]] = None
 
 class Submission(SubmissionBase):
     id: str
