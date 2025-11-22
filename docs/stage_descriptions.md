@@ -13,12 +13,14 @@
 - **出力**: `security_summary.json`、`security_report.jsonl`、警告・fail レベルを `functional` への gate でチェック。`reviewPipeline` で `failReasons` があれば `security` stage の status を `failed` に。
 
 ## 3. Functional Accuracy (意図・機能検証)
-- **何をするか**: AgentCard（useCases）および AdvBench（AISI/aisev）シナリオに対して、Google ADK もしくはトークン類似度でレスポンスを評価し、topic＝意図、dialogue＝進行、distance＝一致度を測る。機能確認（Functional）とセキュリティ攻撃（Security Gate）は手段が異なり、Functional Accuracy は「期待されたユースケースに沿って意味的に整っているか」を見て、Security Gateは「悪意のある入力に対して安全か」を調べ、どちらも AdvBench を共通の素材として使っています。デフォルトでは AgentCard＋AdvBench あわせて **10件のシナリオ**を評価します（`--functional-max-scenarios` または `sandbox-runner` CLI の `functional_max_scenarios` 設定で変更可）。
-- **主な処理**: `sandbox-runner/src/sandbox_runner/functional_accuracy.py` の `run_functional_accuracy`。AgentCard から `Scenario` を生成し、`load_advbench_scenarios` を通じて AdvBench 入力を追加。`AgentResponseEvaluator` が `google.adk.agents.Agent` を使い multi-stage evaluation を実行。`functional_report.jsonl` （prompt/response/verdict）と `functional_summary.json`（metrics、advbenchScenarios）を生成。`prototype/temporal-review-workflow/src/activities/index.ts` の `runFunctionalAccuracy` で CLI を呼び `artifacts` を `reviewPipeline` に取り込み。
-- **出力**: `functional_report.jsonl`、`functional_summary.json`、`functional_scenarios.jsonl`。UI では `/stage/functional` でこれらを表として表示し、AdvBench / pass/needs_review/fail を分類。
+- **何をするか**: AgentCard の `useCases` と AdvBench（AISI/aisev）の質問を合わせて最大 約 10 件のシナリオを評価し、各問いに対して Google ADK（またはトークン類似度）で `topic_relevance`・`dialogue_progress`・`distance` を測定することで `pass/needs_review/fail` を決定します。Functional Accuracy は「機能的な性能／文脈的な整合性」を見るステージであり、Security Gate が攻撃に耐えるかを見るのとは目的が異なります。AdvBench も Security Gate と共有する素材ですが、Functional Accuracy は「期待された対応をどれだけ忠実に行ったか」を定量化します。
+- **審査の観点**: 「この質問に対する応答は所定の意図を捉えているか」「必要な追加情報や確認の質問が出ているか」「回答に誤りやハルシネーションがないか」を可視化して、Human Review に送るべき `needs_review`/`fail` をあらかじめ絞り込みます。
+- **主な処理**: `sandbox-runner/src/sandbox_runner/functional_accuracy.py` の `run_functional_accuracy` で AgentCard + AdvBench から `Scenario` を作成し、`AgentResponseEvaluator` が multi-stage evaluation を回して `functional_report.jsonl`・`functional_summary.json` を生成。結果は `prototype/temporal-review-workflow/src/activities/index.ts` の `runFunctionalAccuracy` で `reviewPipeline` に取り込まれます（CLI に `--advbench-dir/--advbench-limit` を渡す設定あり）。
+- **出力**: `functional_report.jsonl`（prompt/response/verdict）・`functional_summary.json`（metrics、advbenchScenarios、avgDistance）・`functional_scenarios.jsonl`。Review UI では `/stage/functional` でこれらを読み込んでテーブル・chart・failure セクションを表示し、AdvBench/AgentCard 両方の視点で pass/needs_review/fail を確認できます。
 
 ## 4. Judge Panel
-- **何をするか**: AgentCard／AdvBench の質問を生成し、Execution Agent→LLM Judge（Google ADK + multi-model panel）で多角的にスコア。MCTS（`panel_judge.py`）で各モデル verdict を集約し、Manual/Reject のトリガーを判断。質問数のデフォルトは `--judge-max-questions`／`JUDGE_MAX_QUESTIONS=5`（`question_generator` も最大 5 件）で、必要に応じて CLI/環境変数で増やせます。
+- **何をするか**: AgentCard／AdvBench 由来の質問を Question Generator で作り、Execution Agent でエージェントに投げた回答を複数エージェントに同時評価させます。各 LLM（Google ADK、openai/claude 等）は `task_completion`/`tool_usage`/`autonomy`/`safety` と `verdict` を返し、それらを MCTS（`panel_judge.py`）の論理ツリーで合意形成して aggregated verdict を決定。質問数のデフォルトは `--judge-max-questions`／`JUDGE_MAX_QUESTIONS=5`（`question_generator` 最大 5 件）ですが、CLI オプションや環境変数で増やすこともできます。
+- **審査のイメージ**: 「複数モデルがどう評価したかを並べて、少数派 veto（30%以上 reject/flagged）や manual 判定の原因を可視化」「Judge Report に rationale を残し、矛盾があるときは Human Review へ回す」ためのステージです。
 - **主な処理**:
   - `prototype/inspect-worker/inspect_worker/question_generator.py`: AgentCard から質問と `expected_behaviour` を生成（AdvBench も併用）。
   - `prototype/inspect-worker/inspect_worker/execution_agent.py`: A2A Relay でエージェントと通信し、`relay_logs.jsonl` を生成。

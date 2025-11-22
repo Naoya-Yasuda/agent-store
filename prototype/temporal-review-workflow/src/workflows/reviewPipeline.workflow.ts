@@ -856,6 +856,12 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
     trustScore = calculateTrustScore(securityResult, functionalResult, judgeResult);
     console.log(`[workflow] Trust Score calculated: ${trustScore.total}/100 (Security: ${trustScore.security}, Functional: ${trustScore.functional}, Judge: ${trustScore.judge}, Implementation: ${trustScore.implementation}) => ${trustScore.autoDecision}`);
 
+    // Check if Functional Accuracy has items needing review
+    const functionalNeedsReview = functionalResult?.summary && (functionalResult.summary as any).needsReview > 0;
+    if (functionalNeedsReview) {
+      console.log(`[workflow] Functional Accuracy has ${(functionalResult.summary as any).needsReview} items needing review - will escalate to human`);
+    }
+
     await emitStageEvent('judge', 'trust_score_calculated', {
       data: {
         trustScore: trustScore.total,
@@ -866,12 +872,19 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
           implementation: trustScore.implementation
         },
         autoDecision: trustScore.autoDecision,
-        reasoning: trustScore.reasoning
+        reasoning: trustScore.reasoning,
+        functionalNeedsReview: functionalNeedsReview ? (functionalResult.summary as any).needsReview : undefined
       },
       severity: 'info'
     });
 
     // Trust Score based auto-decision branching
+    // Override auto-decision if Functional Accuracy has items needing review
+    if (functionalNeedsReview && trustScore.autoDecision === 'auto_approved') {
+      console.log(`[workflow] Overriding auto_approved decision due to Functional Accuracy needing review`);
+      trustScore.autoDecision = 'requires_human_review';
+    }
+
     if (trustScore.autoDecision === 'auto_rejected') {
       // Auto-reject: score < 40
       console.log(`[workflow] Auto-rejecting submission due to low trust score: ${trustScore.total}/100`);
@@ -916,12 +929,17 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
 
       // Proceed to publish stage
     } else {
-      // Requires human review: score 40-79
-      console.log(`[workflow] Escalating to human review due to medium trust score: ${trustScore.total}/100`);
+      // Requires human review: score 40-79 OR functional accuracy has needsReview items
+      const escalationReason = functionalNeedsReview
+        ? `Functional Accuracy has ${(functionalResult.summary as any).needsReview} items needing review (Trust Score: ${trustScore.total}/100)`
+        : `Medium trust score: ${trustScore.total}/100`;
+      console.log(`[workflow] Escalating to human review - ${escalationReason}`);
       await emitStageEvent('judge', 'requires_human_review', {
         data: {
           trustScore: trustScore.total,
-          reasoning: trustScore.reasoning
+          reasoning: trustScore.reasoning,
+          functionalNeedsReview: functionalNeedsReview ? (functionalResult.summary as any).needsReview : undefined,
+          escalationReason
         },
         severity: 'warn'
       });
@@ -935,7 +953,7 @@ export async function reviewPipelineWorkflow(input: ReviewPipelineInput): Promis
         stage: 'judge'
       });
 
-      const decision = await escalateToHuman('judge', 'trust_score_requires_review');
+      const decision = await escalateToHuman('judge', functionalNeedsReview ? 'functional_needs_review_and_trust_score' : 'trust_score_requires_review');
       if (decision === 'rejected') {
         return;
       }

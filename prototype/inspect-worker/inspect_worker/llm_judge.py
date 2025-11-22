@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -133,7 +134,8 @@ Verdict rules:
             logger.error(f"Failed to initialize Google ADK agent: {e}")
             self._agent = None
 
-    def evaluate(self, question: QuestionSpec, execution: Optional[ExecutionResult]) -> LLMJudgeResult:
+    async def evaluate_async(self, question: QuestionSpec, execution: Optional[ExecutionResult]) -> LLMJudgeResult:
+        """非同期評価メソッド（推奨）"""
         if not self.config.enabled:
             return LLMJudgeResult(score=None, verdict=None, rationale="llm_disabled")
         if self.config.dry_run:
@@ -141,11 +143,11 @@ Verdict rules:
         if not execution or not execution.response:
             return LLMJudgeResult(score=0.0, verdict="manual", rationale="empty response", raw=None)
 
-        # Google ADKエージェントが利用可能な場合は使用
+        # Google ADKエージェントが利用可能な場合は使用（非同期）
         if self.config.provider == "google-adk" and self._agent is not None:
-            return self._evaluate_with_google_adk(question, execution)
+            return await self._evaluate_with_google_adk_async(question, execution)
 
-        # レガシーパス: request_fnまたはOpenAI
+        # レガシーパス: request_fnまたはOpenAI/Anthropic（同期APIを使用）
         prompt = self._build_prompt(question, execution)
         raw_response = None
         try:
@@ -165,9 +167,12 @@ Verdict rules:
         except Exception as error:  # pragma: no cover - network/env specific
             return self._fallback_result(f"llm_error:{error}")
 
-    def _evaluate_with_google_adk(self, question: QuestionSpec, execution: ExecutionResult) -> LLMJudgeResult:
-        """Google ADKエージェントを使用して評価を実行"""
-        import asyncio
+    def evaluate(self, question: QuestionSpec, execution: Optional[ExecutionResult]) -> LLMJudgeResult:
+        """同期評価メソッド（後方互換性のため残存）"""
+        return asyncio.run(self.evaluate_async(question, execution))
+
+    async def _evaluate_with_google_adk_async(self, question: QuestionSpec, execution: ExecutionResult) -> LLMJudgeResult:
+        """Google ADKエージェントを使用して非同期評価を実行"""
         from google.adk.runners import InMemoryRunner
 
         # 評価プロンプトを構築
@@ -176,34 +181,10 @@ Verdict rules:
         # Google ADK InMemoryRunnerを使用してエージェントを実行
         runner = InMemoryRunner(agent=self._agent)
 
-        async def run_evaluation():
-            try:
-                response = await runner.run_debug(user_prompt)
-                # run_debug()はEventオブジェクトのリストを返す
-                if isinstance(response, list) and len(response) > 0:
-                    last_event = response[-1]
-                    # Eventからテキストを抽出
-                    if hasattr(last_event, 'text'):
-                        return last_event.text
-                    elif hasattr(last_event, 'content'):
-                        content = last_event.content
-                        if hasattr(content, 'text'):
-                            return content.text
-                        elif hasattr(content, 'parts') and len(content.parts) > 0:
-                            first_part = content.parts[0]
-                            if hasattr(first_part, 'text'):
-                                return first_part.text
-                            return str(first_part)
-                        if isinstance(content, str):
-                            return content
-                        return str(content)
-                return str(response)
-            except Exception as e:
-                logger.error(f"Google ADK evaluation error: {e}")
-                raise
-
         try:
-            response_text = asyncio.run(run_evaluation())
+            response = await runner.run_debug(user_prompt)
+            # run_debug()はEventオブジェクトのリストを返す
+            response_text = self._extract_text_from_events(response)
             parsed = self._parse_response(response_text)
 
             return LLMJudgeResult(
@@ -220,6 +201,31 @@ Verdict rules:
         except Exception as error:
             logger.error(f"Google ADK evaluation failed: {error}")
             return self._fallback_result(f"google_adk_error:{error}")
+
+    def _extract_text_from_events(self, response) -> str:
+        """Eventオブジェクトからテキストを抽出"""
+        if isinstance(response, list) and len(response) > 0:
+            last_event = response[-1]
+            # Eventからテキストを抽出
+            if hasattr(last_event, 'text'):
+                return last_event.text
+            elif hasattr(last_event, 'content'):
+                content = last_event.content
+                if hasattr(content, 'text'):
+                    return content.text
+                elif hasattr(content, 'parts') and len(content.parts) > 0:
+                    first_part = content.parts[0]
+                    if hasattr(first_part, 'text'):
+                        return first_part.text
+                    return str(first_part)
+                if isinstance(content, str):
+                    return content
+                return str(content)
+        return str(response)
+
+    def _evaluate_with_google_adk(self, question: QuestionSpec, execution: ExecutionResult) -> LLMJudgeResult:
+        """Google ADKエージェントを使用して評価を実行（同期ラッパー）"""
+        return asyncio.run(self._evaluate_with_google_adk_async(question, execution))
 
     def _fallback_result(self, rationale: str) -> LLMJudgeResult:
         return LLMJudgeResult(score=0.5, verdict="manual", rationale=rationale, raw=None)
@@ -280,7 +286,7 @@ Verdict rules:
 
     def _send_prompt(self, prompt: str) -> str:
         """
-        レガシーサポート: request_fnまたはOpenAI経由でプロンプトを送信
+        レガシーサポート: request_fnまたはOpenAI/Anthropic経由でプロンプトを送信
         Google ADKを使用する場合は _evaluate_with_google_adk が呼ばれるため、このメソッドは使用されません
         """
         if self._request_fn:
@@ -304,6 +310,25 @@ Verdict rules:
                 ],
             )
             return completion.choices[0].message.content or ""
+        elif self.config.provider == "anthropic":
+            try:
+                from anthropic import Anthropic
+            except ImportError:
+                raise RuntimeError("anthropic package is not installed")
+            api_key = os.environ.get("ANTHROPIC_API_KEY")
+            if not api_key:
+                raise RuntimeError("ANTHROPIC_API_KEY is not set")
+            client = Anthropic(api_key=api_key)
+            message = client.messages.create(
+                model=self.config.model or "claude-3-5-sonnet-20241022",
+                temperature=self.config.temperature,
+                max_tokens=self.config.max_output_tokens,
+                system="Return only JSON.",
+                messages=[
+                    {"role": "user", "content": prompt},
+                ],
+            )
+            return message.content[0].text if message.content else ""
         raise ValueError(f"Unsupported LLM provider: {self.config.provider}")
 
     def _parse_response(self, raw: str) -> dict:

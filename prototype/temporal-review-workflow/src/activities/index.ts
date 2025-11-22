@@ -219,7 +219,9 @@ export async function runFunctionalAccuracy(args: { submissionId: string; agentI
   const metadataPath = path.join(artifactsPath, 'metadata.json');
   const metadata = await readJsonFile(metadataPath);
   const wandb = extractWandbFromMetadata(metadata) ?? args.wandbRun;
-  const passed = (summary as any).needsReview ? (summary as any).needsReview === 0 : !(summary as any).error;
+  // Allow progression to Judge Panel even with needsReview items
+  // Only fail if there's a critical error
+  const passed = !(summary as any).error;
   const ledgerInfo = await recordFunctionalLedger({
     workflowId: args.workflowId,
     workflowRunId: args.workflowRunId,

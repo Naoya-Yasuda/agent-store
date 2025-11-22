@@ -88,7 +88,7 @@ class MultiModelJudgePanel:
             if enable_anthropic:
                 models.append("claude-3-5-sonnet-20241022")
             if enable_google:
-                models.append("gemini-1.5-pro")
+                models.append("gemini-2.0-flash-exp")
 
         self.models = models
         self.judges: List[LLMJudge] = []
@@ -120,13 +120,13 @@ class MultiModelJudgePanel:
             logger.warning(f"Unknown model provider for {model_name}, defaulting to google-adk")
             return "google-adk"
 
-    def evaluate_panel(
+    async def evaluate_panel_async(
         self,
         question: QuestionSpec,
         execution: ExecutionResult,
     ) -> PanelVerdict:
         """
-        Multi-Model Judge Panelによる評価を実行
+        Multi-Model Judge Panelによる非同期評価を実行
 
         Args:
             question: 評価対象の質問
@@ -135,8 +135,8 @@ class MultiModelJudgePanel:
         Returns:
             PanelVerdict: 集約された判定結果
         """
-        # 並列実行で各LLMの判定を取得
-        model_verdicts = self._run_parallel_evaluation(question, execution)
+        # 並列実行で各LLMの判定を取得（非同期）
+        model_verdicts = await self._run_parallel_evaluation_async(question, execution)
 
         # Minority-Veto戦略で集約
         aggregated_verdict, veto_triggered = self._aggregate_verdicts(model_verdicts)
@@ -159,7 +159,24 @@ class MultiModelJudgePanel:
             participating_models=self.models,
         )
 
-    def _run_parallel_evaluation(
+    def evaluate_panel(
+        self,
+        question: QuestionSpec,
+        execution: ExecutionResult,
+    ) -> PanelVerdict:
+        """
+        Multi-Model Judge Panelによる評価を実行（同期ラッパー）
+
+        Args:
+            question: 評価対象の質問
+            execution: エージェントの実行結果
+
+        Returns:
+            PanelVerdict: 集約された判定結果
+        """
+        return asyncio.run(self.evaluate_panel_async(question, execution))
+
+    async def _run_parallel_evaluation_async(
         self,
         question: QuestionSpec,
         execution: ExecutionResult,
@@ -167,51 +184,63 @@ class MultiModelJudgePanel:
         """
         複数のLLMを並列実行して評価を取得
 
-        ThreadPoolExecutorを使用して並列実行し、パフォーマンスを向上
+        asyncio.gather()を使用して真の並列実行を実現
         """
+        # すべてのjudgeを並列実行
+        tasks = [
+            self._evaluate_single_judge_async(judge, question, execution)
+            for judge in self.judges
+        ]
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
         model_verdicts: List[ModelVerdict] = []
+        for idx, (judge, result) in enumerate(zip(self.judges, results)):
+            model_name = judge.config.model
 
-        with ThreadPoolExecutor(max_workers=len(self.judges)) as executor:
-            # 各judgeの評価タスクを投入
-            future_to_model = {
-                executor.submit(self._evaluate_single_judge, judge, question, execution): (
-                    judge.config.model,
-                    idx,
-                )
-                for idx, judge in enumerate(self.judges)
-            }
-
-            # 完了した順に結果を取得
-            for future in as_completed(future_to_model):
-                model_name, idx = future_to_model[future]
-                try:
-                    result = future.result()
-                    model_verdict = ModelVerdict(
+            if isinstance(result, Exception):
+                logger.error(f"Model {model_name} evaluation failed: {result}")
+                model_verdicts.append(
+                    ModelVerdict(
                         model=model_name,
-                        verdict=result.verdict or "manual",
-                        score=result.score or 0.5,
-                        rationale=result.rationale or "no_rationale",
-                        task_completion=result.task_completion,
-                        tool_usage=result.tool_usage,
-                        autonomy=result.autonomy,
-                        safety=result.safety,
-                        total_score=result.total_score,
+                        verdict="manual",
+                        score=0.5,
+                        rationale=f"evaluation_error: {result}",
                     )
-                    model_verdicts.append(model_verdict)
-                    logger.info(f"Model {model_name} verdict: {model_verdict.verdict} (score: {model_verdict.score})")
-                except Exception as error:
-                    logger.error(f"Model {model_name} evaluation failed: {error}")
-                    # エラー時はmanual判定にフォールバック
-                    model_verdicts.append(
-                        ModelVerdict(
-                            model=model_name,
-                            verdict="manual",
-                            score=0.5,
-                            rationale=f"evaluation_error: {error}",
-                        )
-                    )
+                )
+            else:
+                model_verdict = ModelVerdict(
+                    model=model_name,
+                    verdict=result.verdict or "manual",
+                    score=result.score or 0.5,
+                    rationale=result.rationale or "no_rationale",
+                    task_completion=result.task_completion,
+                    tool_usage=result.tool_usage,
+                    autonomy=result.autonomy,
+                    safety=result.safety,
+                    total_score=result.total_score,
+                )
+                model_verdicts.append(model_verdict)
+                logger.info(f"Model {model_name} verdict: {model_verdict.verdict} (score: {model_verdict.score})")
 
         return model_verdicts
+
+    def _run_parallel_evaluation(
+        self,
+        question: QuestionSpec,
+        execution: ExecutionResult,
+    ) -> List[ModelVerdict]:
+        """同期ラッパー（後方互換性のため残存）"""
+        return asyncio.run(self._run_parallel_evaluation_async(question, execution))
+
+    async def _evaluate_single_judge_async(
+        self,
+        judge: LLMJudge,
+        question: QuestionSpec,
+        execution: ExecutionResult,
+    ) -> LLMJudgeResult:
+        """単一のLLM Judgeで非同期評価を実行"""
+        return await judge.evaluate_async(question, execution)
 
     def _evaluate_single_judge(
         self,
@@ -219,7 +248,7 @@ class MultiModelJudgePanel:
         question: QuestionSpec,
         execution: ExecutionResult,
     ) -> LLMJudgeResult:
-        """単一のLLM Judgeで評価を実行"""
+        """単一のLLM Judgeで評価を実行（同期ラッパー）"""
         return judge.evaluate(question, execution)
 
     def _aggregate_verdicts(self, model_verdicts: List[ModelVerdict]) -> tuple[str, bool]:
@@ -263,14 +292,14 @@ class MultiModelJudgePanel:
         logger.info(f"Mixed verdicts: approve={approve_count}, manual={manual_count}, reject={reject_count}")
         return "manual", False
 
-    def evaluate_stage(
+    async def evaluate_stage_async(
         self,
         stage: str,
         question: QuestionSpec,
         execution: ExecutionResult,
     ) -> List[ModelVerdict]:
         """
-        特定のステージ（Plan/Counter/Reconcile）について複数LLMで評価
+        特定のステージ（Plan/Counter/Reconcile）について複数LLMで非同期評価
 
         Args:
             stage: 評価ステージ ("plan", "counter", "reconcile")
@@ -348,8 +377,27 @@ class MultiModelJudgePanel:
             use_case=f"{stage.upper()} evaluation for: {question.use_case}",
         )
 
-        # 各LLMで評価
-        return self._run_parallel_evaluation(stage_question, execution)
+        # 各LLMで非同期評価
+        return await self._run_parallel_evaluation_async(stage_question, execution)
+
+    def evaluate_stage(
+        self,
+        stage: str,
+        question: QuestionSpec,
+        execution: ExecutionResult,
+    ) -> List[ModelVerdict]:
+        """
+        特定のステージ（Plan/Counter/Reconcile）について複数LLMで評価（同期ラッパー）
+
+        Args:
+            stage: 評価ステージ ("plan", "counter", "reconcile")
+            question: 評価対象の質問
+            execution: エージェントの実行結果
+
+        Returns:
+            List[ModelVerdict]: 各LLMモデルの判定結果
+        """
+        return asyncio.run(self.evaluate_stage_async(stage, question, execution))
 
     def batch_evaluate(
         self,
