@@ -81,6 +81,12 @@ def init_wandb_run(agent_id: str, revision: str, template: str, *, project: str,
             "notes": "wandb package not installed"
         }
 
+    # Login to W&B with API key if available
+    import os
+    api_key = os.environ.get("WANDB_API_KEY")
+    if api_key:
+        wandb.login(key=api_key)  # type: ignore[attr-defined]
+
     run = wandb.init(  # type: ignore[union-attr]
         project=project,
         entity=entity,
@@ -88,7 +94,9 @@ def init_wandb_run(agent_id: str, revision: str, template: str, *, project: str,
         name=run_id,
         resume="allow",
         reinit=True,
-        settings=wandb.Settings(start_method="thread")  # type: ignore[attr-defined]
+        settings=wandb.Settings(  # type: ignore[attr-defined]
+            base_url=base_url
+        )
     )
 
     return {

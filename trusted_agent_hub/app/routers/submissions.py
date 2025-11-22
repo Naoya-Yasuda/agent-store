@@ -102,6 +102,21 @@ def process_submission(submission_id: str):
         wandb_entity = os.environ.get("WANDB_ENTITY", "local")
         wandb_base_url = os.environ.get("WANDB_BASE_URL", "https://wandb.ai")
 
+        # Initialize W&B run first
+        from sandbox_runner.cli import init_wandb_run
+        from sandbox_runner.wandb_mcp import create_wandb_mcp
+
+        # Initialize the W&B run to start tracking
+        wandb_info = init_wandb_run(
+            agent_id=submission.agent_id,
+            revision="v1",
+            template="review",
+            project=wandb_project,
+            entity=wandb_entity,
+            base_url=wandb_base_url,
+            run_id_override=f"review-{submission_id[:8]}"
+        )
+
         # Create base metadata for W&B
         base_metadata = {
             "agentId": submission.agent_id,
@@ -114,17 +129,7 @@ def process_submission(submission_id: str):
             }
         }
 
-        # Initialize WandbMCP
-        from sandbox_runner.wandb_mcp import create_wandb_mcp
-
-        # Check if W&B is enabled via env var or if API key is present
-        wandb_enabled = bool(os.environ.get("WANDB_API_KEY")) and os.environ.get("WANDB_DISABLED", "false").lower() != "true"
-
-        wandb_info = {
-            "enabled": wandb_enabled,
-            "runId": f"review-{submission_id[:8]}", # Use submission ID prefix for run ID
-        }
-
+        # Create WandbMCP helper for logging
         wandb_mcp = create_wandb_mcp(
             base_metadata=base_metadata,
             wandb_info=wandb_info,
@@ -139,7 +144,14 @@ def process_submission(submission_id: str):
 
         # Create a new dict to avoid mutation issues with SQLAlchemy JSON type
         current_breakdown = dict(submission.score_breakdown)
-        current_breakdown["wandb"] = wandb_mcp.export_metadata()
+        # Use the URL from wandb_info which comes from run.url (correct browser URL)
+        current_breakdown["wandb"] = {
+            "runId": wandb_info.get("runId"),
+            "project": wandb_project,
+            "entity": wandb_entity,
+            "url": wandb_info.get("url"),  # This is the correct browser URL from run.url
+            "enabled": wandb_info.get("enabled", False)
+        }
         submission.score_breakdown = current_breakdown
         submission.updated_at = datetime.utcnow()
         db.commit()
@@ -205,6 +217,22 @@ def process_submission(submission_id: str):
             json.dump(submission.card_document, f)
 
         # --- 1. Security Gate ---
+        print(f"Running Security Gate for submission {submission_id}")
+
+        # Mark Security Gate as running
+        current_breakdown = dict(submission.score_breakdown)
+        if "stages" not in current_breakdown:
+            current_breakdown["stages"] = {}
+        current_breakdown["stages"]["security"] = {
+            "status": "running",
+            "attempts": 1,
+            "message": "Security Gate is running..."
+        }
+        submission.score_breakdown = current_breakdown
+        submission.state = "security_gate_running"
+        submission.updated_at = datetime.utcnow()
+        db.commit()
+
         # Using AdvBench from third_party
         dataset_path = base_dir / "third_party/aisev/backend/dataset/output/06_aisi_security_v0.1.csv"
 
@@ -321,6 +349,22 @@ def process_submission(submission_id: str):
         print(f"Security Gate completed for submission {submission_id}, score: {security_score}")
 
         # --- 2. Functional Check ---
+        print(f"Running Functional Accuracy for submission {submission_id}")
+
+        # Mark Functional Accuracy as running
+        current_breakdown = dict(submission.score_breakdown)
+        if "stages" not in current_breakdown:
+            current_breakdown["stages"] = {}
+        current_breakdown["stages"]["functional"] = {
+            "status": "running",
+            "attempts": 1,
+            "message": "Functional Accuracy is running..."
+        }
+        submission.score_breakdown = current_breakdown
+        submission.state = "functional_accuracy_running"
+        submission.updated_at = datetime.utcnow()
+        db.commit()
+
         ragtruth_dir = base_dir / "sandbox-runner/resources/ragtruth"
         advbench_dir = base_dir / "third_party/aisev/backend/dataset/output"
 
@@ -425,11 +469,16 @@ def process_submission(submission_id: str):
         }
 
         # Ensure W&B metadata is preserved/updated
-        current_breakdown["wandb"] = wandb_mcp.export_metadata()
+        current_breakdown["wandb"] = {
+            "runId": wandb_info.get("runId"),
+            "project": wandb_project,
+            "entity": wandb_entity,
+            "url": wandb_info.get("url"),
+            "enabled": wandb_info.get("enabled", False)
+        }
 
         submission.score_breakdown = current_breakdown
 
-        # Update state to functional_accuracy_completed
         # Update state to functional_accuracy_completed
         submission.state = "functional_accuracy_completed"
         submission.updated_at = datetime.utcnow()
@@ -438,6 +487,21 @@ def process_submission(submission_id: str):
 
         # --- 3. Judge Panel ---
         print(f"Running Judge Panel for submission {submission_id}")
+
+        # Mark Judge Panel as running
+        current_breakdown = dict(submission.score_breakdown)
+        if "stages" not in current_breakdown:
+            current_breakdown["stages"] = {}
+        current_breakdown["stages"]["judge"] = {
+            "status": "running",
+            "attempts": 1,
+            "message": "Judge Panel is running..."
+        }
+        submission.score_breakdown = current_breakdown
+        submission.state = "judge_panel_running"
+        submission.updated_at = datetime.utcnow()
+        db.commit()
+
         functional_report_path = output_dir / "functional" / "functional_report.jsonl"
 
         judge_summary = run_judge_panel(
@@ -534,7 +598,13 @@ def process_submission(submission_id: str):
         }
 
         # Ensure W&B metadata is preserved/updated
-        current_breakdown["wandb"] = wandb_mcp.export_metadata()
+        current_breakdown["wandb"] = {
+            "runId": wandb_info.get("runId"),
+            "project": wandb_project,
+            "entity": wandb_entity,
+            "url": wandb_info.get("url"),
+            "enabled": wandb_info.get("enabled", False)
+        }
 
         submission.score_breakdown = current_breakdown
 
