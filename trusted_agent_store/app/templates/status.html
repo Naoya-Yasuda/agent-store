@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Review Agent - Trusted Agent Store</title>
+    <title>Submission Status - Trusted Agent Store</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-100">
     <nav class="bg-gray-800 text-white p-4">
         <div class="container mx-auto flex justify-between items-center">
             <a href="/" class="text-xl font-bold">Trusted Agent Store</a>
-            <a href="/admin" class="hover:text-gray-300">Dashboard</a>
+            <a href="/submit" class="hover:text-gray-300">Submit Agent</a>
         </div>
     </nav>
 
@@ -330,18 +330,10 @@
 
                         <!-- Confirmation Points -->
                         <div class="border-t pt-4">
-                            <h4 class="font-semibold mb-2">📋 確認ポイント (登録者向け)</h4>
+                            <h4 class="font-semibold mb-2">📋 確認ポイント</h4>
                             <ul class="text-sm space-y-1 list-disc ml-5">
                                 <li>Security summaryのカテゴリ別結果と一覧に出力されたpromptsを確認し、想定した攻撃観点が網羅されているかを検証</li>
                                 <li>report/summaryでneedsReviewの有無とfail reasonsを確認</li>
-                            </ul>
-                        </div>
-
-                        <div class="border-t pt-4">
-                            <h4 class="font-semibold mb-2">🔧 確認ポイント (管理者向け)</h4>
-                            <ul class="text-sm space-y-1 list-disc ml-5">
-                                <li>実行時のプロンプト（prompts artifact）とsecurity reportを開き、禁止語検出やrelayログのエラーをチェック</li>
-                                <li>Security ledger entryが送信済みか、必要なら再送</li>
                             </ul>
                         </div>
 
@@ -545,18 +537,10 @@
 
                         <!-- Confirmation Points -->
                         <div class="border-t pt-4">
-                            <h4 class="font-semibold mb-2">📋 確認ポイント (登録者向け)</h4>
+                            <h4 class="font-semibold mb-2">📋 確認ポイント</h4>
                             <ul class="text-sm space-y-1 list-disc ml-5">
                                 <li>Functional summaryに記載されたpasses / needsReviewを確認し、AdvBenchを含むシナリオが期待どおりに取り込まれているか検証</li>
                                 <li>Semantic距離（averageDistance, embeddingAverageDistance）やRAGTruth期待値との一致度をチェック</li>
-                            </ul>
-                        </div>
-
-                        <div class="border-t pt-4">
-                            <h4 class="font-semibold mb-2">🔧 確認ポイント (管理者向け)</h4>
-                            <ul class="text-sm space-y-1 list-disc ml-5">
-                                <li>Functional reportを開いてtopic/dialogue指標やerrorsを確認し、不具合があったシナリオをEvidenceとして保存</li>
-                                <li>AdvBenchとAgentCardのシナリオ構成を確認し、summaryでadvbenchScenariosが0でないことを確認</li>
                             </ul>
                         </div>
 
@@ -800,18 +784,10 @@
 
                         <!-- Confirmation Points -->
                         <div class="border-t pt-4">
-                            <h4 class="font-semibold mb-2">📋 確認ポイント (登録者向け)</h4>
+                            <h4 class="font-semibold mb-2">📋 確認ポイント</h4>
                             <ul class="text-sm space-y-1 list-disc ml-5">
                                 <li>Judge summaryのTask Completion/Tool/Autonomy/Safetyスコアとverdictを確認し、manual/rejectの件数も把握</li>
                                 <li>少数派vetoやsensitive questionについてjudge_reportで各LLMのrationaleを確認</li>
-                            </ul>
-                        </div>
-
-                        <div class="border-t pt-4">
-                            <h4 class="font-semibold mb-2">🔧 確認ポイント (管理者向け)</h4>
-                            <ul class="text-sm space-y-1 list-disc ml-5">
-                                <li>Judge Reportを開いて各質問のmanual/reject/approve判定やLLM call countを確認し、Relayログのエラー・禁止語もクロスチェック</li>
-                                <li>summary.llmJudge（provider/model/temperature）も照会し、LLM設定を再現可能にして再実行用のパラメータを取得</li>
                             </ul>
                         </div>
 
@@ -874,50 +850,10 @@
                 <p class="text-gray-500">Automated review is in progress or not yet started...</p>
                 {% endif %}
             </div>
-
-            <div class="p-6 border-t border-gray-200 bg-gray-50">
-                <h2 class="text-xl font-semibold mb-4">Review Actions</h2>
-                <div class="flex gap-4">
-                    <button onclick="submitDecision('approve')" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded">
-                        Approve Agent
-                    </button>
-                    <button onclick="submitDecision('reject')" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded">
-                        Reject Agent
-                    </button>
-                </div>
-            </div>
         </div>
     </div>
 
     <script>
-        async function submitDecision(action) {
-            if (!confirm(`Are you sure you want to ${action} this agent?`)) return;
-
-            try {
-                const response = await fetch(`/api/reviews/{{ submission.id }}/decision`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        action: action,
-                        reason: "Manual review decision",
-                        notes: "Action taken via Admin Dashboard"
-                    }),
-                });
-
-                if (response.ok) {
-                    alert(`Agent ${action}d successfully!`);
-                    window.location.reload();
-                } else {
-                    alert('Action failed.');
-                }
-            } catch (error) {
-                console.error('Error:', error);
-                alert('An error occurred.');
-            }
-        }
-
         function filterScenarios() {
             const filter = document.getElementById('verdictFilter').value;
             const rows = document.querySelectorAll('.scenario-row');

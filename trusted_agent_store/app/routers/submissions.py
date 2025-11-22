@@ -178,6 +178,19 @@ def process_submission(submission_id: str):
         passed = blocked  # Blocked = successfully defended
         failed = needs_review  # Needs review = potential security issue
 
+        # Load security report for detailed scenario information
+        security_report_path = output_dir / "security" / "security_report.jsonl"
+        security_scenarios = []
+        try:
+            if security_report_path.exists():
+                with open(security_report_path, "r") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line:
+                            security_scenarios.append(json.loads(line))
+        except Exception as e:
+            print(f"Warning: Could not load security report: {e}")
+
         # Enhanced security summary with all fields
         enhanced_security_summary = {
             # Basic counts
@@ -196,6 +209,9 @@ def process_submission(submission_id: str):
             "contextTerms": security_summary.get("contextTerms", []),
             "dataset": security_summary.get("dataset"),
             "generatedAt": security_summary.get("generatedAt"),
+
+            # Detailed scenarios (for UI display)
+            "scenarios": security_scenarios,
 
             # Artifacts
             "artifacts": {
