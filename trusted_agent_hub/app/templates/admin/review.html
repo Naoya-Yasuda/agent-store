@@ -37,24 +37,24 @@
                     <div class="bg-blue-50 p-4 rounded-lg">
                         <div class="flex items-center justify-between mb-2">
                             <span class="text-lg font-bold">Total Score</span>
-                            <span class="text-2xl font-bold text-blue-600">{{ submission.trust_score }} / 100</span>
+                            <span class="text-2xl font-bold text-blue-600"><span data-score="trust">{{ submission.trust_score }}</span> / 100</span>
                         </div>
                         <div class="space-y-2 text-sm">
                             <div class="flex justify-between">
                                 <span>Security</span>
-                                <span>{{ submission.security_score }} / 30</span>
+                                <span><span data-score="security">{{ submission.security_score }}</span> / 30</span>
                             </div>
                             <div class="flex justify-between">
                                 <span>Functional</span>
-                                <span>{{ submission.functional_score }} / 40</span>
+                                <span><span data-score="functional">{{ submission.functional_score }}</span> / 40</span>
                             </div>
                             <div class="flex justify-between">
                                 <span>Judge</span>
-                                <span>{{ submission.judge_score }} / 20</span>
+                                <span><span data-score="judge">{{ submission.judge_score }}</span> / 30</span>
                             </div>
                             <div class="flex justify-between">
                                 <span>Implementation</span>
-                                <span>{{ submission.implementation_score }} / 10</span>
+                                <span><span data-score="implementation">{{ submission.implementation_score }}</span> / 10</span>
                             </div>
                         </div>
                     </div>
@@ -64,7 +64,7 @@
             <!-- Stage Progress Bar -->
             <div class="p-6 border-t border-gray-200">
                 <h2 class="text-xl font-semibold mb-4">Review Progress</h2>
-                <div class="flex items-center justify-between mb-8">
+                <div id="review-progress" class="flex items-center justify-between mb-8">
                     {% set stages = [
                         {"key": "precheck", "icon": "🧾", "label": "PreCheck"},
                         {"key": "security", "icon": "🛡️", "label": "Security Gate"},
@@ -86,7 +86,8 @@
                                 {% if is_completed %}bg-green-100 border-2 border-green-500
                                 {% elif is_failed %}bg-red-100 border-2 border-red-500
                                 {% elif is_running %}bg-yellow-100 border-2 border-yellow-500 animate-pulse
-                                {% else %}bg-gray-100 border-2 border-gray-300{% endif %}">
+                                {% else %}bg-gray-100 border-2 border-gray-300{% endif %}"
+                                data-stage="{{ stage.key }}">
                                 {{ stage.icon }}
                             </div>
                             {% if is_completed %}
@@ -597,19 +598,19 @@
                         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                             <div class="bg-white p-3 rounded border">
                                 <div class="text-xs text-gray-500">Task Completion</div>
-                                <div class="text-2xl font-bold">{{ submission.score_breakdown.judge_summary.taskCompletion or 0 }}/100</div>
+                                <div class="text-2xl font-bold">{{ submission.score_breakdown.judge_summary.taskCompletion or 0 }}/40</div>
                             </div>
                             <div class="bg-white p-3 rounded border">
                                 <div class="text-xs text-gray-500">Tool Usage</div>
-                                <div class="text-2xl font-bold">{{ submission.score_breakdown.judge_summary.tool or 0 }}/100</div>
+                                <div class="text-2xl font-bold">{{ submission.score_breakdown.judge_summary.tool or 0 }}/30</div>
                             </div>
                             <div class="bg-white p-3 rounded border">
                                 <div class="text-xs text-gray-500">Autonomy</div>
-                                <div class="text-2xl font-bold">{{ submission.score_breakdown.judge_summary.autonomy or 0 }}/100</div>
+                                <div class="text-2xl font-bold">{{ submission.score_breakdown.judge_summary.autonomy or 0 }}/20</div>
                             </div>
                             <div class="bg-white p-3 rounded border">
                                 <div class="text-xs text-gray-500">Safety & Security</div>
-                                <div class="text-2xl font-bold">{{ submission.score_breakdown.judge_summary.safety or 0 }}/100</div>
+                                <div class="text-2xl font-bold">{{ submission.score_breakdown.judge_summary.safety or 0 }}/10</div>
                             </div>
                         </div>
 
@@ -946,13 +947,122 @@
             });
         }
 
-        // Auto-reload page every 5 seconds to check for updates
+        // Auto-fetch submission data every 5 seconds to check for updates
         let pollingInterval = null;
+        let lastUpdateTime = "{{ submission.updated_at }}";
+        let isUpdating = false;
+
+        async function checkForUpdates() {
+            if (isUpdating) return; // Prevent concurrent updates
+
+            try {
+                const response = await fetch(`/api/submissions/{{ submission.id }}`);
+                if (!response.ok) return;
+
+                const data = await response.json();
+
+                // Check if data has been updated
+                if (data.updated_at !== lastUpdateTime) {
+                    lastUpdateTime = data.updated_at;
+                    isUpdating = true;
+                    updatePageContent(data);
+                    isUpdating = false;
+                }
+            } catch (error) {
+                console.error('Polling error:', error);
+                isUpdating = false;
+            }
+        }
+
+        function updatePageContent(data) {
+            // Update Trust Score
+            const trustScoreEl = document.querySelector('[data-score="trust"]');
+            if (trustScoreEl) trustScoreEl.textContent = data.trust_score || 0;
+
+            const securityScoreEl = document.querySelector('[data-score="security"]');
+            if (securityScoreEl) securityScoreEl.textContent = data.security_score || 0;
+
+            const functionalScoreEl = document.querySelector('[data-score="functional"]');
+            if (functionalScoreEl) functionalScoreEl.textContent = data.functional_score || 0;
+
+            const judgeScoreEl = document.querySelector('[data-score="judge"]');
+            if (judgeScoreEl) judgeScoreEl.textContent = data.judge_score || 0;
+
+            const implementationScoreEl = document.querySelector('[data-score="implementation"]');
+            if (implementationScoreEl) implementationScoreEl.textContent = data.implementation_score || 0;
+
+            // Update Review Progress Bar
+            updateProgressTracker(data.state, data.score_breakdown);
+        }
+
+        function updateProgressTracker(state, scoreBreakdown) {
+            // Map state to stage completion
+            const stages = [
+                { key: 'precheck', icon: '🧾', label: 'PreCheck' },
+                { key: 'security', icon: '🛡️', label: 'Security Gate' },
+                { key: 'functional', icon: '🧪', label: 'Functional Accuracy' },
+                { key: 'judge', icon: '⚖️', label: 'Judge Panel' },
+                { key: 'human', icon: '🙋', label: 'Human Review' },
+                { key: 'publish', icon: '🚀', label: 'Publish' }
+            ];
+
+            const stageStatusMap = {
+                'submitted': { precheck: 'pending' },
+                'pending': { precheck: 'running' },
+                'in_progress': { precheck: 'running' },
+                'precheck_passed': { precheck: 'completed', security: 'running' },
+                'security_gate_completed': { precheck: 'completed', security: 'completed', functional: 'running' },
+                'functional_accuracy_completed': { precheck: 'completed', security: 'completed', functional: 'completed', judge: 'running' },
+                'judge_panel_completed': { precheck: 'completed', security: 'completed', functional: 'completed', judge: 'completed', human: 'pending' },
+                'under_review': { precheck: 'completed', security: 'completed', functional: 'completed', judge: 'completed', human: 'running' },
+                'approved': { precheck: 'completed', security: 'completed', functional: 'completed', judge: 'completed', human: 'completed', publish: 'completed' },
+                'rejected': { precheck: 'completed', security: 'completed', functional: 'completed', judge: 'completed', human: 'completed', publish: 'failed' }
+            };
+
+            const statusFromState = stageStatusMap[state] || {};
+
+            // Override with actual stage statuses if available
+            const stageStatuses = {};
+            if (scoreBreakdown && scoreBreakdown.stages) {
+                for (const [key, value] of Object.entries(scoreBreakdown.stages)) {
+                    if (value && value.status) {
+                        stageStatuses[key] = value.status;
+                    }
+                }
+            }
+
+            // Merge: actual statuses take precedence
+            const finalStatuses = { ...statusFromState, ...stageStatuses };
+
+            // Update each stage icon
+            stages.forEach((stage, index) => {
+                const status = finalStatuses[stage.key] || 'pending';
+                const stageEl = document.querySelector(`[data-stage="${stage.key}"]`);
+
+                if (stageEl) {
+                    // Update classes
+                    stageEl.className = 'w-12 h-12 rounded-full flex items-center justify-center text-2xl';
+
+                    if (status === 'completed') {
+                        stageEl.className += ' bg-green-100 border-2 border-green-500';
+                    } else if (status === 'failed') {
+                        stageEl.className += ' bg-red-100 border-2 border-red-500';
+                    } else if (status === 'running') {
+                        stageEl.className += ' bg-yellow-100 border-2 border-yellow-500 animate-pulse';
+                    } else {
+                        stageEl.className += ' bg-gray-100 border-2 border-gray-300';
+                    }
+                }
+            });
+
+            console.log('Updated progress tracker:', state, finalStatuses);
+        }
 
         function startPolling() {
-            pollingInterval = setInterval(() => {
-                location.reload();
-            }, 5000); // 5 seconds
+            // Poll every 5 seconds
+            pollingInterval = setInterval(checkForUpdates, 5000);
+            // Initial check after 2 seconds
+            setTimeout(checkForUpdates, 2000);
         }
 
         // Start polling to check for updates

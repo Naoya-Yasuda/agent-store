@@ -581,19 +581,19 @@
                         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                             <div class="bg-white p-3 rounded border">
                                 <div class="text-xs text-gray-500">Task Completion</div>
-                                <div class="text-2xl font-bold">{{ submission.score_breakdown.judge_summary.taskCompletion or 0 }}/100</div>
+                                <div class="text-2xl font-bold">{{ submission.score_breakdown.judge_summary.taskCompletion or 0 }}/40</div>
                             </div>
                             <div class="bg-white p-3 rounded border">
                                 <div class="text-xs text-gray-500">Tool Usage</div>
-                                <div class="text-2xl font-bold">{{ submission.score_breakdown.judge_summary.tool or 0 }}/100</div>
+                                <div class="text-2xl font-bold">{{ submission.score_breakdown.judge_summary.tool or 0 }}/30</div>
                             </div>
                             <div class="bg-white p-3 rounded border">
                                 <div class="text-xs text-gray-500">Autonomy</div>
-                                <div class="text-2xl font-bold">{{ submission.score_breakdown.judge_summary.autonomy or 0 }}/100</div>
+                                <div class="text-2xl font-bold">{{ submission.score_breakdown.judge_summary.autonomy or 0 }}/20</div>
                             </div>
                             <div class="bg-white p-3 rounded border">
                                 <div class="text-xs text-gray-500">Safety & Security</div>
-                                <div class="text-2xl font-bold">{{ submission.score_breakdown.judge_summary.safety or 0 }}/100</div>
+                                <div class="text-2xl font-bold">{{ submission.score_breakdown.judge_summary.safety or 0 }}/10</div>
                             </div>
                         </div>
 
@@ -882,13 +882,59 @@
             });
         }
 
-        // Auto-reload page every 5 seconds to check for updates
+        // Auto-fetch submission data every 5 seconds to check for updates
         let pollingInterval = null;
+        let lastUpdateTime = "{{ submission.updated_at }}";
+        let isUpdating = false;
+
+        async function checkForUpdates() {
+            if (isUpdating) return; // Prevent concurrent updates
+
+            try {
+                const response = await fetch(`/api/submissions/{{ submission.id }}`);
+                if (!response.ok) return;
+
+                const data = await response.json();
+
+                // Check if data has been updated
+                if (data.updated_at !== lastUpdateTime) {
+                    lastUpdateTime = data.updated_at;
+                    // Show notification and allow user to manually reload
+                    showUpdateNotification('評価が更新されました。ページを更新して詳細を確認してください。');
+                }
+            } catch (error) {
+                console.error('Polling error:', error);
+                isUpdating = false;
+            }
+        }
+
+        function showUpdateNotification(message) {
+            // Only show once
+            if (document.getElementById('update-notification')) return;
+
+            // Create a non-intrusive notification
+            const notification = document.createElement('div');
+            notification.id = 'update-notification';
+            notification.className = 'fixed top-4 right-4 bg-blue-500 text-white px-6 py-3 rounded-lg shadow-lg z-50';
+            notification.innerHTML = `
+                <div class="flex items-center gap-2">
+                    <span>${message}</span>
+                    <button onclick="location.reload()" class="ml-2 underline hover:font-bold">更新</button>
+                </div>
+            `;
+            document.body.appendChild(notification);
+
+            // Auto-remove after 15 seconds
+            setTimeout(() => {
+                notification.remove();
+            }, 15000);
+        }
 
         function startPolling() {
-            pollingInterval = setInterval(() => {
-                location.reload();
-            }, 5000); // 5 seconds
+            // Poll every 5 seconds
+            pollingInterval = setInterval(checkForUpdates, 5000);
+            // Initial check after 2 seconds
+            setTimeout(checkForUpdates, 2000);
         }
 
         // Start polling to check for updates
