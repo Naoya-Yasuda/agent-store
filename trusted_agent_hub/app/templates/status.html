@@ -891,11 +891,8 @@
             }, 5000); // 5 seconds
         }
 
-        // Start polling if submission is still in progress
-        const submissionState = "{{ submission.state }}";
-        if (submissionState === "pending" || submissionState === "in_progress") {
-            startPolling();
-        }
+        // Start polling to check for updates
+        startPolling();
     </script>
 </body>
 </html>
