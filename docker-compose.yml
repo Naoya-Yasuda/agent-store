@@ -1,11 +1,11 @@
 version: "3.9"
 
 services:
-  trusted-agent-store:
+  trusted-agent-hub:
     build:
       context: .
-      dockerfile: ./trusted_agent_store/Dockerfile
-    container_name: trusted-agent-store
+      dockerfile: ./trusted_agent_hub/Dockerfile
+    container_name: trusted-agent-hub
     ports:
       - "8080:8080"
     environment:
@@ -21,6 +21,9 @@ services:
     container_name: sample-agent
     ports:
       - "4000:4000"
+    environment:
+      - BASE_URL=http://sample-agent:4000
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
     networks:
       - agent-net
 

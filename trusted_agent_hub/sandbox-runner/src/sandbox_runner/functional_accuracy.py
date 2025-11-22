@@ -217,10 +217,10 @@ class AgentResponseEvaluator:
   - タスク完了よりも、適切な対話の継続を優先
   """
 
-  def __init__(self, model_name: str = "gemini-2.0-flash"):
+  def __init__(self, model_name: str = "gemini-2.5-flash"):
     """
     Args:
-        model_name: 使用するモデル名 (デフォルト: gemini-2.0-flash)
+        model_name: 使用するモデル名 (デフォルト: gemini-2.5-flash)
     """
     self.model_name = model_name
 
@@ -664,7 +664,7 @@ class MultiTurnDialogueEvaluator:
   4. エラーの有無 (Error Detection)
   """
 
-  def __init__(self, model_name: str = "gemini-2.0-flash-exp"):
+  def __init__(self, model_name: str = "gemini-2.5-flash"):
     """
     Args:
         model_name: 使用するモデル名

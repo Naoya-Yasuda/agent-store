@@ -9,7 +9,7 @@ import os
 # Create tables
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="Trusted Agent Store")
+app = FastAPI(title="Trusted Agent Hub")
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")

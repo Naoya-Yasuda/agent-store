@@ -9,9 +9,9 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
-COPY trusted_agent_store/requirements.txt .
-COPY trusted_agent_store/sandbox-runner /app/sandbox-runner
-COPY trusted_agent_store/third_party /app/third_party
+COPY trusted_agent_hub/requirements.txt .
+COPY trusted_agent_hub/sandbox-runner /app/sandbox-runner
+COPY trusted_agent_hub/third_party /app/third_party
 
 # Copy inspect-worker for LLM Judge Panel
 COPY prototype/inspect-worker /app/inspect-worker
@@ -20,7 +20,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install -e /app/sandbox-runner
 
 # Copy application code
-COPY trusted_agent_store/app /app/app
+COPY trusted_agent_hub/app /app/app
 
 # Create data and static directories
 RUN mkdir -p data static

@@ -12,7 +12,7 @@
 ## ディレクトリ構造
 
 ```
-trusted_agent_store/
+trusted_agent_hub/
 ├── app/                        # FastAPIアプリケーション
 │   ├── main.py                 # エントリーポイント
 │   ├── database.py             # SQLiteデータベース
@@ -34,13 +34,13 @@ trusted_agent_store/
 
 ```bash
 # このディレクトリに移動
-cd trusted_agent_store
+cd trusted_agent_hub
 
 # Dockerイメージをビルド
-docker build -t trusted-agent-store .
+docker build -t trusted_agent_hub .
 
 # コンテナを起動
-docker run -p 8080:8080 -v $(pwd)/data:/app/data trusted-agent-store
+docker run -p 8080:8080 -v $(pwd)/data:/app/data trusted_agent_hub
 
 # ブラウザで開く
 open http://localhost:8080
@@ -203,4 +203,4 @@ pytest tests/
 
 ## 備考
 
-このディレクトリ(`trusted_agent_store`)は完全に独立しており、外部にコピーするだけで起動できます。
+このディレクトリ(`trusted_agent_hub`)は完全に独立しており、外部にコピーするだけで起動できます。
