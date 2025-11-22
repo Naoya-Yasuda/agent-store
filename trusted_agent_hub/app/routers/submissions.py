@@ -96,6 +96,53 @@ def process_submission(submission_id: str):
             print(f"Submission {submission_id} not found")
             return
 
+        # --- Initialize W&B MCP ---
+        # Use environment variables for W&B config
+        wandb_project = os.environ.get("WANDB_PROJECT", "agent-store-sandbox")
+        wandb_entity = os.environ.get("WANDB_ENTITY", "local")
+        wandb_base_url = os.environ.get("WANDB_BASE_URL", "https://wandb.ai")
+
+        # Create base metadata for W&B
+        base_metadata = {
+            "agentId": submission.agent_id,
+            "submissionId": submission_id,
+            "timestamp": int(time.time()),
+            "wandb": {
+                "project": wandb_project,
+                "entity": wandb_entity,
+                "baseUrl": wandb_base_url
+            }
+        }
+
+        # Initialize WandbMCP
+        from sandbox_runner.wandb_mcp import create_wandb_mcp
+
+        # Check if W&B is enabled via env var or if API key is present
+        wandb_enabled = bool(os.environ.get("WANDB_API_KEY")) and os.environ.get("WANDB_DISABLED", "false").lower() != "true"
+
+        wandb_info = {
+            "enabled": wandb_enabled,
+            "runId": f"review-{submission_id[:8]}", # Use submission ID prefix for run ID
+        }
+
+        wandb_mcp = create_wandb_mcp(
+            base_metadata=base_metadata,
+            wandb_info=wandb_info,
+            project=wandb_project,
+            entity=wandb_entity,
+            base_url=wandb_base_url
+        )
+
+        # Save W&B metadata immediately so it appears in UI during execution
+        if not submission.score_breakdown:
+            submission.score_breakdown = {}
+
+        # Create a new dict to avoid mutation issues with SQLAlchemy JSON type
+        current_breakdown = dict(submission.score_breakdown)
+        current_breakdown["wandb"] = wandb_mcp.export_metadata()
+        submission.score_breakdown = current_breakdown
+        db.commit()
+
         # --- 0. PreCheck ---
         print(f"Running PreCheck for submission {submission_id}")
         precheck_summary = run_precheck(submission)
@@ -162,6 +209,11 @@ def process_submission(submission_id: str):
                 dry_run=False,  # Real execution!
                 agent_card=submission.card_document,
             )
+
+            # Log to W&B
+            wandb_mcp.log_stage_summary("security", security_summary)
+            wandb_mcp.save_artifact("security", output_dir / "security" / "security_report.jsonl", name="security-report")
+
         except Exception as e:
             security_summary = {"error": str(e), "status": "failed"}
             print(f"Security Gate failed for submission {submission_id}: {e}")
@@ -251,6 +303,10 @@ def process_submission(submission_id: str):
             endpoint_token=None,
             timeout=20.0
         )
+
+        # Log to W&B
+        wandb_mcp.log_stage_summary("functional", functional_summary)
+        wandb_mcp.save_artifact("functional", output_dir / "functional" / "functional_report.jsonl", name="functional-report")
 
         # Transform functional_summary to match UI expectations
         total_scenarios = functional_summary.get("scenarios", 0)
@@ -365,6 +421,10 @@ def process_submission(submission_id: str):
             endpoint_token=None
         )
 
+        # Log to W&B
+        wandb_mcp.log_stage_summary("judge", judge_summary)
+        wandb_mcp.save_artifact("judge", output_dir / "judge" / "judge_report.jsonl", name="judge-report")
+
         # Load judge report for detailed scenario information
         judge_report_path = output_dir / "judge" / "judge_report.jsonl"
         judge_scenarios = []
@@ -441,7 +501,8 @@ def process_submission(submission_id: str):
             "security_summary": enhanced_security_summary,
             "functional_summary": enhanced_functional_summary,
             "judge_summary": enhanced_judge_summary,
-            "stages": stages_metadata
+            "stages": stages_metadata,
+            "wandb": wandb_mcp.export_metadata() # Save W&B metadata
         }
 
         # Update state to judge_panel_completed
