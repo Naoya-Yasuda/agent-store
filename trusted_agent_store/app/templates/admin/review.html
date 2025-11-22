@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Review Agent - Trusted Agent Store</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100">
+    <nav class="bg-gray-800 text-white p-4">
+        <div class="container mx-auto flex justify-between items-center">
+            <a href="/" class="text-xl font-bold">Trusted Agent Store</a>
+            <a href="/admin" class="hover:text-gray-300">Dashboard</a>
+        </div>
+    </nav>
+
+    <div class="container mx-auto px-4 py-8">
+        <div class="bg-white shadow-lg rounded-lg overflow-hidden mb-8">
+            <div class="p-6 bg-gray-50 border-b border-gray-200">
+                <h1 class="text-3xl font-bold text-gray-800">{{ submission.card_document.name }}</h1>
+                <p class="text-gray-600">{{ submission.card_document.description }}</p>
+            </div>
+
+            <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div>
+                    <h2 class="text-xl font-semibold mb-4">Submission Details</h2>
+                    <div class="space-y-2">
+                        <p><span class="font-medium">ID:</span> {{ submission.id }}</p>
+                        <p><span class="font-medium">Organization:</span> {{ submission.organization_meta.name }}</p>
+                        <p><span class="font-medium">Status:</span> {{ submission.state }}</p>
+                        <p><span class="font-medium">Submitted At:</span> {{ submission.created_at }}</p>
+                    </div>
+                </div>
+
+                <div>
+                    <h2 class="text-xl font-semibold mb-4">Trust Score</h2>
+                    <div class="bg-blue-50 p-4 rounded-lg">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-lg font-bold">Total Score</span>
+                            <span class="text-2xl font-bold text-blue-600">{{ submission.trust_score }} / 100</span>
+                        </div>
+                        <div class="space-y-2 text-sm">
+                            <div class="flex justify-between">
+                                <span>Security</span>
+                                <span>{{ submission.security_score }} / 30</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>Functional</span>
+                                <span>{{ submission.functional_score }} / 40</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>Judge</span>
+                                <span>{{ submission.judge_score }} / 20</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>Implementation</span>
+                                <span>{{ submission.implementation_score }} / 10</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="p-6 border-t border-gray-200 bg-gray-50">
+                <h2 class="text-xl font-semibold mb-4">Review Actions</h2>
+                <div class="flex gap-4">
+                    <button onclick="submitDecision('approve')" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded">
+                        Approve Agent
+                    </button>
+                    <button onclick="submitDecision('reject')" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded">
+                        Reject Agent
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function submitDecision(action) {
+            if (!confirm(`Are you sure you want to ${action} this agent?`)) return;
+
+            try {
+                const response = await fetch(`/api/reviews/{{ submission.id }}/decision`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        action: action,
+                        reason: "Manual review decision",
+                        notes: "Action taken via Admin Dashboard"
+                    }),
+                });
+
+                if (response.ok) {
+                    alert(`Agent ${action}d successfully!`);
+                    window.location.reload();
+                } else {
+                    alert('Action failed.');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('An error occurred.');
+            }
+        }
+    </script>
+</body>
+</html>
