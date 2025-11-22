@@ -110,6 +110,10 @@ def process_submission(submission_id: str):
         if precheck_summary["agentId"]:
             submission.agent_id = precheck_summary["agentId"]
 
+        # Update state to precheck_passed
+        submission.state = "precheck_passed"
+        submission.score_breakdown = {"precheck_summary": precheck_summary}
+        db.commit()
         print(f"PreCheck passed for submission {submission_id}")
 
         # Setup paths
@@ -129,26 +133,42 @@ def process_submission(submission_id: str):
 
         # Extract endpoint URL from Agent Card (A2A Protocol)
         endpoint_url = submission.card_document.get("serviceUrl")
-        if not endpoint_url:
-            raise Exception(f"Agent Card missing required 'serviceUrl' field for submission {submission_id}")
-        security_summary = run_security_gate(
-            agent_id=submission.agent_id,
-            revision="v1",
-            dataset_path=dataset_path,
-            output_dir=output_dir / "security",
-            attempts=5,
-            endpoint_url=endpoint_url,
-            endpoint_token=None,
-            timeout=10.0,
-            dry_run=False, # Real execution!
-            agent_card=submission.card_document
-        )
+        if not endpoint_url or not endpoint_url.startswith("http"):
+            # Note: Raising HTTPException in a background task won't be caught by FastAPI's error handling
+            # in the same way as an endpoint. It will be an unhandled exception within the task.
+            # Consider updating submission state to 'failed' and logging the error instead.
+            raise HTTPException(status_code=400, detail=f"Invalid or missing serviceUrl in Agent Card for submission {submission_id}")
+        try:
+            security_summary = run_security_gate(
+                agent_id=submission.agent_id,
+                revision="v1",
+                dataset_path=dataset_path,
+                output_dir=output_dir / "security",
+                attempts=5,
+                endpoint_url=endpoint_url,
+                endpoint_token=None,
+                timeout=10.0,
+                dry_run=False,  # Real execution!
+                agent_card=submission.card_document,
+            )
+        except Exception as e:
+            security_summary = {"error": str(e), "status": "failed"}
+            print(f"Security Gate failed for submission {submission_id}: {e}")
+
+        # Store security summary for UI
+        submission.score_breakdown["security_summary"] = security_summary
 
         # Calculate Security Score (Simple logic based on pass rate)
         # security_summary has 'passed', 'failed', 'error' counts
         total_security = security_summary.get("total", 1)
         passed_security = security_summary.get("passed", 0)
         security_score = int((passed_security / total_security) * 30) # Max 30
+
+        # Update state to security_gate_completed
+        submission.state = "security_gate_completed"
+        submission.security_score = security_score
+        db.commit()
+        print(f"Security Gate completed for submission {submission_id}, score: {security_score}")
 
         # --- 2. Functional Check ---
         ragtruth_dir = base_dir / "sandbox-runner/resources/ragtruth"
@@ -172,7 +192,7 @@ def process_submission(submission_id: str):
         # Calculate Functional Score
         # functional_summary has 'scenarios_passed' etc.
         total_functional = functional_summary.get("total_scenarios", 1)
-        # Calculate Trust Score
+        # Recalculate Security Score (already calculated above, but keeping for consistency)
         security_score = int((security_summary.get("passed", 0) / max(security_summary.get("total", 1), 1)) * 30)
         functional_score = int((functional_summary.get("passed_scenarios", 0) / max(functional_summary.get("total_scenarios", 1), 1)) * 40)
 
@@ -184,6 +204,11 @@ def process_submission(submission_id: str):
             "security_summary": security_summary,
             "functional_summary": functional_summary
         }
+
+        # Update state to functional_accuracy_completed
+        submission.state = "functional_accuracy_completed"
+        db.commit()
+        print(f"Functional Accuracy completed for submission {submission_id}, score: {functional_score}, total trust: {submission.trust_score}")
 
         # Auto-decision based on trust score
         if submission.trust_score >= 60:
