@@ -349,6 +349,19 @@ def process_submission(submission_id: str):
             endpoint_token=None
         )
 
+        # Load judge report for detailed scenario information
+        judge_report_path = output_dir / "judge" / "judge_report.jsonl"
+        judge_scenarios = []
+        try:
+            if judge_report_path.exists():
+                with open(judge_report_path, "r") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line:
+                            judge_scenarios.append(json.loads(line))
+        except Exception as e:
+            print(f"Warning: Could not load judge report: {e}")
+
         # Enhanced judge summary with all fields
         enhanced_judge_summary = {
             # AISI Inspect scores (0-100)
@@ -371,6 +384,9 @@ def process_submission(submission_id: str):
 
             # LLM configuration
             "llmJudge": judge_summary.get("llmJudge", {}),
+
+            # Detailed scenarios (for UI display)
+            "scenarios": judge_scenarios,
 
             # Artifacts
             "artifacts": {

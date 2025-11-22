@@ -130,7 +130,7 @@
 
                 {% if submission.score_breakdown %}
                 <!-- PreCheck -->
-                <details class="mb-6 bg-gray-50 p-4 rounded-lg" open>
+                <details class="mb-6 bg-gray-50 p-4 rounded-lg">
                     <summary class="text-lg font-semibold mb-2 flex items-center cursor-pointer">
                         <span class="mr-2">🧾</span> PreCheck
                     </summary>
@@ -172,7 +172,7 @@
                 </details>
 
                 <!-- Security Gate -->
-                <details class="mb-6 bg-gray-50 p-4 rounded-lg" open>
+                <details class="mb-6 bg-gray-50 p-4 rounded-lg">
                     <summary class="text-lg font-semibold mb-2 flex items-center cursor-pointer">
                         <span class="mr-2">🛡️</span> Security Gate
                     </summary>
@@ -268,7 +268,7 @@
                 </details>
 
                 <!-- Functional Check -->
-                <details class="mb-6 bg-gray-50 p-4 rounded-lg" open>
+                <details class="mb-6 bg-gray-50 p-4 rounded-lg">
                     <summary class="text-lg font-semibold mb-2 flex items-center cursor-pointer">
                         <span class="mr-2">🧪</span> Functional Accuracy Check
                     </summary>
@@ -483,7 +483,7 @@
                 </details>
 
                 <!-- Judge Panel -->
-                <details class="mb-6 bg-gray-50 p-4 rounded-lg" open>
+                <details class="mb-6 bg-gray-50 p-4 rounded-lg">
                     <summary class="text-lg font-semibold mb-2 flex items-center cursor-pointer">
                         <span class="mr-2">⚖️</span> Judge Panel (LLM-as-Judge)
                     </summary>
@@ -600,6 +600,100 @@
                         </div>
                         {% endif %}
 
+                        <!-- Judge Panel Scenarios Details -->
+                        {% if submission.score_breakdown.judge_summary.scenarios %}
+                        <div class="border-t pt-4">
+                            <h4 class="font-semibold mb-2">🔍 Judge Panel評価詳細（シナリオ別）</h4>
+                            <div class="space-y-3">
+                                {% for scenario in submission.score_breakdown.judge_summary.scenarios[:10] %}
+                                <details class="border border-gray-300 rounded-lg bg-white">
+                                    <summary class="p-3 cursor-pointer hover:bg-gray-50 font-medium text-sm">
+                                        {{ scenario.scenarioId or '匿名' }}
+                                        <span class="ml-2 text-xs px-2 py-1 rounded
+                                            {% if scenario.judgeVerdict == 'approve' %}bg-green-100 text-green-800
+                                            {% elif scenario.judgeVerdict == 'reject' %}bg-red-100 text-red-800
+                                            {% elif scenario.judgeVerdict == 'manual' %}bg-yellow-100 text-yellow-800
+                                            {% else %}bg-gray-100 text-gray-800{% endif %}">
+                                            Judge: {{ scenario.judgeVerdict }}
+                                        </span>
+                                        {% if scenario.minorityVetoTriggered %}
+                                        <span class="ml-1 text-xs px-2 py-1 rounded bg-red-200 text-red-900">⚠️ Minority Veto</span>
+                                        {% endif %}
+                                    </summary>
+                                    <div class="p-3 pt-0 space-y-3">
+                                        <!-- Prompt and Response -->
+                                        <div class="text-xs">
+                                            <strong>Prompt:</strong>
+                                            <pre class="mt-1 whitespace-pre-wrap bg-gray-50 p-2 rounded">{{ scenario.prompt or 'N/A' }}</pre>
+                                        </div>
+                                        <div class="text-xs">
+                                            <strong>Response:</strong>
+                                            <pre class="mt-1 whitespace-pre-wrap bg-gray-50 p-2 rounded">{{ scenario.response or 'N/A' }}</pre>
+                                        </div>
+
+                                        <!-- Functional vs Judge Verdict -->
+                                        <div class="grid grid-cols-2 gap-2 text-xs">
+                                            <div class="bg-gray-50 p-2 rounded">
+                                                <span class="text-gray-600">Functional Verdict:</span>
+                                                <span class="ml-1 font-medium">{{ scenario.functionalVerdict or 'N/A' }}</span>
+                                            </div>
+                                            <div class="bg-gray-50 p-2 rounded">
+                                                <span class="text-gray-600">Judge Score:</span>
+                                                <span class="ml-1 font-medium">{{ "%.2f"|format(scenario.judgeScore) if scenario.judgeScore is not none else 'N/A' }}</span>
+                                            </div>
+                                        </div>
+
+                                        <!-- LLM Verdicts -->
+                                        {% if scenario.llmVerdicts %}
+                                        <div class="border-t pt-2">
+                                            <h5 class="font-semibold text-xs mb-2">各LLMの判定:</h5>
+                                            <div class="space-y-2">
+                                                {% for llm in scenario.llmVerdicts %}
+                                                <details class="bg-gray-50 rounded p-2">
+                                                    <summary class="cursor-pointer text-xs font-medium">
+                                                        {{ llm.model }}
+                                                        <span class="ml-2 px-2 py-1 rounded
+                                                            {% if llm.verdict == 'approve' %}bg-green-100 text-green-800
+                                                            {% elif llm.verdict == 'reject' %}bg-red-100 text-red-800
+                                                            {% else %}bg-yellow-100 text-yellow-800{% endif %}">
+                                                            {{ llm.verdict }}
+                                                        </span>
+                                                        <span class="ml-1 text-gray-600">Score: {{ "%.2f"|format(llm.score) if llm.score is not none else 'N/A' }}</span>
+                                                    </summary>
+                                                    <div class="mt-2 space-y-1 text-xs">
+                                                        <div class="grid grid-cols-2 gap-2">
+                                                            <div><span class="text-gray-600">Task Completion:</span> {{ "%.2f"|format(llm.taskCompletion) if llm.taskCompletion is not none else 'N/A' }}</div>
+                                                            <div><span class="text-gray-600">Tool Usage:</span> {{ "%.2f"|format(llm.toolUsage) if llm.toolUsage is not none else 'N/A' }}</div>
+                                                            <div><span class="text-gray-600">Autonomy:</span> {{ "%.2f"|format(llm.autonomy) if llm.autonomy is not none else 'N/A' }}</div>
+                                                            <div><span class="text-gray-600">Safety:</span> {{ "%.2f"|format(llm.safety) if llm.safety is not none else 'N/A' }}</div>
+                                                        </div>
+                                                        {% if llm.rationale %}
+                                                        <div class="mt-2">
+                                                            <strong>Rationale:</strong>
+                                                            <pre class="mt-1 whitespace-pre-wrap bg-white p-2 rounded text-xs">{{ llm.rationale }}</pre>
+                                                        </div>
+                                                        {% endif %}
+                                                    </div>
+                                                </details>
+                                                {% endfor %}
+                                            </div>
+                                        </div>
+                                        {% endif %}
+
+                                        <!-- Aggregated Rationale -->
+                                        {% if scenario.aggregatedRationale %}
+                                        <div class="border-t pt-2">
+                                            <strong class="text-xs">Aggregated Rationale:</strong>
+                                            <pre class="mt-1 whitespace-pre-wrap bg-gray-50 p-2 rounded text-xs">{{ scenario.aggregatedRationale }}</pre>
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                </details>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endif %}
+
                         <!-- Confirmation Points -->
                         <div class="border-t pt-4">
                             <h4 class="font-semibold mb-2">📋 確認ポイント (登録者向け)</h4>
@@ -644,7 +738,7 @@
                 </details>
 
                 <!-- Publish -->
-                <details class="mb-6 bg-gray-50 p-4 rounded-lg" open>
+                <details class="mb-6 bg-gray-50 p-4 rounded-lg">
                     <summary class="text-lg font-semibold mb-2 flex items-center cursor-pointer">
                         <svg class="w-5 h-5 mr-2 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"></path>
