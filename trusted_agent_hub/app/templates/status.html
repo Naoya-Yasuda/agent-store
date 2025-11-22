@@ -15,7 +15,7 @@
     </nav>
 
     <div class="container mx-auto px-4 py-8">
-        <div class="bg-white shadow-lg rounded-lg overflow-hidden mb-8">
+        <div id="main-content" class="bg-white shadow-lg rounded-lg overflow-hidden mb-8">
             <div class="p-6 bg-gray-50 border-b border-gray-200">
                 <h1 class="text-3xl font-bold text-gray-800">{{ submission.card_document.translations[0].displayName }}</h1>
                 <p class="text-gray-600">{{ submission.card_document.translations[0].shortDescription }}</p>
@@ -59,6 +59,32 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- W&B Link -->
+                {% if submission.score_breakdown and submission.score_breakdown.get('wandb') %}
+                <div>
+                    <h2 class="text-xl font-semibold mb-4">W&B Tracking</h2>
+                    <div class="bg-purple-50 p-4 rounded-lg">
+                        <div class="flex items-center gap-3">
+                            <span class="text-2xl">📊</span>
+                            <div class="flex-1">
+                                <p class="text-sm text-gray-600 mb-2">View detailed metrics and artifacts in Weights & Biases</p>
+                                <a href="{{ submission.score_breakdown.wandb.url }}"
+                                   target="_blank"
+                                   class="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+                                    </svg>
+                                    Open W&B Dashboard
+                                </a>
+                                <p class="text-xs text-gray-500 mt-2">
+                                    Run ID: {{ submission.score_breakdown.wandb.runId }}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
             </div>
 
             <!-- Stage Progress Bar -->
@@ -130,7 +156,7 @@
 
                 {% if submission.score_breakdown %}
                 <!-- PreCheck -->
-                <details class="mb-6 bg-gray-50 p-4 rounded-lg">
+                <details id="details-precheck" class="mb-6 bg-gray-50 p-4 rounded-lg">
                     <summary class="text-lg font-semibold mb-2 flex items-center cursor-pointer">
                         <span class="mr-2">🧾</span> PreCheck
                     </summary>
@@ -172,7 +198,7 @@
                 </details>
 
                 <!-- Security Gate -->
-                <details class="mb-6 bg-gray-50 p-4 rounded-lg">
+                <details id="details-security" class="mb-6 bg-gray-50 p-4 rounded-lg">
                     <summary class="text-lg font-semibold mb-2 flex items-center cursor-pointer">
                         <span class="mr-2">🛡️</span> Security Gate
                     </summary>
@@ -364,7 +390,7 @@
                 </details>
 
                 <!-- Functional Check -->
-                <details class="mb-6 bg-gray-50 p-4 rounded-lg">
+                <details id="details-functional" class="mb-6 bg-gray-50 p-4 rounded-lg">
                     <summary class="text-lg font-semibold mb-2 flex items-center cursor-pointer">
                         <span class="mr-2">🧪</span> Functional Accuracy Check
                     </summary>
@@ -571,7 +597,7 @@
                 </details>
 
                 <!-- Judge Panel -->
-                <details class="mb-6 bg-gray-50 p-4 rounded-lg">
+                <details id="details-judge" class="mb-6 bg-gray-50 p-4 rounded-lg">
                     <summary class="text-lg font-semibold mb-2 flex items-center cursor-pointer">
                         <span class="mr-2">⚖️</span> Judge Panel (Agents-as-a-Judge)
                     </summary>
@@ -818,7 +844,7 @@
                 </details>
 
                 <!-- Publish -->
-                <details class="mb-6 bg-gray-50 p-4 rounded-lg">
+                <details id="details-publish" class="mb-6 bg-gray-50 p-4 rounded-lg">
                     <summary class="text-lg font-semibold mb-2 flex items-center cursor-pointer">
                         <svg class="w-5 h-5 mr-2 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"></path>
@@ -899,8 +925,9 @@
                 // Check if data has been updated
                 if (data.updated_at !== lastUpdateTime) {
                     lastUpdateTime = data.updated_at;
-                    // Show notification and allow user to manually reload
-                    showUpdateNotification('評価が更新されました。ページを更新して詳細を確認してください。');
+                    isUpdating = true;
+                    await updatePageContent();
+                    isUpdating = false;
                 }
             } catch (error) {
                 console.error('Polling error:', error);
@@ -908,33 +935,48 @@
             }
         }
 
-        function showUpdateNotification(message) {
-            // Only show once
-            if (document.getElementById('update-notification')) return;
+        async function updatePageContent() {
+            try {
+                // Fetch the full HTML of the current page
+                const response = await fetch(window.location.href);
+                if (!response.ok) return;
+                const htmlText = await response.text();
 
-            // Create a non-intrusive notification
-            const notification = document.createElement('div');
-            notification.id = 'update-notification';
-            notification.className = 'fixed top-4 right-4 bg-blue-500 text-white px-6 py-3 rounded-lg shadow-lg z-50';
-            notification.innerHTML = `
-                <div class="flex items-center gap-2">
-                    <span>${message}</span>
-                    <button onclick="location.reload()" class="ml-2 underline hover:font-bold">更新</button>
-                </div>
-            `;
-            document.body.appendChild(notification);
+                // Parse the new HTML
+                const parser = new DOMParser();
+                const newDoc = parser.parseFromString(htmlText, 'text/html');
+                const newContent = newDoc.getElementById('main-content');
+                const currentContent = document.getElementById('main-content');
 
-            // Auto-remove after 15 seconds
-            setTimeout(() => {
-                notification.remove();
-            }, 15000);
+                if (newContent && currentContent) {
+                    // Capture state
+                    const scrollPos = window.scrollY;
+                    const openDetails = Array.from(document.querySelectorAll('details[open]'))
+                        .map(el => el.id)
+                        .filter(id => id); // Only keep elements with IDs
+
+                    // Replace content
+                    currentContent.innerHTML = newContent.innerHTML;
+
+                    // Restore state
+                    openDetails.forEach(id => {
+                        const el = document.getElementById(id);
+                        if (el) el.open = true;
+                    });
+
+                    // Restore scroll position
+                    window.scrollTo(0, scrollPos);
+
+                    console.log('Page content updated via Ajax, state preserved.');
+                }
+            } catch (error) {
+                console.error('Error updating page content:', error);
+            }
         }
 
         function startPolling() {
             // Poll every 5 seconds
             pollingInterval = setInterval(checkForUpdates, 5000);
-            // Initial check after 2 seconds
-            setTimeout(checkForUpdates, 2000);
         }
 
         // Start polling to check for updates

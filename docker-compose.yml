@@ -13,6 +13,10 @@ services:
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - WANDB_API_KEY=${WANDB_API_KEY}
+      - WANDB_PROJECT=${WANDB_PROJECT}
+      - WANDB_ENTITY=${WANDB_ENTITY}
+      - WANDB_BASE_URL=${WANDB_BASE_URL}
     networks:
       - agent-net
 

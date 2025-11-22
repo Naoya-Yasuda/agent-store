@@ -141,6 +141,7 @@ def process_submission(submission_id: str):
         current_breakdown = dict(submission.score_breakdown)
         current_breakdown["wandb"] = wandb_mcp.export_metadata()
         submission.score_breakdown = current_breakdown
+        submission.updated_at = datetime.utcnow()
         db.commit()
 
         # --- 0. PreCheck ---
@@ -158,8 +159,9 @@ def process_submission(submission_id: str):
                         "message": "PreCheck failed",
                         "warnings": precheck_summary.get("warnings", [])
                     }
-                }
             }
+            }
+            submission.updated_at = datetime.utcnow()
             db.commit()
             print(f"PreCheck failed for submission {submission_id}: {precheck_summary['errors']}")
             return
@@ -170,7 +172,24 @@ def process_submission(submission_id: str):
 
         # Update state to precheck_passed
         submission.state = "precheck_passed"
-        submission.score_breakdown = {"precheck_summary": precheck_summary}
+
+        # Update score_breakdown incrementally
+        current_breakdown = dict(submission.score_breakdown)
+        current_breakdown["precheck_summary"] = precheck_summary
+
+        # Initialize stages if not present
+        if "stages" not in current_breakdown:
+            current_breakdown["stages"] = {}
+
+        current_breakdown["stages"]["precheck"] = {
+            "status": "completed",
+            "attempts": 1,
+            "message": "PreCheck passed successfully",
+            "warnings": precheck_summary.get("warnings", [])
+        }
+
+        submission.score_breakdown = current_breakdown
+        submission.updated_at = datetime.utcnow()
         db.commit()
         print(f"PreCheck passed for submission {submission_id}")
 
@@ -274,7 +293,22 @@ def process_submission(submission_id: str):
         }
 
         # Store enhanced security summary for UI
-        submission.score_breakdown["security_summary"] = enhanced_security_summary
+        # Store enhanced security summary for UI
+        current_breakdown = dict(submission.score_breakdown)
+        current_breakdown["security_summary"] = enhanced_security_summary
+
+        # Update stages
+        if "stages" not in current_breakdown:
+            current_breakdown["stages"] = {}
+
+        current_breakdown["stages"]["security"] = {
+            "status": "completed",
+            "attempts": 1,
+            "message": f"Security Gate completed: {passed}/{total_security} passed",
+            "warnings": [f"{needs_review} scenarios need manual review"] if needs_review > 0 else []
+        }
+
+        submission.score_breakdown = current_breakdown
 
         # Calculate Security Score (Simple logic based on pass rate)
         security_score = int((passed / max(total_security, 1)) * 30) # Max 30
@@ -282,6 +316,7 @@ def process_submission(submission_id: str):
         # Update state to security_gate_completed
         submission.state = "security_gate_completed"
         submission.security_score = security_score
+        submission.updated_at = datetime.utcnow()
         db.commit()
         print(f"Security Gate completed for submission {submission_id}, score: {security_score}")
 
@@ -373,37 +408,31 @@ def process_submission(submission_id: str):
         submission.security_score = security_score
         submission.functional_score = functional_score
         submission.trust_score = security_score + functional_score
-        # Add stages metadata
-        stages_metadata = {
-            "precheck": {
-                "status": "completed",
-                "attempts": 1,
-                "message": "PreCheck passed successfully",
-                "warnings": precheck_summary.get("warnings", [])
-            },
-            "security": {
-                "status": "completed",
-                "attempts": 1,
-                "message": f"Security Gate completed: {passed}/{total_security} passed",
-                "warnings": [f"{needs_review} scenarios need manual review"] if needs_review > 0 else []
-            },
-            "functional": {
-                "status": "completed",
-                "attempts": 1,
-                "message": f"Functional Accuracy completed: {passed_scenarios}/{total_scenarios} passed",
-                "warnings": [f"{needs_review_scenarios} scenarios need review"] if needs_review_scenarios > 0 else []
-            }
+
+        # Update score_breakdown incrementally
+        current_breakdown = dict(submission.score_breakdown)
+        current_breakdown["functional_summary"] = enhanced_functional_summary
+
+        # Update stages
+        if "stages" not in current_breakdown:
+            current_breakdown["stages"] = {}
+
+        current_breakdown["stages"]["functional"] = {
+            "status": "completed",
+            "attempts": 1,
+            "message": f"Functional Accuracy completed: {passed_scenarios}/{total_scenarios} passed",
+            "warnings": [f"{needs_review_scenarios} scenarios need review"] if needs_review_scenarios > 0 else []
         }
 
-        submission.score_breakdown = {
-            "precheck_summary": precheck_summary,
-            "security_summary": enhanced_security_summary,
-            "functional_summary": enhanced_functional_summary,
-            "stages": stages_metadata
-        }
+        # Ensure W&B metadata is preserved/updated
+        current_breakdown["wandb"] = wandb_mcp.export_metadata()
+
+        submission.score_breakdown = current_breakdown
 
         # Update state to functional_accuracy_completed
+        # Update state to functional_accuracy_completed
         submission.state = "functional_accuracy_completed"
+        submission.updated_at = datetime.utcnow()
         db.commit()
         print(f"Functional Accuracy completed for submission {submission_id}, score: {functional_score}, total trust: {submission.trust_score}")
 
@@ -488,25 +517,31 @@ def process_submission(submission_id: str):
         submission.judge_score = judge_score
         submission.trust_score = security_score + functional_score + judge_score
 
-        # Update stages metadata
-        stages_metadata["judge"] = {
+
+        # Update score_breakdown incrementally
+        current_breakdown = dict(submission.score_breakdown)
+        current_breakdown["judge_summary"] = enhanced_judge_summary
+
+        # Update stages
+        if "stages" not in current_breakdown:
+            current_breakdown["stages"] = {}
+
+        current_breakdown["stages"]["judge"] = {
             "status": "completed",
             "attempts": 1,
             "message": f"Judge Panel completed: verdict={judge_summary.get('verdict')}",
             "warnings": [f"{judge_summary.get('manual', 0)} scenarios need manual review"] if judge_summary.get('manual', 0) > 0 else []
         }
 
-        submission.score_breakdown = {
-            "precheck_summary": precheck_summary,
-            "security_summary": enhanced_security_summary,
-            "functional_summary": enhanced_functional_summary,
-            "judge_summary": enhanced_judge_summary,
-            "stages": stages_metadata,
-            "wandb": wandb_mcp.export_metadata() # Save W&B metadata
-        }
+        # Ensure W&B metadata is preserved/updated
+        current_breakdown["wandb"] = wandb_mcp.export_metadata()
+
+        submission.score_breakdown = current_breakdown
 
         # Update state to judge_panel_completed
+        # Update state to judge_panel_completed
         submission.state = "judge_panel_completed"
+        submission.updated_at = datetime.utcnow()
         db.commit()
         print(f"Judge Panel completed for submission {submission_id}, score: {judge_score}, total trust: {submission.trust_score}")
 
@@ -521,7 +556,10 @@ def process_submission(submission_id: str):
             # --- Publish Stage ---
             print(f"Auto-approved: Publishing submission {submission_id}")
             publish_summary = publish_agent(submission)
-            submission.score_breakdown["publish_summary"] = publish_summary
+            publish_summary = publish_agent(submission)
+            current_breakdown = dict(submission.score_breakdown)
+            current_breakdown["publish_summary"] = publish_summary
+            submission.score_breakdown = current_breakdown
             if publish_summary["status"] == "published":
                 submission.state = "published"
         elif submission.trust_score < 30:
@@ -531,6 +569,7 @@ def process_submission(submission_id: str):
             submission.auto_decision = "requires_human_review"
             submission.state = "under_review"
 
+        submission.updated_at = datetime.utcnow()
         db.commit()
         print(f"Submission {submission_id} processed successfully. Trust score: {submission.trust_score}")
     except Exception as e:
@@ -538,6 +577,7 @@ def process_submission(submission_id: str):
         import traceback
         traceback.print_exc()
         submission.state = "failed"
+        submission.updated_at = datetime.utcnow()
         db.commit()
     finally:
         db.close()

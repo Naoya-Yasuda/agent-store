@@ -15,7 +15,7 @@
     </nav>
 
     <div class="container mx-auto px-4 py-8">
-        <div class="bg-white shadow-lg rounded-lg overflow-hidden mb-8">
+        <div id="main-content" class="bg-white shadow-lg rounded-lg overflow-hidden mb-8">
             <div class="p-6 bg-gray-50 border-b border-gray-200">
                 <h1 class="text-3xl font-bold text-gray-800">{{ submission.card_document.translations[0].displayName }}</h1>
                 <p class="text-gray-600">{{ submission.card_document.translations[0].shortDescription }}</p>
@@ -59,6 +59,32 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- W&B Link -->
+                {% if submission.score_breakdown and submission.score_breakdown.get('wandb') %}
+                <div>
+                    <h2 class="text-xl font-semibold mb-4">W&B Tracking</h2>
+                    <div class="bg-purple-50 p-4 rounded-lg">
+                        <div class="flex items-center gap-3">
+                            <span class="text-2xl">📊</span>
+                            <div class="flex-1">
+                                <p class="text-sm text-gray-600 mb-2">View detailed metrics and artifacts in Weights & Biases</p>
+                                <a href="{{ submission.score_breakdown.wandb.url }}"
+                                   target="_blank"
+                                   class="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+                                    </svg>
+                                    Open W&B Dashboard
+                                </a>
+                                <p class="text-xs text-gray-500 mt-2">
+                                    Run ID: {{ submission.score_breakdown.wandb.runId }}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
             </div>
 
             <!-- Stage Progress Bar -->
@@ -162,7 +188,7 @@
 
                 {% if submission.score_breakdown %}
                 <!-- PreCheck -->
-                <details class="mb-6 bg-gray-50 p-4 rounded-lg">
+                <details id="details-precheck" class="mb-6 bg-gray-50 p-4 rounded-lg">
                     <summary class="text-lg font-semibold mb-2 flex items-center cursor-pointer">
                         <span class="mr-2">🧾</span> PreCheck
                     </summary>
@@ -204,7 +230,7 @@
                 </details>
 
                 <!-- Security Gate -->
-                <details class="mb-6 bg-gray-50 p-4 rounded-lg">
+                <details id="details-security" class="mb-6 bg-gray-50 p-4 rounded-lg">
                     <summary class="text-lg font-semibold mb-2 flex items-center cursor-pointer">
                         <span class="mr-2">🛡️</span> Security Gate
                     </summary>
@@ -404,7 +430,7 @@
                 </details>
 
                 <!-- Functional Check -->
-                <details class="mb-6 bg-gray-50 p-4 rounded-lg">
+                <details id="details-functional" class="mb-6 bg-gray-50 p-4 rounded-lg">
                     <summary class="text-lg font-semibold mb-2 flex items-center cursor-pointer">
                         <span class="mr-2">🧪</span> Functional Accuracy Check
                     </summary>
@@ -619,7 +645,7 @@
                 </details>
 
                 <!-- Judge Panel -->
-                <details class="mb-6 bg-gray-50 p-4 rounded-lg">
+                <details id="details-judge" class="mb-6 bg-gray-50 p-4 rounded-lg">
                     <summary class="text-lg font-semibold mb-2 flex items-center cursor-pointer">
                         <span class="mr-2">⚖️</span> Judge Panel (Agents-as-a-Judge)
                     </summary>
@@ -874,7 +900,7 @@
                 </details>
 
                 <!-- Publish -->
-                <details class="mb-6 bg-gray-50 p-4 rounded-lg">
+                <details id="details-publish" class="mb-6 bg-gray-50 p-4 rounded-lg">
                     <summary class="text-lg font-semibold mb-2 flex items-center cursor-pointer">
                         <svg class="w-5 h-5 mr-2 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"></path>
@@ -996,7 +1022,7 @@
                 if (data.updated_at !== lastUpdateTime) {
                     lastUpdateTime = data.updated_at;
                     isUpdating = true;
-                    updatePageContent(data);
+                    await updatePageContent();
                     isUpdating = false;
                 }
             } catch (error) {
@@ -1005,89 +1031,46 @@
             }
         }
 
-        function updatePageContent(data) {
-            // Update Trust Score
-            const trustScoreEl = document.querySelector('[data-score="trust"]');
-            if (trustScoreEl) trustScoreEl.textContent = data.trust_score || 0;
+        async function updatePageContent() {
+            try {
+                // Fetch the full HTML of the current page
+                const response = await fetch(window.location.href);
+                if (!response.ok) return;
+                const htmlText = await response.text();
 
-            const securityScoreEl = document.querySelector('[data-score="security"]');
-            if (securityScoreEl) securityScoreEl.textContent = data.security_score || 0;
+                // Parse the new HTML
+                const parser = new DOMParser();
+                const newDoc = parser.parseFromString(htmlText, 'text/html');
+                const newContent = newDoc.getElementById('main-content');
+                const currentContent = document.getElementById('main-content');
 
-            const functionalScoreEl = document.querySelector('[data-score="functional"]');
-            if (functionalScoreEl) functionalScoreEl.textContent = data.functional_score || 0;
+                if (newContent && currentContent) {
+                    // Capture state
+                    const scrollPos = window.scrollY;
+                    const openDetails = Array.from(document.querySelectorAll('details[open]'))
+                        .map(el => el.id)
+                        .filter(id => id); // Only keep elements with IDs
 
-            const judgeScoreEl = document.querySelector('[data-score="judge"]');
-            if (judgeScoreEl) judgeScoreEl.textContent = data.judge_score || 0;
+                    // Replace content
+                    currentContent.innerHTML = newContent.innerHTML;
 
-            const implementationScoreEl = document.querySelector('[data-score="implementation"]');
-            if (implementationScoreEl) implementationScoreEl.textContent = data.implementation_score || 0;
+                    // Restore state
+                    openDetails.forEach(id => {
+                        const el = document.getElementById(id);
+                        if (el) el.open = true;
+                    });
 
-            // Update Review Progress Bar
-            updateProgressTracker(data.state, data.score_breakdown);
-        }
+                    // Restore scroll position
+                    window.scrollTo(0, scrollPos);
 
-        function updateProgressTracker(state, scoreBreakdown) {
-            // Map state to stage completion
-            const stages = [
-                { key: 'precheck', icon: '🧾', label: 'PreCheck' },
-                { key: 'security', icon: '🛡️', label: 'Security Gate' },
-                { key: 'functional', icon: '🧪', label: 'Functional Accuracy' },
-                { key: 'judge', icon: '⚖️', label: 'Judge Panel' },
-                { key: 'human', icon: '🙋', label: 'Human Review' },
-                { key: 'publish', icon: '🚀', label: 'Publish' }
-            ];
-
-            const stageStatusMap = {
-                'submitted': { precheck: 'pending' },
-                'pending': { precheck: 'running' },
-                'in_progress': { precheck: 'running' },
-                'precheck_passed': { precheck: 'completed', security: 'running' },
-                'security_gate_completed': { precheck: 'completed', security: 'completed', functional: 'running' },
-                'functional_accuracy_completed': { precheck: 'completed', security: 'completed', functional: 'completed', judge: 'running' },
-                'judge_panel_completed': { precheck: 'completed', security: 'completed', functional: 'completed', judge: 'completed', human: 'pending' },
-                'under_review': { precheck: 'completed', security: 'completed', functional: 'completed', judge: 'completed', human: 'running' },
-                'approved': { precheck: 'completed', security: 'completed', functional: 'completed', judge: 'completed', human: 'completed', publish: 'completed' },
-                'rejected': { precheck: 'completed', security: 'completed', functional: 'completed', judge: 'completed', human: 'completed', publish: 'failed' }
-            };
-
-            const statusFromState = stageStatusMap[state] || {};
-
-            // Override with actual stage statuses if available
-            const stageStatuses = {};
-            if (scoreBreakdown && scoreBreakdown.stages) {
-                for (const [key, value] of Object.entries(scoreBreakdown.stages)) {
-                    if (value && value.status) {
-                        stageStatuses[key] = value.status;
-                    }
+                    console.log('Page content updated via Ajax, state preserved.');
                 }
+            } catch (error) {
+                console.error('Error updating page content:', error);
             }
-
-            // Merge: actual statuses take precedence
-            const finalStatuses = { ...statusFromState, ...stageStatuses };
-
-            // Update each stage icon
-            stages.forEach((stage, index) => {
-                const status = finalStatuses[stage.key] || 'pending';
-                const stageEl = document.querySelector(`[data-stage="${stage.key}"]`);
-
-                if (stageEl) {
-                    // Update classes
-                    stageEl.className = 'w-12 h-12 rounded-full flex items-center justify-center text-2xl';
-
-                    if (status === 'completed') {
-                        stageEl.className += ' bg-green-100 border-2 border-green-500';
-                    } else if (status === 'failed') {
-                        stageEl.className += ' bg-red-100 border-2 border-red-500';
-                    } else if (status === 'running') {
-                        stageEl.className += ' bg-yellow-100 border-2 border-yellow-500 animate-pulse';
-                    } else {
-                        stageEl.className += ' bg-gray-100 border-2 border-gray-300';
-                    }
-                }
-            });
-
-            console.log('Updated progress tracker:', state, finalStatuses);
         }
+
+
 
         function startPolling() {
             // Poll every 5 seconds
