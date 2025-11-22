@@ -101,7 +101,17 @@ def process_submission(submission_id: str):
 
         if not precheck_summary["passed"]:
             submission.state = "precheck_failed"
-            submission.score_breakdown = {"precheck_summary": precheck_summary}
+            submission.score_breakdown = {
+                "precheck_summary": precheck_summary,
+                "stages": {
+                    "precheck": {
+                        "status": "failed",
+                        "attempts": 1,
+                        "message": "PreCheck failed",
+                        "warnings": precheck_summary.get("warnings", [])
+                    }
+                }
+            }
             db.commit()
             print(f"PreCheck failed for submission {submission_id}: {precheck_summary['errors']}")
             return
@@ -155,14 +165,50 @@ def process_submission(submission_id: str):
             security_summary = {"error": str(e), "status": "failed"}
             print(f"Security Gate failed for submission {submission_id}: {e}")
 
-        # Store security summary for UI
-        submission.score_breakdown["security_summary"] = security_summary
+        # Transform security_summary to match UI expectations
+        # Rename fields for compatibility with review UI
+        total_security = security_summary.get("attempted", 0)
+        blocked = security_summary.get("blocked", 0)
+        needs_review = security_summary.get("needsReview", 0)
+        not_executed = security_summary.get("notExecuted", 0)
+        errors = security_summary.get("errors", 0)
+
+        # Calculate passed/failed for UI display
+        passed = blocked  # Blocked = successfully defended
+        failed = needs_review  # Needs review = potential security issue
+
+        # Enhanced security summary with all fields
+        enhanced_security_summary = {
+            # Basic counts
+            "total": total_security,
+            "attempted": total_security,
+            "passed": passed,
+            "failed": failed,
+            "blocked": blocked,
+            "needsReview": needs_review,
+            "notExecuted": not_executed,
+            "errors": errors,
+
+            # Additional context
+            "categories": security_summary.get("categories", {}),
+            "endpoint": security_summary.get("endpoint"),
+            "contextTerms": security_summary.get("contextTerms", []),
+            "dataset": security_summary.get("dataset"),
+            "generatedAt": security_summary.get("generatedAt"),
+
+            # Artifacts
+            "artifacts": {
+                "prompts": security_summary.get("promptsArtifact"),
+                "report": str(output_dir / "security" / "security_report.jsonl"),
+                "summary": str(output_dir / "security" / "security_summary.json"),
+            }
+        }
+
+        # Store enhanced security summary for UI
+        submission.score_breakdown["security_summary"] = enhanced_security_summary
 
         # Calculate Security Score (Simple logic based on pass rate)
-        # security_summary has 'passed', 'failed', 'error' counts
-        total_security = security_summary.get("total", 1)
-        passed_security = security_summary.get("passed", 0)
-        security_score = int((passed_security / total_security) * 30) # Max 30
+        security_score = int((passed / max(total_security, 1)) * 30) # Max 30
 
         # Update state to security_gate_completed
         submission.state = "security_gate_completed"
@@ -189,20 +235,82 @@ def process_submission(submission_id: str):
             timeout=20.0
         )
 
+        # Transform functional_summary to match UI expectations
+        total_scenarios = functional_summary.get("scenarios", 0)
+        passed_scenarios = functional_summary.get("passed", functional_summary.get("passes", 0))
+        needs_review_scenarios = functional_summary.get("needsReview", 0)
+        failed_scenarios = total_scenarios - passed_scenarios - needs_review_scenarios
+
+        # Enhanced functional summary with all fields
+        enhanced_functional_summary = {
+            # Basic counts
+            "total_scenarios": total_scenarios,
+            "passed_scenarios": passed_scenarios,
+            "failed_scenarios": failed_scenarios,
+            "needsReview": needs_review_scenarios,
+
+            # AdvBench information
+            "advbenchScenarios": functional_summary.get("advbenchScenarios", 0),
+            "advbenchLimit": functional_summary.get("advbenchLimit"),
+            "advbenchEnabled": functional_summary.get("advbenchEnabled", False),
+
+            # Distance scores
+            "averageDistance": functional_summary.get("averageDistance"),
+            "embeddingAverageDistance": functional_summary.get("embeddingAverageDistance"),
+            "embeddingMaxDistance": functional_summary.get("embeddingMaxDistance"),
+            "maxDistance": functional_summary.get("maxDistance"),
+
+            # Error information
+            "responsesWithError": functional_summary.get("responsesWithError", 0),
+
+            # RAGTruth information
+            "ragtruthRecords": functional_summary.get("ragtruthRecords", 0),
+
+            # Additional context
+            "endpoint": functional_summary.get("endpoint"),
+            "dryRun": functional_summary.get("dryRun", False),
+
+            # Artifacts
+            "artifacts": {
+                "report": str(output_dir / "functional" / "functional_report.jsonl"),
+                "summary": str(output_dir / "functional" / "functional_summary.json"),
+                "prompts": functional_summary.get("promptsArtifact"),
+            }
+        }
+
         # Calculate Functional Score
-        # functional_summary has 'scenarios_passed' etc.
-        total_functional = functional_summary.get("total_scenarios", 1)
-        # Recalculate Security Score (already calculated above, but keeping for consistency)
-        security_score = int((security_summary.get("passed", 0) / max(security_summary.get("total", 1), 1)) * 30)
-        functional_score = int((functional_summary.get("passed_scenarios", 0) / max(functional_summary.get("total_scenarios", 1), 1)) * 40)
+        functional_score = int((passed_scenarios / max(total_scenarios, 1)) * 40)
 
         submission.security_score = security_score
         submission.functional_score = functional_score
         submission.trust_score = security_score + functional_score
+        # Add stages metadata
+        stages_metadata = {
+            "precheck": {
+                "status": "completed",
+                "attempts": 1,
+                "message": "PreCheck passed successfully",
+                "warnings": precheck_summary.get("warnings", [])
+            },
+            "security": {
+                "status": "completed",
+                "attempts": 1,
+                "message": f"Security Gate completed: {passed}/{total_security} passed",
+                "warnings": [f"{needs_review} scenarios need manual review"] if needs_review > 0 else []
+            },
+            "functional": {
+                "status": "completed",
+                "attempts": 1,
+                "message": f"Functional Accuracy completed: {passed_scenarios}/{total_scenarios} passed",
+                "warnings": [f"{needs_review_scenarios} scenarios need review"] if needs_review_scenarios > 0 else []
+            }
+        }
+
         submission.score_breakdown = {
             "precheck_summary": precheck_summary,
-            "security_summary": security_summary,
-            "functional_summary": functional_summary
+            "security_summary": enhanced_security_summary,
+            "functional_summary": enhanced_functional_summary,
+            "stages": stages_metadata
         }
 
         # Update state to functional_accuracy_completed

@@ -61,6 +61,69 @@
                 </div>
             </div>
 
+            <!-- Stage Progress Bar -->
+            <div class="p-6 border-t border-gray-200">
+                <h2 class="text-xl font-semibold mb-4">Review Progress</h2>
+                <div class="flex items-center justify-between mb-8">
+                    {% set stages = [
+                        {"key": "precheck", "icon": "🧾", "label": "PreCheck"},
+                        {"key": "security", "icon": "🛡️", "label": "Security Gate"},
+                        {"key": "functional", "icon": "🧪", "label": "Functional Accuracy"},
+                        {"key": "judge", "icon": "⚖️", "label": "Judge Panel"},
+                        {"key": "human", "icon": "🙋", "label": "Human Review"},
+                        {"key": "publish", "icon": "🚀", "label": "Publish"}
+                    ] %}
+
+                    {% for stage in stages %}
+                    {% set stage_meta = submission.score_breakdown.stages.get(stage.key) if submission.score_breakdown and submission.score_breakdown.get('stages') else none %}
+                    {% set is_completed = stage_meta and stage_meta.status == 'completed' %}
+                    {% set is_failed = stage_meta and stage_meta.status == 'failed' %}
+                    {% set is_running = stage_meta and stage_meta.status == 'running' %}
+
+                    <div class="flex flex-col items-center flex-1">
+                        <div class="relative">
+                            <div class="w-12 h-12 rounded-full flex items-center justify-center text-2xl
+                                {% if is_completed %}bg-green-100 border-2 border-green-500
+                                {% elif is_failed %}bg-red-100 border-2 border-red-500
+                                {% elif is_running %}bg-yellow-100 border-2 border-yellow-500 animate-pulse
+                                {% else %}bg-gray-100 border-2 border-gray-300{% endif %}">
+                                {{ stage.icon }}
+                            </div>
+                            {% if is_completed %}
+                            <div class="absolute -top-1 -right-1 bg-green-500 rounded-full w-5 h-5 flex items-center justify-center">
+                                <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path>
+                                </svg>
+                            </div>
+                            {% elif is_failed %}
+                            <div class="absolute -top-1 -right-1 bg-red-500 rounded-full w-5 h-5 flex items-center justify-center">
+                                <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12"></path>
+                                </svg>
+                            </div>
+                            {% endif %}
+                        </div>
+                        <div class="text-xs mt-2 font-medium text-center">{{ stage.label }}</div>
+                        {% if stage_meta and stage_meta.status %}
+                        <div class="text-xs text-gray-500 mt-1">
+                            {% if stage_meta.status == 'completed' %}✅ 完了
+                            {% elif stage_meta.status == 'failed' %}❌ 失敗
+                            {% elif stage_meta.status == 'running' %}⏳ 実行中
+                            {% else %}⏸️ 待機中{% endif %}
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    {% if not loop.last %}
+                    <div class="flex-1 h-0.5 mb-12
+                        {% if stages[loop.index].key and submission.score_breakdown.stages and submission.score_breakdown.stages.get(stages[loop.index].key) %}bg-green-500
+                        {% else %}bg-gray-300{% endif %}">
+                    </div>
+                    {% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+
             <!-- Review Steps Section -->
             <div class="p-6 border-t border-gray-200">
                 <h2 class="text-xl font-semibold mb-4">Automated Review Steps</h2>
@@ -111,25 +174,93 @@
                 <!-- Security Gate -->
                 <details class="mb-6 bg-gray-50 p-4 rounded-lg" open>
                     <summary class="text-lg font-semibold mb-2 flex items-center cursor-pointer">
-                        <svg class="w-5 h-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
-                        </svg>
-                        Security Gate
+                        <span class="mr-2">🛡️</span> Security Gate
                     </summary>
                     {% if submission.score_breakdown.security_summary %}
-                    <div class="ml-7 space-y-2 mt-2">
-                        <p class="text-sm text-gray-700">
-                            <span class="font-semibold">Total Tests:</span> {{ submission.score_breakdown.security_summary.total or 0 }}
-                        </p>
-                        <p class="text-sm text-gray-700">
-                            <span class="font-semibold">Passed:</span> <span class="text-green-600">{{ submission.score_breakdown.security_summary.passed or 0 }}</span>
-                        </p>
-                        <p class="text-sm text-gray-700">
-                            <span class="font-semibold">Failed:</span> <span class="text-red-600">{{ submission.score_breakdown.security_summary.failed or 0 }}</span>
-                        </p>
-                        <p class="text-sm text-gray-700">
-                            <span class="font-semibold">Errors:</span> <span class="text-yellow-600">{{ submission.score_breakdown.security_summary.error or 0 }}</span>
-                        </p>
+                    <div class="ml-7 space-y-4 mt-2">
+                        <!-- Basic Counts -->
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div class="bg-white p-3 rounded border">
+                                <div class="text-xs text-gray-500">Total Tests</div>
+                                <div class="text-2xl font-bold">{{ submission.score_breakdown.security_summary.total or 0 }}</div>
+                            </div>
+                            <div class="bg-green-50 p-3 rounded border border-green-200">
+                                <div class="text-xs text-gray-500">Blocked (Safe)</div>
+                                <div class="text-2xl font-bold text-green-600">{{ submission.score_breakdown.security_summary.blocked or 0 }}</div>
+                            </div>
+                            <div class="bg-yellow-50 p-3 rounded border border-yellow-200">
+                                <div class="text-xs text-gray-500">Needs Review</div>
+                                <div class="text-2xl font-bold text-yellow-600">{{ submission.score_breakdown.security_summary.needsReview or 0 }}</div>
+                            </div>
+                            <div class="bg-red-50 p-3 rounded border border-red-200">
+                                <div class="text-xs text-gray-500">Errors</div>
+                                <div class="text-2xl font-bold text-red-600">{{ submission.score_breakdown.security_summary.errors or 0 }}</div>
+                            </div>
+                        </div>
+
+                        <!-- Categories Breakdown -->
+                        {% if submission.score_breakdown.security_summary.categories %}
+                        <div class="border-t pt-4">
+                            <h4 class="font-semibold mb-2">Attack Category Breakdown</h4>
+                            <div class="grid grid-cols-2 gap-2">
+                                {% for category, count in submission.score_breakdown.security_summary.categories.items() %}
+                                <div class="text-xs bg-white p-2 rounded border">
+                                    <span class="font-medium">{{ category }}:</span> {{ count }}
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endif %}
+
+                        <!-- Context Terms -->
+                        {% if submission.score_breakdown.security_summary.contextTerms %}
+                        <div class="border-t pt-4">
+                            <h4 class="font-semibold mb-2">Context Terms Used</h4>
+                            <div class="flex flex-wrap gap-2">
+                                {% for term in submission.score_breakdown.security_summary.contextTerms %}
+                                <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">{{ term }}</span>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endif %}
+
+                        <!-- Confirmation Points -->
+                        <div class="border-t pt-4">
+                            <h4 class="font-semibold mb-2">📋 確認ポイント (登録者向け)</h4>
+                            <ul class="text-sm space-y-1 list-disc ml-5">
+                                <li>Security summaryのカテゴリ別結果と一覧に出力されたpromptsを確認し、想定した攻撃観点が網羅されているかを検証</li>
+                                <li>report/summaryでneedsReviewの有無とfail reasonsを確認</li>
+                            </ul>
+                        </div>
+
+                        <div class="border-t pt-4">
+                            <h4 class="font-semibold mb-2">🔧 確認ポイント (管理者向け)</h4>
+                            <ul class="text-sm space-y-1 list-disc ml-5">
+                                <li>実行時のプロンプト（prompts artifact）とsecurity reportを開き、禁止語検出やrelayログのエラーをチェック</li>
+                                <li>Security ledger entryが送信済みか、必要なら再送</li>
+                            </ul>
+                        </div>
+
+                        <!-- Artifacts -->
+                        {% if submission.score_breakdown.security_summary.artifacts %}
+                        <div class="border-t pt-4">
+                            <h4 class="font-semibold mb-2">📁 Artifacts</h4>
+                            <div class="space-y-2">
+                                {% if submission.score_breakdown.security_summary.artifacts.prompts %}
+                                <div class="text-sm">
+                                    <span class="font-medium">Prompts:</span>
+                                    <code class="text-xs bg-gray-100 px-2 py-1 rounded">{{ submission.score_breakdown.security_summary.artifacts.prompts }}</code>
+                                </div>
+                                {% endif %}
+                                {% if submission.score_breakdown.security_summary.artifacts.report %}
+                                <div class="text-sm">
+                                    <span class="font-medium">Report:</span>
+                                    <code class="text-xs bg-gray-100 px-2 py-1 rounded">{{ submission.score_breakdown.security_summary.artifacts.report }}</code>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endif %}
                     </div>
                     {% else %}
                     <p class="ml-7 text-sm text-gray-500">No security test results available</p>
@@ -139,22 +270,105 @@
                 <!-- Functional Check -->
                 <details class="mb-6 bg-gray-50 p-4 rounded-lg" open>
                     <summary class="text-lg font-semibold mb-2 flex items-center cursor-pointer">
-                        <svg class="w-5 h-5 mr-2 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path>
-                        </svg>
-                        Functional Accuracy Check
+                        <span class="mr-2">🧪</span> Functional Accuracy Check
                     </summary>
                     {% if submission.score_breakdown.functional_summary %}
-                    <div class="ml-7 space-y-2 mt-2">
-                        <p class="text-sm text-gray-700">
-                            <span class="font-semibold">Total Scenarios:</span> {{ submission.score_breakdown.functional_summary.total_scenarios or 0 }}
-                        </p>
-                        <p class="text-sm text-gray-700">
-                            <span class="font-semibold">Passed:</span> <span class="text-green-600">{{ submission.score_breakdown.functional_summary.passed_scenarios or 0 }}</span>
-                        </p>
-                        <p class="text-sm text-gray-700">
-                            <span class="font-semibold">Failed:</span> <span class="text-red-600">{{ submission.score_breakdown.functional_summary.failed_scenarios or 0 }}</span>
-                        </p>
+                    <div class="ml-7 space-y-4 mt-2">
+                        <!-- Basic Counts -->
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div class="bg-white p-3 rounded border">
+                                <div class="text-xs text-gray-500">Total Scenarios</div>
+                                <div class="text-2xl font-bold">{{ submission.score_breakdown.functional_summary.total_scenarios or 0 }}</div>
+                            </div>
+                            <div class="bg-green-50 p-3 rounded border border-green-200">
+                                <div class="text-xs text-gray-500">Passed</div>
+                                <div class="text-2xl font-bold text-green-600">{{ submission.score_breakdown.functional_summary.passed_scenarios or 0 }}</div>
+                            </div>
+                            <div class="bg-yellow-50 p-3 rounded border border-yellow-200">
+                                <div class="text-xs text-gray-500">Needs Review</div>
+                                <div class="text-2xl font-bold text-yellow-600">{{ submission.score_breakdown.functional_summary.needsReview or 0 }}</div>
+                            </div>
+                            <div class="bg-red-50 p-3 rounded border border-red-200">
+                                <div class="text-xs text-gray-500">Errors</div>
+                                <div class="text-2xl font-bold text-red-600">{{ submission.score_breakdown.functional_summary.responsesWithError or 0 }}</div>
+                            </div>
+                        </div>
+
+                        <!-- AdvBench Information -->
+                        <div class="border-t pt-4">
+                            <h4 class="font-semibold mb-2">AdvBench Configuration</h4>
+                            <div class="grid grid-cols-3 gap-4 text-sm">
+                                <div>
+                                    <span class="text-gray-500">AdvBench Scenarios:</span>
+                                    <span class="font-medium ml-2">{{ submission.score_breakdown.functional_summary.advbenchScenarios or 0 }}</span>
+                                </div>
+                                <div>
+                                    <span class="text-gray-500">AdvBench Limit:</span>
+                                    <span class="font-medium ml-2">{{ submission.score_breakdown.functional_summary.advbenchLimit or "Unlimited" }}</span>
+                                </div>
+                                <div>
+                                    <span class="text-gray-500">RAGTruth Records:</span>
+                                    <span class="font-medium ml-2">{{ submission.score_breakdown.functional_summary.ragtruthRecords or 0 }}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Distance Scores -->
+                        <div class="border-t pt-4">
+                            <h4 class="font-semibold mb-2">Semantic Similarity Scores</h4>
+                            <div class="grid grid-cols-3 gap-4 text-sm">
+                                <div>
+                                    <span class="text-gray-500">Average Distance:</span>
+                                    <span class="font-medium ml-2">{{ "%.4f"|format(submission.score_breakdown.functional_summary.averageDistance) if submission.score_breakdown.functional_summary.averageDistance is not none else "N/A" }}</span>
+                                </div>
+                                <div>
+                                    <span class="text-gray-500">Embedding Avg:</span>
+                                    <span class="font-medium ml-2">{{ "%.4f"|format(submission.score_breakdown.functional_summary.embeddingAverageDistance) if submission.score_breakdown.functional_summary.embeddingAverageDistance is not none else "N/A" }}</span>
+                                </div>
+                                <div>
+                                    <span class="text-gray-500">Embedding Max:</span>
+                                    <span class="font-medium ml-2">{{ "%.4f"|format(submission.score_breakdown.functional_summary.embeddingMaxDistance) if submission.score_breakdown.functional_summary.embeddingMaxDistance is not none else "N/A" }}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Confirmation Points -->
+                        <div class="border-t pt-4">
+                            <h4 class="font-semibold mb-2">📋 確認ポイント (登録者向け)</h4>
+                            <ul class="text-sm space-y-1 list-disc ml-5">
+                                <li>Functional summaryに記載されたpasses / needsReviewを確認し、AdvBenchを含むシナリオが期待どおりに取り込まれているか検証</li>
+                                <li>Semantic距離（averageDistance, embeddingAverageDistance）やRAGTruth期待値との一致度をチェック</li>
+                            </ul>
+                        </div>
+
+                        <div class="border-t pt-4">
+                            <h4 class="font-semibold mb-2">🔧 確認ポイント (管理者向け)</h4>
+                            <ul class="text-sm space-y-1 list-disc ml-5">
+                                <li>Functional reportを開いてtopic/dialogue指標やerrorsを確認し、不具合があったシナリオをEvidenceとして保存</li>
+                                <li>AdvBenchとAgentCardのシナリオ構成を確認し、summaryでadvbenchScenariosが0でないことを確認</li>
+                            </ul>
+                        </div>
+
+                        <!-- Artifacts -->
+                        {% if submission.score_breakdown.functional_summary.artifacts %}
+                        <div class="border-t pt-4">
+                            <h4 class="font-semibold mb-2">📁 Artifacts</h4>
+                            <div class="space-y-2">
+                                {% if submission.score_breakdown.functional_summary.artifacts.report %}
+                                <div class="text-sm">
+                                    <span class="font-medium">Report (JSONL):</span>
+                                    <code class="text-xs bg-gray-100 px-2 py-1 rounded">{{ submission.score_breakdown.functional_summary.artifacts.report }}</code>
+                                </div>
+                                {% endif %}
+                                {% if submission.score_breakdown.functional_summary.artifacts.prompts %}
+                                <div class="text-sm">
+                                    <span class="font-medium">Prompts:</span>
+                                    <code class="text-xs bg-gray-100 px-2 py-1 rounded">{{ submission.score_breakdown.functional_summary.artifacts.prompts }}</code>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endif %}
                     </div>
                     {% else %}
                     <p class="ml-7 text-sm text-gray-500">No functional test results available</p>
