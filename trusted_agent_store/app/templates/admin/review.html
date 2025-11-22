@@ -61,6 +61,141 @@
                 </div>
             </div>
 
+            <!-- Review Steps Section -->
+            <div class="p-6 border-t border-gray-200">
+                <h2 class="text-xl font-semibold mb-4">Automated Review Steps</h2>
+
+                {% if submission.score_breakdown %}
+                <!-- PreCheck -->
+                <div class="mb-6 bg-gray-50 p-4 rounded-lg">
+                    <h3 class="text-lg font-semibold mb-2 flex items-center">
+                        <span class="mr-2">🧾</span>
+                        PreCheck
+                    </h3>
+                    {% if submission.score_breakdown.precheck_summary %}
+                    <div class="ml-7 space-y-2">
+                        <p class="text-sm text-gray-700">
+                            <span class="font-semibold">Status:</span>
+                            <span class="{% if submission.score_breakdown.precheck_summary.passed %}text-green-600{% else %}text-red-600{% endif %}">
+                                {{ "Passed" if submission.score_breakdown.precheck_summary.passed else "Failed" }}
+                            </span>
+                        </p>
+                        <p class="text-sm text-gray-700">
+                            <span class="font-semibold">Agent ID:</span> {{ submission.score_breakdown.precheck_summary.agentId or "N/A" }}
+                        </p>
+                        {% if submission.score_breakdown.precheck_summary.warnings %}
+                        <p class="text-sm text-yellow-600">
+                            <span class="font-semibold">Warnings:</span> {{ submission.score_breakdown.precheck_summary.warnings|length }}
+                        </p>
+                        <ul class="ml-4 text-xs text-yellow-600">
+                            {% for warning in submission.score_breakdown.precheck_summary.warnings %}
+                            <li>• {{ warning }}</li>
+                            {% endfor %}
+                        </ul>
+                        {% endif %}
+                        {% if submission.score_breakdown.precheck_summary.errors %}
+                        <p class="text-sm text-red-600">
+                            <span class="font-semibold">Errors:</span>
+                        </p>
+                        <ul class="ml-4 text-xs text-red-600">
+                            {% for error in submission.score_breakdown.precheck_summary.errors %}
+                            <li>• {{ error }}</li>
+                            {% endfor %}
+                        </ul>
+                        {% endif %}
+                    </div>
+                    {% else %}
+                    <p class="ml-7 text-sm text-gray-500">PreCheck not yet executed</p>
+                    {% endif %}
+                </div>
+
+                <!-- Security Gate -->
+                <div class="mb-6 bg-gray-50 p-4 rounded-lg">
+                    <h3 class="text-lg font-semibold mb-2 flex items-center">
+                        <svg class="w-5 h-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+                        </svg>
+                        Security Gate
+                    </h3>
+                    {% if submission.score_breakdown.security_summary %}
+                    <div class="ml-7 space-y-2">
+                        <p class="text-sm text-gray-700">
+                            <span class="font-semibold">Total Tests:</span> {{ submission.score_breakdown.security_summary.total or 0 }}
+                        </p>
+                        <p class="text-sm text-gray-700">
+                            <span class="font-semibold">Passed:</span> <span class="text-green-600">{{ submission.score_breakdown.security_summary.passed or 0 }}</span>
+                        </p>
+                        <p class="text-sm text-gray-700">
+                            <span class="font-semibold">Failed:</span> <span class="text-red-600">{{ submission.score_breakdown.security_summary.failed or 0 }}</span>
+                        </p>
+                        <p class="text-sm text-gray-700">
+                            <span class="font-semibold">Errors:</span> <span class="text-yellow-600">{{ submission.score_breakdown.security_summary.error or 0 }}</span>
+                        </p>
+                    </div>
+                    {% else %}
+                    <p class="ml-7 text-sm text-gray-500">No security test results available</p>
+                    {% endif %}
+                </div>
+
+                <!-- Functional Check -->
+                <div class="mb-6 bg-gray-50 p-4 rounded-lg">
+                    <h3 class="text-lg font-semibold mb-2 flex items-center">
+                        <svg class="w-5 h-5 mr-2 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path>
+                        </svg>
+                        Functional Accuracy Check
+                    </h3>
+                    {% if submission.score_breakdown.functional_summary %}
+                    <div class="ml-7 space-y-2">
+                        <p class="text-sm text-gray-700">
+                            <span class="font-semibold">Total Scenarios:</span> {{ submission.score_breakdown.functional_summary.total_scenarios or 0 }}
+                        </p>
+                        <p class="text-sm text-gray-700">
+                            <span class="font-semibold">Passed:</span> <span class="text-green-600">{{ submission.score_breakdown.functional_summary.passed_scenarios or 0 }}</span>
+                        </p>
+                        <p class="text-sm text-gray-700">
+                            <span class="font-semibold">Failed:</span> <span class="text-red-600">{{ submission.score_breakdown.functional_summary.failed_scenarios or 0 }}</span>
+                        </p>
+                    </div>
+                    {% else %}
+                    <p class="ml-7 text-sm text-gray-500">No functional test results available</p>
+                    {% endif %}
+                </div>
+
+                <!-- Publish -->
+                <div class="mb-6 bg-gray-50 p-4 rounded-lg">
+                    <h3 class="text-lg font-semibold mb-2 flex items-center">
+                        <svg class="w-5 h-5 mr-2 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"></path>
+                        </svg>
+                        Publish
+                    </h3>
+                    {% if submission.score_breakdown.publish_summary %}
+                    <div class="ml-7 space-y-2">
+                        <p class="text-sm text-gray-700">
+                            <span class="font-semibold">Status:</span>
+                            <span class="{% if submission.score_breakdown.publish_summary.status == 'published' %}text-green-600{% else %}text-yellow-600{% endif %}">
+                                {{ submission.score_breakdown.publish_summary.status }}
+                            </span>
+                        </p>
+                        {% if submission.score_breakdown.publish_summary.publishedAt %}
+                        <p class="text-sm text-gray-700">
+                            <span class="font-semibold">Published At:</span> {{ submission.score_breakdown.publish_summary.publishedAt }}
+                        </p>
+                        {% endif %}
+                        <p class="text-sm text-gray-700">
+                            <span class="font-semibold">Trust Score:</span> {{ submission.score_breakdown.publish_summary.trustScore }}/100
+                        </p>
+                    </div>
+                    {% else %}
+                    <p class="ml-7 text-sm text-gray-500">Not yet published</p>
+                    {% endif %}
+                </div>
+                {% else %}
+                <p class="text-gray-500">Automated review is in progress or not yet started...</p>
+                {% endif %}
+            </div>
+
             <div class="p-6 border-t border-gray-200 bg-gray-50">
                 <h2 class="text-xl font-semibold mb-4">Review Actions</h2>
                 <div class="flex gap-4">

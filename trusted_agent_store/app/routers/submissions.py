@@ -16,6 +16,73 @@ from sandbox_runner.security_gate import run_security_gate
 from sandbox_runner.functional_accuracy import run_functional_accuracy
 from pathlib import Path
 import os
+import json
+from datetime import datetime
+
+def run_precheck(submission: models.Submission) -> dict:
+    """
+    PreCheck: Agent Card検証とagentId抽出
+    """
+    try:
+        card = submission.card_document
+
+        # Required fields check
+        required_fields = ["agentId", "serviceUrl", "translations"]
+        missing_fields = [f for f in required_fields if f not in card]
+
+        if missing_fields:
+            return {
+                "passed": False,
+                "agentId": None,
+                "agentRevisionId": None,
+                "errors": [f"Missing required field: {f}" for f in missing_fields],
+                "warnings": []
+            }
+
+        # Extract agentId
+        agent_id = card.get("agentId") or card.get("id")
+        agent_revision_id = card.get("version", "v1")
+
+        # Warnings
+        warnings = []
+        if not card.get("capabilities"):
+            warnings.append("No capabilities defined in Agent Card")
+        if not card.get("skills"):
+            warnings.append("No skills defined in Agent Card")
+
+        return {
+            "passed": True,
+            "agentId": agent_id,
+            "agentRevisionId": agent_revision_id,
+            "errors": [],
+            "warnings": warnings
+        }
+    except Exception as e:
+        return {
+            "passed": False,
+            "agentId": None,
+            "agentRevisionId": None,
+            "errors": [str(e)],
+            "warnings": []
+        }
+
+def publish_agent(submission: models.Submission) -> dict:
+    """
+    Publish: エージェントを公開状態にする
+    """
+    try:
+        return {
+            "publishedAt": datetime.utcnow().isoformat(),
+            "trustScore": submission.trust_score,
+            "status": "published"
+        }
+    except Exception as e:
+        return {
+            "publishedAt": None,
+            "trustScore": submission.trust_score,
+            "status": "failed",
+            "error": str(e)
+        }
 
 def process_submission(submission_id: str):
     """
@@ -25,7 +92,25 @@ def process_submission(submission_id: str):
     try:
         submission = db.query(models.Submission).filter(models.Submission.id == submission_id).first()
         if not submission:
+            print(f"Submission {submission_id} not found")
             return
+
+        # --- 0. PreCheck ---
+        print(f"Running PreCheck for submission {submission_id}")
+        precheck_summary = run_precheck(submission)
+
+        if not precheck_summary["passed"]:
+            submission.state = "precheck_failed"
+            submission.score_breakdown = {"precheck_summary": precheck_summary}
+            db.commit()
+            print(f"PreCheck failed for submission {submission_id}: {precheck_summary['errors']}")
+            return
+
+        # Update agent_id from precheck
+        if precheck_summary["agentId"]:
+            submission.agent_id = precheck_summary["agentId"]
+
+        print(f"PreCheck passed for submission {submission_id}")
 
         # Setup paths
         base_dir = Path("/app")
@@ -87,31 +172,45 @@ def process_submission(submission_id: str):
         # Calculate Functional Score
         # functional_summary has 'scenarios_passed' etc.
         total_functional = functional_summary.get("total_scenarios", 1)
-        passed_functional = functional_summary.get("passed_scenarios", 0)
-        functional_score = int((passed_functional / total_functional) * 40) # Max 40
+        # Calculate Trust Score
+        security_score = int((security_summary.get("passed", 0) / max(security_summary.get("total", 1), 1)) * 30)
+        functional_score = int((functional_summary.get("passed_scenarios", 0) / max(functional_summary.get("total_scenarios", 1), 1)) * 40)
 
-        # --- 3. Update Scores ---
         submission.security_score = security_score
         submission.functional_score = functional_score
         submission.trust_score = security_score + functional_score
-
         submission.score_breakdown = {
+            "precheck_summary": precheck_summary,
             "security_summary": security_summary,
             "functional_summary": functional_summary
         }
 
-        # --- 4. Auto Decision ---
-        if submission.trust_score >= 50:
-             submission.auto_decision = "requires_human_review"
-        else:
-             submission.auto_decision = "auto_rejected"
+        # Auto-decision based on trust score
+        if submission.trust_score >= 60:
+            submission.auto_decision = "auto_approved"
+            submission.state = "approved"
 
-        submission.state = "under_review"
+            # --- Publish Stage ---
+            print(f"Auto-approved: Publishing submission {submission_id}")
+            publish_summary = publish_agent(submission)
+            submission.score_breakdown["publish_summary"] = publish_summary
+            if publish_summary["status"] == "published":
+                submission.state = "published"
+        elif submission.trust_score < 30:
+            submission.auto_decision = "auto_rejected"
+            submission.state = "rejected"
+        else:
+            submission.auto_decision = "requires_human_review"
+            submission.state = "under_review"
 
         db.commit()
+        print(f"Submission {submission_id} processed successfully. Trust score: {submission.trust_score}")
     except Exception as e:
         print(f"Error processing submission {submission_id}: {e}")
-        # Optionally set state to error
+        import traceback
+        traceback.print_exc()
+        submission.state = "failed"
+        db.commit()
     finally:
         db.close()
 
