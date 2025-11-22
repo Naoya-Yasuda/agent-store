@@ -2,7 +2,9 @@ version: "3.9"
 
 services:
   trusted-agent-store:
-    build: ./trusted_agent_store
+    build:
+      context: .
+      dockerfile: ./trusted_agent_store/Dockerfile
     container_name: trusted-agent-store
     ports:
       - "8080:8080"

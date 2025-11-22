@@ -9,20 +9,24 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
-COPY requirements.txt .
-COPY sandbox-runner /app/sandbox-runner
-COPY third_party /app/third_party
+COPY trusted_agent_store/requirements.txt .
+COPY trusted_agent_store/sandbox-runner /app/sandbox-runner
+COPY trusted_agent_store/third_party /app/third_party
+
+# Copy inspect-worker for LLM Judge Panel
+COPY prototype/inspect-worker /app/inspect-worker
+
 RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install -e /app/sandbox-runner
 
 # Copy application code
-COPY . .
+COPY trusted_agent_store/app /app/app
 
-# Create data directory
-RUN mkdir -p data
+# Create data and static directories
+RUN mkdir -p data static
 
 # Set environment variables
-ENV PYTHONPATH=/app
+ENV PYTHONPATH=/app:/app/inspect-worker
 ENV DATABASE_URL=sqlite:////app/data/agent_store.db
 
 # Expose port
