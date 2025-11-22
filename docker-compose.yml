@@ -24,37 +24,16 @@ services:
     networks:
       - agent-store-network
 
-  temporal-postgres:
-    image: postgres:15-alpine
-    container_name: agent-store-temporal-postgres
-    env_file:
-      - .env
-    environment:
-      POSTGRES_USER: ${TEMPORAL_DB_USER:-temporal}
-      POSTGRES_PASSWORD: ${TEMPORAL_DB_PASSWORD:-temporal_pass}
-      POSTGRES_DB: ${TEMPORAL_DB_NAME:-temporal}
-    ports:
-      - "5433:5432"
-    volumes:
-      - temporal_postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${TEMPORAL_DB_USER:-temporal} -d ${TEMPORAL_DB_NAME:-temporal}"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    networks:
-      - agent-store-network
-
   # Temporal Server
   temporal:
     image: temporalio/auto-setup:1.24.0
     container_name: agent-store-temporal
     environment:
       - DB=postgres12
-      - DB_PORT=${TEMPORAL_DB_PORT:-5432}
-      - POSTGRES_SEEDS=${TEMPORAL_DB_HOST:-temporal-postgres}
-      - POSTGRES_USER=${TEMPORAL_DB_USER:-temporal}
-      - POSTGRES_PWD=${TEMPORAL_DB_PASSWORD:-temporal_pass}
+      - DB_PORT=5432
+      - POSTGRES_SEEDS=postgres
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PWD=${POSTGRES_PASSWORD}
       - SKIP_DB_CREATE=false
       - SKIP_DEFAULT_NAMESPACE_CREATION=false
     ports:
@@ -66,25 +45,25 @@ services:
       retries: 20
       start_period: 40s
     depends_on:
-      temporal-postgres:
+      postgres:
         condition: service_healthy
     networks:
       - agent-store-network
 
-  # Temporal Web UI
-  temporal-ui:
-    image: temporalio/ui:2.22.3
-    container_name: agent-store-temporal-ui
-    environment:
-      - TEMPORAL_ADDRESS=temporal:7233
-      - TEMPORAL_CORS_ORIGINS=http://localhost:8233
-    ports:
-      - "8233:8080"
-    depends_on:
-      temporal:
-        condition: service_healthy
-    networks:
-      - agent-store-network
+  # Temporal Web UI (Commented out for reduction)
+  # temporal-ui:
+  #   image: temporalio/ui:2.22.3
+  #   container_name: agent-store-temporal-ui
+  #   environment:
+  #     - TEMPORAL_ADDRESS=temporal:7233
+  #     - TEMPORAL_CORS_ORIGINS=http://localhost:8233
+  #   ports:
+  #     - "8233:8080"
+  #   depends_on:
+  #     temporal:
+  #       condition: service_healthy
+  #   networks:
+  #     - agent-store-network
 
   # Temporal Worker
   temporal-worker:
@@ -152,36 +131,12 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
-  # Next.js Review UI
-  review-ui:
-    build:
-      context: .
-      dockerfile: docker/review-ui/Dockerfile.dev
-    container_name: agent-store-review-ui
-    env_file:
-      - .env
-    environment:
-      NODE_ENV: development
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000}
-    ports:
-      - "3001:3000"
-    volumes:
-      # Mount source code for hot reload
-      - ./review-ui:/app
-      - /app/node_modules
-      - /app/.next
-    depends_on:
-      - api
-    networks:
-      - agent-store-network
-
-  # Submission UI
+  # Submission UI (Combined with Admin)
   submission-ui:
     build:
       context: .
       dockerfile: docker/submission-ui/Dockerfile.dev
       args:
-        NEXT_PUBLIC_AUTH_URL: ${NEXT_PUBLIC_AUTH_URL:-http://localhost:3003}
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:3000}
     container_name: agent-store-submission-ui
     env_file:
@@ -189,7 +144,6 @@ services:
     environment:
       NODE_ENV: development
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:3000}
-      NEXT_PUBLIC_AUTH_URL: ${NEXT_PUBLIC_AUTH_URL:-http://localhost:3003}
     ports:
       - "3002:3000"
     volumes:
@@ -199,32 +153,6 @@ services:
       - /app/.next
     depends_on:
       - api
-      - auth-service
-    networks:
-      - agent-store-network
-
-  # Auth Service
-  auth-service:
-    build:
-      context: ./auth-service
-      dockerfile: Dockerfile
-    container_name: agent-store-auth-service
-    env_file:
-      - .env
-    environment:
-      NODE_ENV: ${NODE_ENV:-production}
-      DATABASE_URL: ${DATABASE_URL}
-      PORT: 3001
-      JWT_SECRET: ${JWT_SECRET:-your-secret-key-change-in-production}
-      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-your-refresh-secret-key-change-in-production}
-      ACCESS_TOKEN_EXPIRY: ${ACCESS_TOKEN_EXPIRY:-15m}
-      REFRESH_TOKEN_EXPIRY: ${REFRESH_TOKEN_EXPIRY:-7d}
-      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:3002
-    ports:
-      - "3003:3001"
-    depends_on:
-      postgres:
-        condition: service_healthy
     networks:
       - agent-store-network
 
@@ -265,8 +193,6 @@ services:
 
 volumes:
   postgres_data:
-    driver: local
-  temporal_postgres_data:
     driver: local
 
 networks:
