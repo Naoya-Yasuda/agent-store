@@ -18,6 +18,7 @@ COPY prototype/inspect-worker /app/inspect-worker
 
 RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install -e /app/sandbox-runner
+RUN pip install --no-cache-dir -r /app/inspect-worker/requirements.txt
 
 # Copy application code
 COPY trusted_agent_hub/app /app/app
