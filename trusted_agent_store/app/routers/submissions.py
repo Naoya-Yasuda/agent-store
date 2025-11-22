@@ -45,10 +45,7 @@ def process_submission(submission_id: str):
         # Extract endpoint URL from Agent Card (A2A Protocol)
         endpoint_url = submission.card_document.get("serviceUrl")
         if not endpoint_url:
-            # Fallback: try to construct from base URL if available
-            print(f"Warning: No serviceUrl in Agent Card for submission {submission_id}")
-            endpoint_url = "http://sample-agent:4000/agent/chat"  # Default fallback
-
+            raise Exception(f"Agent Card missing required 'serviceUrl' field for submission {submission_id}")
         security_summary = run_security_gate(
             agent_id=submission.agent_id,
             revision="v1",
@@ -135,9 +132,14 @@ async def create_submission(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to fetch Agent Card: {str(e)}")
 
+    # Extract agent_id from Agent Card
+    agent_id = card_document.get("agentId") or card_document.get("id")
+    if not agent_id:
+        raise HTTPException(status_code=400, detail="Agent Card missing required 'agentId' or 'id' field")
+
     db_submission = models.Submission(
         id=str(uuid.uuid4()),
-        agent_id=submission.agent_id,
+        agent_id=agent_id,
         card_document=card_document,
         endpoint_manifest=submission.endpoint_manifest,
         endpoint_snapshot_hash=submission.endpoint_snapshot_hash,

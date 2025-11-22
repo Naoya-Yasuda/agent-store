@@ -45,14 +45,14 @@ docker run -p 8080:8080 trusted-agent-store
 
 ### 提出方法
 
-1.  **提出 (Submission)**: ユーザーがエージェント情報（Agent Card URLなど）を提出します。
+1.  **提出 (Submission)**: ユーザーがAgent Card URLを提出します。
 
     **提出UI**: `http://localhost:8080/submit`
 
     **入力項目**:
-    - **Agent ID**: 任意のUUID (例: `00000000-0000-0000-0000-000000000001`)
-    - **Agent Card URL**: エージェントのメタデータJSONのURL
+    - **Agent Card URL**: A2A Protocol準拠のAgent Card JSONのURL
       - サンプルエージェントの場合: `http://sample-agent:4000/agent-card.json`
+      - **必須フィールド**: `agentId`, `serviceUrl`, `translations`
 
     **コンテナ情報**:
     - **コンテナ名**: `trusted-agent-store`
@@ -60,9 +60,25 @@ docker run -p 8080:8080 trusted-agent-store
     - **ネットワーク**: `agent-store_agent-store-network`
     - **注意**: `sample-agent` と通信するため、同じネットワークに接続されている必要があります
 
+    **Agent Card仕様 (A2A Protocol)**:
+    - `agentId`: エージェントの一意識別子（自動抽出）
+    - `serviceUrl`: エージェントとの対話エンドポイント（例: `http://sample-agent:4000/agent/chat`）
+    - `translations[0].displayName`: エージェントの表示名
+    - `translations[0].shortDescription`: エージェントの短い説明
+    - `skills`: エージェントが提供するスキル一覧
+    - `capabilities`: ストリーミング、通知などの機能フラグ
+
 2.  **自動審査 (Automated Review)**: バックグラウンドワーカーが自動的に以下のスコアを算出します。
-    - **Security Score**: セキュリティチェック（モック）
-    - **Functional Score**: 機能テスト（モック）
+    - **Security Score**: `sandbox-runner` を使用した実際のセキュリティ攻撃テスト（AdvBench/AISI）
+    - **Functional Score**: Agent Cardの `skills` に基づく機能テスト
+    - **Trust Score**: 上記スコアの合計値
+
+    **審査プロセス**:
+    - Agent Cardから `serviceUrl` を抽出し、エージェントエンドポイントに接続
+    - セキュリティゲート: 攻撃プロンプトを送信し、エージェントの応答を評価
+    - 機能チェック: スキルごとにテストシナリオを実行
+    - スコアに基づき自動判定（承認/拒否/要人間レビュー）を実施
+
 3.  **判定 (Decision)**:
     - スコアが低い場合: **自動拒否 (Auto Rejected)**
     - スコアが高い場合: **要人間レビュー (Requires Human Review)**

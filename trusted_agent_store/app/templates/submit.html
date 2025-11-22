@@ -11,12 +11,6 @@
         <h1 class="text-3xl font-bold mb-8 text-center">Submit New Agent</h1>
 
         <form id="submissionForm" class="max-w-2xl mx-auto bg-white p-8 rounded-lg shadow-md">
-            <div class="mb-4">
-                <label class="block text-gray-700 text-sm font-bold mb-2" for="agent_id">
-                    Agent ID (UUID)
-                </label>
-                <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" id="agent_id" type="text" placeholder="e.g. 123e4567-e89b-12d3-a456-426614174000" required>
-            </div>
 
             <div class="mb-6">
                 <label class="block text-gray-700 text-sm font-bold mb-2" for="agent_card_url">
@@ -40,11 +34,10 @@
     <script>
         document.getElementById('submissionForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            const agentId = document.getElementById('agent_id').value;
             const agentCardUrl = document.getElementById('agent_card_url').value;
 
             const payload = {
-                agent_id: agentId,
+                agent_id: "placeholder", // Will be extracted from Agent Card on server side
                 agent_card_url: agentCardUrl,
                 // Mock other required fields for now
                 endpoint_manifest: { endpoints: [] },

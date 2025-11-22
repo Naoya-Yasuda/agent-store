@@ -50,7 +50,7 @@ class SubmissionBase(BaseModel):
     request_context: Optional[Dict[str, Any]] = None
 
 class SubmissionCreate(BaseModel):
-    agent_id: str
+    agent_id: Optional[str] = None  # Will be extracted from Agent Card
     agent_card_url: str
     endpoint_manifest: Optional[Dict[str, Any]] = {}
     endpoint_snapshot_hash: Optional[str] = "hash"
