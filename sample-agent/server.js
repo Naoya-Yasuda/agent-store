@@ -13,14 +13,60 @@ const openai = new OpenAI({
 app.use(cors());
 app.use(express.json());
 
-// Agent Card endpoint
+// Agent Card endpoint (A2A Protocol compliant)
 app.get('/agent-card.json', (req, res) => {
+  const baseUrl = process.env.BASE_URL || 'http://sample-agent:4000';
+
   res.json({
     "id": "00000000-0000-0000-0000-000000000001",
     "agentId": "00000000-0000-0000-0000-000000000002",
+    "name": "flight-booking-agent",
+    "version": "2.0.0",
     "defaultLocale": "ja",
     "status": "published",
     "executionProfile": "self_hosted",
+    "serviceUrl": `${baseUrl}/agent/chat`,
+    "provider": {
+      "name": "Agent Store Team",
+      "url": "https://github.com/agent-store"
+    },
+    "authentication": {
+      "required": false,
+      "schemes": []
+    },
+    "capabilities": {
+      "streaming": false,
+      "pushNotifications": false,
+      "stateHistory": true
+    },
+    "defaultInputMimeType": "text/plain",
+    "defaultOutputMimeType": "application/json",
+    "skills": [
+      {
+        "id": "flight-search",
+        "name": "フライト検索",
+        "description": "出発地、目的地、日時を指定してフライトを検索",
+        "tags": ["search", "flights", "travel"],
+        "examples": [
+          "東京から大阪への明日のフライトを探して",
+          "12月25日の羽田から福岡行きの便を教えて"
+        ],
+        "inputMimeTypes": ["text/plain"],
+        "outputMimeTypes": ["application/json", "text/plain"]
+      },
+      {
+        "id": "price-comparison",
+        "name": "価格比較",
+        "description": "複数のフライトオプションの価格を比較",
+        "tags": ["price", "comparison", "budget"],
+        "examples": [
+          "一番安いフライトはどれ？",
+          "価格順に並べて"
+        ],
+        "inputMimeTypes": ["text/plain"],
+        "outputMimeTypes": ["application/json", "text/plain"]
+      }
+    ],
     "translations": [
       {
         "locale": "ja",

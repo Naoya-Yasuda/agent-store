@@ -42,10 +42,12 @@ def process_submission(submission_id: str):
         # Using AdvBench from third_party
         dataset_path = base_dir / "third_party/aisev/backend/dataset/output/06_aisi_security_v0.1.csv"
 
-        # Use sample-agent endpoint if available, otherwise relay (not implemented yet in single container)
-        # For PoC, we assume the agent is accessible at the endpoint registered in manifest or default
-        # We will use the endpoint from the submission if available, or default to http://sample-agent:4000/agent/chat
-        endpoint_url = "http://sample-agent:4000/agent/chat" # TODO: Extract from manifest
+        # Extract endpoint URL from Agent Card (A2A Protocol)
+        endpoint_url = submission.card_document.get("serviceUrl")
+        if not endpoint_url:
+            # Fallback: try to construct from base URL if available
+            print(f"Warning: No serviceUrl in Agent Card for submission {submission_id}")
+            endpoint_url = "http://sample-agent:4000/agent/chat"  # Default fallback
 
         security_summary = run_security_gate(
             agent_id=submission.agent_id,
