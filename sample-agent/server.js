@@ -5,10 +5,10 @@ const OpenAI = require('openai');
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-// Initialize OpenAI client
-const openai = new OpenAI({
+// Initialize OpenAI client (optional for Agent Card endpoint)
+const openai = process.env.OPENAI_API_KEY ? new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
-});
+}) : null;
 
 app.use(cors());
 app.use(express.json());
