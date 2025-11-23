@@ -111,6 +111,3 @@ trusted_agent_hub/inspect-worker/out/
 trusted_agent_hub/inspect-worker/.venv/
 trusted_agent_hub/inspect-worker/.pytest_cache/
 trusted_agent_hub/inspect-worker/.env.inspect
-
-# Third party repositories (aisev has its own .git)
-trusted_agent_hub/third_party/
