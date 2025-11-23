@@ -20,6 +20,10 @@ trusted_agent_hub/
 │   ├── schemas.py      # Pydantic スキーマ
 │   ├── routers/        # API ルーター (Submissions, Reviews, UI)
 │   └── templates/      # Jinja2 HTML テンプレート
+├── sandbox-runner/     # エージェント審査エンジン (Functional & Security評価)
+├── inspect-worker/     # Judge Panel (Agents-as-a-Judge: GPT-4o/Claude/Gemini)
+├── third_party/
+│   └── aisev/          # AISI Security ベンチマークデータセット
 ├── static/             # 静的ファイル (CSS, JS)
 ├── Dockerfile          # Docker イメージ定義
 └── requirements.txt    # Python 依存関係
@@ -71,12 +75,17 @@ docker run -p 8080:8080 trusted-agent-hub
 2.  **自動審査 (Automated Review)**: バックグラウンドワーカーが自動的に以下のスコアを算出します。
     - **Security Score**: `sandbox-runner` を使用した実際のセキュリティ攻撃テスト（AdvBench/AISI）
     - **Functional Score**: Agent Cardの `skills` に基づく機能テスト
-    - **Trust Score**: 上記スコアの合計値
+    - **Judge Panel Score**: Agents-as-a-Judge方式による多段階評価
+      - **AISI Inspect基準**: Task Completion (0-40), Tool Usage (0-30), Autonomy (0-20), Safety (0-10)
+      - **Multi-Model Judge**: GPT-4o, Claude 3.5 Sonnet, Gemini 2.5 Flash による評価アンサンブル
+      - **3段階推論**: Plan → Counter → Reconcile フェーズで評価の精度向上
+    - **Trust Score**: 上記スコアの統合値
 
     **審査プロセス**:
     - Agent Cardから `serviceUrl` を抽出し、エージェントエンドポイントに接続
-    - セキュリティゲート: 攻撃プロンプトを送信し、エージェントの応答を評価
+    - セキュリティゲート: AISI Securityベンチマーク (third_party/aisev) からQA取得し、エージェント応答を評価
     - 機能チェック: スキルごとにテストシナリオを実行
+    - Judge Panel: 実行ログをGoogle ADK & Anthropic Computer Use経由で審査
     - スコアに基づき自動判定（承認/拒否/要人間レビュー）を実施
 
 3.  **判定 (Decision)**:
@@ -84,11 +93,15 @@ docker run -p 8080:8080 trusted-agent-hub
     - スコアが高い場合: **要人間レビュー (Requires Human Review)**
 4.  **人間レビュー (Human Review)**: 管理者がダッシュボードから承認/拒否を最終決定します。
 
-## 📂 ディレクトリ構成
+## 📂 主要コンポーネント
 
-- `trusted_agent_hub/`: メインアプリケーション
-- `sample-agent/`: テスト用サンプルエージェント
-- `sandbox-runner/`: エージェント実行ランナー（ライブラリとして使用）
+- **`trusted_agent_hub/`**: メインアプリケーション（FastAPI + SQLite）
+  - `app/`: Web API & UI
+  - `sandbox-runner/`: エージェント審査エンジン（Functional & Security評価）
+  - `inspect-worker/`: Judge Panel（Agents-as-a-Judge実装）
+  - `third_party/aisev/`: AISI Securityベンチマークデータセット
+- **`sample-agent/`**: テスト用サンプルエージェント
+- **`docker-compose.yml`**: コンテナオーケストレーション設定
 
 ## ⚠️ 注意事項
 
