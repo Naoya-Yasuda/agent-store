@@ -1,2 +1,0 @@
-[console_scripts]
-sandbox-runner = sandbox_runner.cli:main
