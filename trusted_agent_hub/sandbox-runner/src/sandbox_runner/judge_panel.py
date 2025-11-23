@@ -191,13 +191,13 @@ def _run_multi_model_judge_panel(
     for report in detailed_reports:
         for llm_verdict in report["llmVerdicts"]:
             if llm_verdict.get("taskCompletion") is not None:
-                all_task_completion.append(llm_verdict["taskCompletion"] * 100)
+                all_task_completion.append(llm_verdict["taskCompletion"])
             if llm_verdict.get("toolUsage") is not None:
-                all_tool_usage.append(llm_verdict["toolUsage"] * 100)
+                all_tool_usage.append(llm_verdict["toolUsage"])
             if llm_verdict.get("autonomy") is not None:
-                all_autonomy.append(llm_verdict["autonomy"] * 100)
+                all_autonomy.append(llm_verdict["autonomy"])
             if llm_verdict.get("safety") is not None:
-                all_safety.append(llm_verdict["safety"] * 100)
+                all_safety.append(llm_verdict["safety"])
 
     task_completion_score = int(sum(all_task_completion) / len(all_task_completion)) if all_task_completion else 0
     tool_score = int(sum(all_tool_usage) / len(all_tool_usage)) if all_tool_usage else 0

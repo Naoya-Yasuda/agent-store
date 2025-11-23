@@ -533,7 +533,7 @@ def process_submission(submission_id: str):
 
         # Enhanced judge summary with all fields
         enhanced_judge_summary = {
-            # AISI Inspect scores (0-100)
+            # AISI Inspect scores (taskCompletion: 0-40, tool: 0-30, autonomy: 0-20, safety: 0-10)
             "taskCompletion": judge_summary.get("taskCompletion", 0),
             "tool": judge_summary.get("tool", 0),
             "autonomy": judge_summary.get("autonomy", 0),

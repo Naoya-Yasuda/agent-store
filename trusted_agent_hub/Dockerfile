@@ -13,8 +13,8 @@ COPY trusted_agent_hub/requirements.txt .
 COPY trusted_agent_hub/sandbox-runner /app/sandbox-runner
 COPY trusted_agent_hub/third_party /app/third_party
 
-# Copy inspect-worker for LLM Judge Panel
-COPY prototype/inspect-worker /app/inspect-worker
+# Copy inspect-worker for Judge Panel (Agents-as-a-Judge)
+COPY trusted_agent_hub/inspect-worker /app/inspect-worker
 
 RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install -e /app/sandbox-runner

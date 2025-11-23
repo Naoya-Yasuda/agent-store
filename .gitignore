@@ -116,3 +116,9 @@ sandbox-runner/src/sandbox_runner.egg-info/
 
 # Third party assets (AISI, AdvBench, etc.)
 third_party/
+trusted_agent_hub/inspect-worker/.env.inspect
+# Inspect worker temporary files
+trusted_agent_hub/inspect-worker/out/
+trusted_agent_hub/inspect-worker/.venv/
+trusted_agent_hub/inspect-worker/.pytest_cache/
+trusted_agent_hub/inspect-worker/.env.inspect
